@@ -8,6 +8,7 @@ import ProtectedRoutes from './ProtectedRoutes';
 import AdminRoutes from './AdminRoutes';
 import FarmerRoutes from './FarmerRoutes';
 import ShipperRoutes from './ShipperRoutes';
+import StaffRoutes from './StaffRoutes';
 
 const AppRouter: React.FC = () => {
     return (
@@ -20,10 +21,11 @@ const AppRouter: React.FC = () => {
             </Route>
 
 
-            {/* Admin, Farmer, Shipper Routes (layout riêng) */}
+            {/* Admin, Farmer, Shipper, Staff Routes (layout riêng) */}
             {AdminRoutes()}
             {FarmerRoutes()}
             {ShipperRoutes()}
+            {StaffRoutes()}
 
             {/* Fallback 404 */}
             <Route path="*" element={<div className="p-20 text-center font-bold">404 - Trang không tìm thấy</div>} />

@@ -60,17 +60,26 @@ const Sidebar: React.FC<SidebarProps> = ({ role, user, currentPath, onNavigate, 
     { name: 'Ví sàn', icon: Wallet, id: 'admin-wallet' },
   ];
 
-  const menu = role === AppRole.ADMIN ? adminMenu : farmerMenu;
+  const staffMenu = [
+    { name: 'Tổng quan kho', icon: LayoutDashboard, id: 'staff-overview' },
+    { name: 'Quản lý đơn hàng', icon: ShoppingCart, id: 'staff-orders' },
+    { name: 'Kiểm duyệt chất lượng', icon: ShieldCheck, id: 'staff-inspect' },
+    { name: 'Đóng gói đơn hàng', icon: Package, id: 'staff-pack' },
+    { name: 'Gọi Shipper', icon: Truck, id: 'staff-shipper' },
+    { name: 'Hồ sơ nhân viên', icon: UserCircle, id: 'staff-profile' },
+  ];
+
+  const menu = role === AppRole.ADMIN ? adminMenu : (role === AppRole.STAFF ? staffMenu : farmerMenu);
 
   return (
     <aside className="w-80 bg-white border-r border-gray-100 flex flex-col h-full shadow-sm z-50">
       {/* Header Logo Area */}
       <div className="p-8 pb-4">
-        <div className="flex items-center gap-3 px-2 cursor-pointer" onClick={() => onNavigate(role === AppRole.ADMIN ? 'admin-overview' : 'overview')}>
+        <div className="flex items-center gap-3 px-2 cursor-pointer" onClick={() => onNavigate(role === AppRole.ADMIN ? 'admin-overview' : (role === AppRole.STAFF ? 'staff-overview' : 'overview'))}>
           <img src="/logo.png" alt="Logo" className="size-10 rounded-full shrink-0" />
           <div>
             <h1 className="text-xl font-black leading-none font-display text-gray-900 tracking-tight uppercase">NÔNG SẢN XẤU MÃ</h1>
-            <p className="text-gray-400 text-[9px] font-bold mt-1 tracking-widest uppercase">{role === AppRole.ADMIN ? 'HỆ THỐNG QUẢN TRỊ' : 'NÔNG TRẠI XANH'}</p>
+            <p className="text-gray-400 text-[9px] font-bold mt-1 tracking-widest uppercase">{role === AppRole.ADMIN ? 'HỆ THỐNG QUẢN TRỊ' : (role === AppRole.STAFF ? 'NHÂN VIÊN HỖ TRỢ' : 'NÔNG TRẠI XANH')}</p>
           </div>
         </div>
       </div>
@@ -103,7 +112,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, user, currentPath, onNavigate, 
           <div className="relative shrink-0">
             <img
               className="size-9 rounded-xl border-2 border-white shadow-sm object-cover bg-orange-100"
-              src={user?.avatar || (role === AppRole.FARMER ? "https://picsum.photos/seed/farmer_ba/100/100" : "https://picsum.photos/seed/admin_avatar/100/100")}
+              src={user?.avatar || (role === AppRole.FARMER ? "https://picsum.photos/seed/farmer_ba/100/100" : (role === AppRole.STAFF ? "https://picsum.photos/seed/staff_avatar/100/100" : "https://picsum.photos/seed/admin_avatar/100/100"))}
               alt="User"
             />
             <div className="absolute -bottom-0.5 -right-0.5 size-3 bg-primary rounded-full border-2 border-white flex items-center justify-center">
@@ -112,7 +121,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, user, currentPath, onNavigate, 
           </div>
           <div className="flex flex-col min-w-0 flex-1">
             <p className="text-[11px] font-black text-gray-900 truncate uppercase tracking-tight">
-              {user?.name || (role === AppRole.FARMER ? 'Bác Ba Nông Dân' : 'Admin Tổng')}
+              {user?.name || (role === AppRole.FARMER ? 'Bác Ba Nông Dân' : (role === AppRole.STAFF ? 'Nhân Viên Hỗ Trợ' : 'Admin Tổng'))}
             </p>
             <p className="text-[8px] text-primary uppercase tracking-widest font-black flex items-center gap-1">
               <span className="size-1 bg-primary rounded-full animate-pulse" />

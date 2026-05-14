@@ -1,17 +1,20 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Package, Truck, ClipboardCheck, PackageCheck,
   ArrowRight, Clock, CheckCircle, AlertCircle, TrendingUp, Box, Zap, BarChart3
 } from 'lucide-react';
 
-interface StaffDashboardProps {
-  onNavigate: (page: string) => void;
-}
+const StaffDashboard: React.FC = () => {
+  const navigate = useNavigate();
+  const onNavigate = (page: string) => {
+    const route = page.replace('staff-', '');
+    navigate(`/staff/${route}`);
+  };
 
-const StaffDashboard: React.FC<StaffDashboardProps> = ({ onNavigate }) => {
   const pipeline = [
-    { label: 'Đơn đang đến kho', value: 14, color: 'text-blue-500', bg: 'bg-blue-50', icon: Truck, page: 'staff-incoming' },
-    { label: 'Chờ xác nhận', value: 6, color: 'text-orange-500', bg: 'bg-orange-50', icon: Package, page: 'staff-incoming' },
+    { label: 'Đơn đang đến kho', value: 14, color: 'text-blue-500', bg: 'bg-blue-50', icon: Truck, page: 'staff-orders' },
+    { label: 'Chờ xác nhận', value: 6, color: 'text-orange-500', bg: 'bg-orange-50', icon: Package, page: 'staff-orders' },
     { label: 'Chờ kiểm duyệt', value: 9, color: 'text-purple-500', bg: 'bg-purple-50', icon: ClipboardCheck, page: 'staff-inspect' },
     { label: 'Chờ đóng gói', value: 4, color: 'text-emerald-500', bg: 'bg-emerald-50', icon: Box, page: 'staff-pack' },
   ];
@@ -67,12 +70,12 @@ const StaffDashboard: React.FC<StaffDashboardProps> = ({ onNavigate }) => {
           </div>
           <div className="grid grid-cols-2 gap-4">
             {[
-              { label: 'Đơn đang đến kho', sub: '14 đơn cần theo dõi', icon: Truck, color: 'text-blue-500', bg: 'bg-blue-50', page: 'staff-incoming' },
-              { label: 'Xác nhận nhận hàng', sub: '6 đơn đang chờ', icon: Package, color: 'text-orange-500', bg: 'bg-orange-50', page: 'staff-receive' },
+              { label: 'Đơn đang đến kho', sub: '14 đơn cần theo dõi', icon: Truck, color: 'text-blue-500', bg: 'bg-blue-50', page: 'staff-orders' },
+              { label: 'Xác nhận nhận hàng', sub: '6 đơn đang chờ', icon: Package, color: 'text-orange-500', bg: 'bg-orange-50', page: 'staff-orders' },
               { label: 'Kiểm duyệt chất lượng', sub: '9 đơn chờ kiểm', icon: ClipboardCheck, color: 'text-purple-500', bg: 'bg-purple-50', page: 'staff-inspect' },
               { label: 'Đóng gói đơn hàng', sub: '4 đơn sẵn sàng', icon: Box, color: 'text-emerald-500', bg: 'bg-emerald-50', page: 'staff-pack' },
               { label: 'Gọi Shipper', sub: '3 đơn chờ lấy hàng', icon: PackageCheck, color: 'text-rose-500', bg: 'bg-rose-50', page: 'staff-shipper' },
-              { label: 'Thống kê ca làm', sub: 'Xem báo cáo hôm nay', icon: BarChart3, color: 'text-gray-500', bg: 'bg-gray-50', page: 'staff-incoming' },
+              { label: 'Thống kê ca làm', sub: 'Xem báo cáo hôm nay', icon: BarChart3, color: 'text-gray-500', bg: 'bg-gray-50', page: 'staff-orders' },
             ].map((action, i) => (
               <button
                 key={i}
