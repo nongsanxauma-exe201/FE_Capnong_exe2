@@ -29,7 +29,7 @@ export type { ShipperRegisterRequest, ShipperRegisterResponse } from './shipper.
 export type { NotificationItem, AdminSendNotificationRequest } from './notification.service';
 export type { MysteryBox, MysteryBoxResponse, ProductMysteryResponse, MysteryBoxCreationRequest, MysteryBoxUpdateRequest, ProductMysteryRequest } from './mysteryBox.service';
 export type { ProductResponse, ProductCreationRequest } from './product.service';
-export type { OrderResponse, OrderCreationRequest } from './order.service';
+export type { OrderResponse, OrderItemResponse, OrderCreationRequest, TrackingResponse, TrackingImageResponse, StaffOrderReportResponse } from './order.service';
 export type { WalletResponse, WithdrawRequestResponse } from './wallet.service';
 export type { BlogResponse, BlogCreationRequest } from './blog.service';
 export type { PaymentResponse, CreatePaymentRequest } from './payment.service';
