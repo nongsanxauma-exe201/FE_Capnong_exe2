@@ -1,9 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { Truck, CheckCircle2, XCircle, User, AlertTriangle, X, Loader2, AlertCircle, Trash2, PackageCheck, PackageX, Gift, Eye } from 'lucide-react';
+import { Truck, CheckCircle2, XCircle, User, AlertTriangle, X, Loader2, AlertCircle, Trash2, PackageCheck, PackageX, Gift, Eye, Navigation, CheckCircle, Clock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { orderService, OrderResponse } from '../../services';
+import { orderService, OrderResponse, type OrderItemResponse } from '../../services';
+import { ImageLightbox } from '../../components/ui';
 import Pagination, { PageInfo } from '../../components/ui/Pagination';
 import { globalShowAlert, globalShowConfirm } from '../../contexts/PopupContext';
+
+const getStatusLabel = (status: string) => {
+  const map: Record<string, string> = {
+    SHIPPING_TO_WAREHOUSE: 'Đang giao tới kho', ARRIVED_AT_WAREHOUSE: 'Đã tới kho',
+    QUALITY_CHECKING: 'Đang kiểm định', QUALITY_APPROVED: 'Đạt chất lượng',
+    QUALITY_CHECKED: 'Đã kiểm tra', QUALITY_REJECTED: 'Không đạt chất lượng',
+    PENDING: 'Chờ xác nhận', CONFIRMED: 'Đã xác nhận', SHIPPING: 'Đang giao',
+    DELIVERED: 'Đã giao', CANCELLED: 'Đã hủy', FAILED: 'Thất bại', PAID: 'Đã thanh toán',
+  };
+  return map[status] || status.replace(/_/g, ' ');
+};
 
 const PAGE_SIZE = 10;
 
@@ -23,6 +35,22 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancellingOrderId, setCancellingOrderId] = useState<number | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Tracking modal
+  const [trackingOrderId, setTrackingOrderId] = useState<number | null>(null);
+  const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
+
+  // Order detail modal
+  const [orderDetailId, setOrderDetailId] = useState<number | null>(null);
+
+  // Quality review modal
+  const [qualityReviewItem, setQualityReviewItem] = useState<OrderItemResponse | null>(null);
+  const [qualityImageUrl, setQualityImageUrl] = useState<string | null>(null);
+  const [qualityImageIndex, setQualityImageIndex] = useState(0);
+  const [qualityCurrentResponseIdx, setQualityCurrentResponseIdx] = useState(0);
+
+  const trackingOrder = trackingOrderId ? orders.find(o => o.id === trackingOrderId) : null;
+  const detailOrder = orderDetailId ? orders.find(o => o.id === orderDetailId) : null;
 
   const fetchOrders = async () => {
     try {
@@ -411,50 +439,52 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
                     {isShippingToWarehouse && (
                       <div className="p-5 bg-orange-50 rounded-3xl border border-orange-100 text-center">
                         <Truck className="size-8 text-orange-500 mx-auto mb-3" />
-                        <p className="text-sm font-black text-orange-700">
-                          Đang vận chuyển tới kho
-                        </p>
-                        <p className="text-[11px] text-orange-500 font-bold mt-1">
-                          Hàng đang được chuyển tới kho kiểm định
-                        </p>
+                        <p className="text-sm font-black text-orange-700">Đang vận chuyển tới kho</p>
+                        <p className="text-[11px] text-orange-500 font-bold mt-1">Hàng đang được chuyển tới kho kiểm định</p>
                       </div>
                     )}
 
                     {isArrivedAtWarehouse && (
                       <div className="p-5 bg-cyan-50 rounded-3xl border border-cyan-100 text-center">
                         <PackageCheck className="size-8 text-cyan-600 mx-auto mb-3" />
-                        <p className="text-sm font-black text-cyan-700">
-                          Kho đã nhận hàng
-                        </p>
+                        <p className="text-sm font-black text-cyan-700">Kho đã nhận hàng</p>
                       </div>
                     )}
 
                     {isQualityChecking && (
                       <div className="p-5 bg-yellow-50 rounded-3xl border border-yellow-100 text-center">
                         <Loader2 className="size-8 text-yellow-600 mx-auto mb-3 animate-spin" />
-                        <p className="text-sm font-black text-yellow-700">
-                          Đang kiểm định chất lượng
-                        </p>
+                        <p className="text-sm font-black text-yellow-700">Đang kiểm định chất lượng</p>
                       </div>
                     )}
 
                     {isQualityApproved && (
                       <div className="p-5 bg-green-50 rounded-3xl border border-green-100 text-center">
                         <CheckCircle2 className="size-8 text-green-600 mx-auto mb-3" />
-                        <p className="text-sm font-black text-green-700">
-                          Sản phẩm đạt chất lượng
-                        </p>
+                        <p className="text-sm font-black text-green-700">Sản phẩm đạt chất lượng</p>
                       </div>
                     )}
 
                     {isQualityRejected && (
                       <div className="p-5 bg-red-50 rounded-3xl border border-red-100 text-center">
                         <XCircle className="size-8 text-red-600 mx-auto mb-3" />
-                        <p className="text-sm font-black text-red-700">
-                          Không đạt chất lượng
-                        </p>
+                        <p className="text-sm font-black text-red-700">Không đạt chất lượng</p>
                       </div>
                     )}
+
+                    {/* Tracking button */}
+                    {order.trackings && order.trackings.length > 0 && (
+                      <button onClick={() => setTrackingOrderId(order.id)}
+                        className="w-full py-3 bg-primary/10 text-primary font-black rounded-2xl flex items-center justify-center gap-2 hover:bg-primary hover:text-white transition-all shadow-sm shadow-primary/10">
+                        <Navigation className="size-4" /> Xem vận đơn
+                      </button>
+                    )}
+
+                    {/* Order detail + quality per item */}
+                    <button onClick={() => setOrderDetailId(order.id)}
+                      className="w-full py-3 border border-gray-100 text-gray-600 font-bold text-xs rounded-2xl flex items-center justify-center gap-2 hover:bg-gray-50 transition-all">
+                      <Eye className="size-4" /> Xem thông tin đơn hàng
+                    </button>
                   </div>
                 </div>
               </div>
@@ -464,6 +494,81 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
       </div>
 
       {pageInfo && <Pagination pageInfo={pageInfo} onPageChange={setPage} className="mt-4" />}
+
+      {/* ── MODAL: THÔNG TIN ĐƠN HÀNG (per-item quality check) ── */}
+      {detailOrder && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-[580px] rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 relative" style={{ maxHeight: '90vh', overflowY: 'auto' }}>
+            <div className="p-8">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-xl font-black text-gray-900 flex items-center gap-2">
+                    <Eye className="size-5 text-primary" /> Thông tin đơn hàng
+                  </h3>
+                  <p className="text-xs text-gray-400 font-medium mt-0.5">#ORD-{detailOrder.id} · {getStatusLabel(detailOrder.status)}</p>
+                </div>
+                <button onClick={() => setOrderDetailId(null)} className="size-9 rounded-2xl border border-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-50">
+                  <X className="size-4" />
+                </button>
+              </div>
+
+              {/* Customer info */}
+              <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 mb-5">
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Khách hàng</p>
+                <p className="text-sm font-black text-gray-900">{detailOrder.recipientName}</p>
+                <p className="text-xs text-gray-500 font-medium mt-1">{detailOrder.recipientPhone} · {detailOrder.shippingAddress}</p>
+              </div>
+
+              {/* Items with quality check buttons */}
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Sản phẩm ({detailOrder.items?.length || 0})</p>
+              <div className="flex flex-col gap-3 mb-5">
+                {detailOrder.items?.map((item, idx) => {
+                  const hasQuality = Boolean(item.qualityResult);
+                  const fallback = item.itemType === 'MYSTERY_BOX'
+                    ? `https://picsum.photos/seed/box${item.mysteryBoxId}/40/40`
+                    : `https://picsum.photos/seed/product${item.productId}/40/40`;
+                  return (
+                    <div key={idx} className="flex items-center justify-between p-4 bg-white rounded-2xl border border-gray-100 shadow-sm">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <img src={item.imageUrl || fallback} alt="" className="size-10 rounded-xl object-cover shrink-0" onError={(e) => { e.currentTarget.src = fallback; }} />
+                        <div className="min-w-0">
+                          <p className="text-sm font-black text-gray-800 truncate">{item.productName || item.mysteryBoxType || 'Sản phẩm'}</p>
+                          <p className="text-[11px] text-gray-400 font-medium mt-0.5">{item.quantity} x {(item.unitPrice || 0).toLocaleString('vi-VN')}đ</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        {hasQuality && (
+                          <button type="button" onClick={() => setQualityReviewItem(item)}
+                            className="text-[10px] font-black text-primary border border-primary rounded-full px-3 py-2 hover:bg-primary/10 transition-all">
+                            Xem kiểm duyệt
+                          </button>
+                        )}
+                        <span className="text-sm font-black text-primary">{((item.quantity || 0) * (item.unitPrice || 0)).toLocaleString('vi-VN')}đ</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Summary */}
+              <div className="p-4 bg-green-50 rounded-2xl border border-green-100 mb-4">
+                <div className="flex justify-between text-xs font-bold text-gray-500 mb-1"><span>PHÍ VẬN CHUYỂN:</span><span>{(detailOrder.shippingFee || 0).toLocaleString('vi-VN')}đ</span></div>
+                <div className="flex justify-between text-sm font-black text-primary border-t border-green-200 pt-2"><span>TỔNG CỘNG:</span><span>{(detailOrder.totalAmount || 0).toLocaleString('vi-VN')}đ</span></div>
+              </div>
+
+              {detailOrder.note && (
+                <div className="p-3 bg-yellow-50 text-yellow-800 text-xs rounded-xl font-medium border border-yellow-100 mb-4">
+                  <span className="font-bold">Ghi chú:</span> {detailOrder.note}
+                </div>
+              )}
+
+              <button onClick={() => setOrderDetailId(null)} className="w-full py-4 bg-gray-50 border border-gray-100 rounded-2xl text-sm font-black text-gray-500 hover:bg-gray-100 transition-all">
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Cancel Modal */}
       {showCancelModal && (
@@ -494,6 +599,157 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
               className="absolute top-6 right-6 text-gray-300 hover:text-gray-900 transition-colors disabled:opacity-50">
               <X className="size-6" />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: XEM VẬN ĐƠN / TRACKING ── */}
+      {trackingOrder && (
+        <>
+          <div className="fixed inset-0 z-[100] overflow-y-auto px-4 py-8 bg-black/40 backdrop-blur-sm animate-in fade-in duration-300">
+            <div className="mx-auto bg-white w-full max-w-[620px] rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 max-h-[90vh]">
+              <div className="p-8 overflow-y-auto max-h-[90vh]">
+                <div className="flex items-center justify-between mb-6 gap-4">
+                  <div>
+                    <h3 className="text-xl font-black text-gray-900">Theo Dõi Hành Trình</h3>
+                    <p className="text-xs text-gray-400 font-medium mt-0.5">#{trackingOrder.id} · {getStatusLabel(trackingOrder.status)}</p>
+                  </div>
+                  <button onClick={() => setTrackingOrderId(null)} className="size-9 rounded-2xl border border-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-50">
+                    <X className="size-4" />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 gap-5 mb-6">
+                  <div className="p-5 bg-gray-50 rounded-3xl border border-gray-100">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-1">Trạng thái</p>
+                        <p className="text-sm font-black text-gray-900">{getStatusLabel(trackingOrder.status)}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-1">Khách hàng</p>
+                        <p className="text-sm font-black text-gray-900">{trackingOrder.recipientName}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-5">
+                  {(!trackingOrder.trackings || trackingOrder.trackings.length === 0) ? (
+                    <div className="p-6 bg-gray-50 rounded-3xl border border-gray-100 text-center text-sm text-gray-500">
+                      Hiện chưa có thông tin hành trình.
+                    </div>
+                  ) : (
+                    trackingOrder.trackings
+                      .slice()
+                      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+                      .map((tracking, index) => (
+                        <div key={tracking.trackingId} className="rounded-3xl border border-gray-100 p-5 shadow-sm bg-white">
+                          <div className="flex items-start justify-between gap-4">
+                            <div>
+                              <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Bước {index + 1}</p>
+                              <p className="text-sm font-black text-gray-900">{getStatusLabel(tracking.status)}</p>
+                              <p className="text-[11px] text-gray-400 mt-1">{new Date(tracking.createdAt).toLocaleString('vi-VN')}</p>
+                            </div>
+                          </div>
+                          {tracking.images && tracking.images.length > 0 && (
+                            <div className="mt-4 grid grid-cols-3 gap-3">
+                              {tracking.images.map((image, imageIndex) => (
+                                <button key={imageIndex} type="button" onClick={() => setLightboxImageUrl(image.imageUrl)} className="overflow-hidden rounded-3xl border border-gray-100 bg-gray-50 hover:border-primary transition-all">
+                                  <img src={image.imageUrl} alt={`Tracking ${index + 1} ảnh ${imageIndex + 1}`} className="w-full h-20 object-cover" />
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))
+                  )}
+                </div>
+
+                <button onClick={() => setTrackingOrderId(null)} className="w-full py-4 bg-gray-50 border border-gray-100 rounded-2xl text-sm font-black text-gray-500 hover:bg-gray-100 transition-all mt-6">
+                  Đóng
+                </button>
+              </div>
+            </div>
+          </div>
+          <ImageLightbox imageUrl={lightboxImageUrl} alt="Ảnh tracking" onClose={() => setLightboxImageUrl(null)} />
+        </>
+      )}
+
+      {/* ── MODAL: XEM ẢNH KIỂM DUYỆT PHÓNG TO ── */}
+      {qualityImageUrl && qualityReviewItem?.qualityResult?.qualityCheckingResponses && (
+        <ImageLightbox
+          imageUrl={qualityImageUrl}
+          alt="Ảnh kiểm duyệt"
+          images={qualityReviewItem.qualityResult.qualityCheckingResponses[qualityCurrentResponseIdx]?.images}
+          currentIndex={qualityImageIndex}
+          onIndexChange={(newIndex) => {
+            setQualityImageIndex(newIndex);
+            const images = qualityReviewItem.qualityResult?.qualityCheckingResponses?.[qualityCurrentResponseIdx]?.images || [];
+            if (images[newIndex]) setQualityImageUrl(images[newIndex].imageUrl);
+          }}
+          onClose={() => setQualityImageUrl(null)}
+        />
+      )}
+
+      {/* ── MODAL: KẾT QUẢ KIỂM DUYỆT ── */}
+      {qualityReviewItem && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-300 overflow-y-auto">
+          <div className="bg-white w-full max-w-[520px] rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 max-h-[90vh]">
+            <div className="p-8 overflow-y-auto max-h-[90vh]">
+              <div className="flex items-center justify-between mb-5 gap-4">
+                <div>
+                  <h3 className="text-xl font-black text-gray-900">Kết quả kiểm duyệt</h3>
+                  <p className="text-xs text-gray-400 font-medium mt-0.5">{qualityReviewItem.productName || qualityReviewItem.mysteryBoxType || 'Sản phẩm'}</p>
+                </div>
+                <button onClick={() => setQualityReviewItem(null)} className="size-9 rounded-2xl border border-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-50">
+                  <X className="size-4" />
+                </button>
+              </div>
+              <div className="space-y-4">
+                <div className="p-5 bg-gray-50 rounded-3xl border border-gray-100">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-widest font-black text-gray-400">Kết quả tổng</p>
+                      <p className={`text-sm font-black ${qualityReviewItem.qualityResult?.qualityResult === 'APPROVED' ? 'text-emerald-700' : 'text-red-600'}`}>
+                        {qualityReviewItem.qualityResult?.qualityResult === 'APPROVED' ? '✅ Đạt' : '❌ Không đạt'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase tracking-widest font-black text-gray-400">Ghi chú</p>
+                      <p className="text-sm font-medium text-gray-700">{qualityReviewItem.qualityResult?.note || 'Không có'}</p>
+                    </div>
+                  </div>
+                </div>
+                {(qualityReviewItem.qualityResult?.qualityCheckingResponses || []).map((response, idx) => (
+                  <div key={idx} className="p-4 bg-white rounded-3xl border border-gray-100 shadow-sm">
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <div>
+                        <p className="text-xs font-black text-gray-500 uppercase tracking-widest">Tiêu chí</p>
+                        <p className="text-sm font-black text-gray-900">{response.qualityName}</p>
+                      </div>
+                      <span className={`text-[10px] font-black uppercase rounded-full px-3 py-1 ${response.passed ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-red-50 text-red-700 border border-red-100'}`}>
+                        {response.passed ? 'Đạt' : 'Không đạt'}
+                      </span>
+                    </div>
+                    {response.images && response.images.length > 0 && (
+                      <div className="grid grid-cols-3 gap-3">
+                        {response.images.map((image, imageIndex) => (
+                          <button key={imageIndex} type="button"
+                            onClick={() => { setQualityImageUrl(image.imageUrl); setQualityImageIndex(imageIndex); setQualityCurrentResponseIdx(idx); }}
+                            className="w-full h-20 object-cover rounded-2xl overflow-hidden border border-gray-100 hover:border-primary transition-all cursor-pointer hover:opacity-80">
+                            <img src={image.imageUrl} alt={`Ảnh tiêu chí ${idx + 1}`} className="w-full h-20 object-cover" />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <button onClick={() => setQualityReviewItem(null)} className="w-full py-4 bg-gray-50 border border-gray-100 rounded-2xl text-sm font-black text-gray-500 hover:bg-gray-100 transition-all mt-6">
+                Đóng
+              </button>
+            </div>
           </div>
         </div>
       )}
