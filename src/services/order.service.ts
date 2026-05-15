@@ -1,5 +1,6 @@
 import { httpClient, ApiResponse } from './http.client';
 import { PageResponse } from '../types';
+import type { QualityCheckResponse } from './quality.service';
 
 export interface TrackingImageResponse {
     imageUrl: string;
@@ -46,6 +47,7 @@ export interface OrderItemResponse {
     imageUrl?: string;
     isRequestedReturn?: boolean;
     returnStatus?: string;
+    qualityResult?: QualityCheckResponse;
 }
 
 export interface OrderResponse {
@@ -70,22 +72,23 @@ export interface OrderResponse {
     items: OrderItemResponse[];
     buyerId?: number;
     trackings?: TrackingResponse[];
+    passedQualityCheck?: boolean | null;
 }
 
 /** Báo cáo đơn cho staff — khớp `StaffOrderReportResponse` (BE). */
 export interface StaffOrderReportResponse {
     /** Đơn hàng đang được vận chuyển tới kho */
     incomingOrders?: number | null;
-    /** Đơn hàng đã reject kiểm duyệt chất lượng */
-    quantityCheckedReject?: number | null;
+    /** Đơn hàng đang kiểm tra */
+    quantityChecking?: number | null;
     /** Đơn hàng đang chờ kiểm duyệt chất lượng */
     qualityCheckingOrders?: number | null;
-    /** Đơn hàng đã đạt chuẩn và cần đóng gói */
-    packagingOrders?: number | null;
     /** Số lượng nông dân cần được duyệt / xử lý */
     pendingFarmerApprovals?: number | null;
     /** Số đơn hàng đã kiểm duyệt thành công hôm nay */
     approvedTodayOrders?: number | null;
+    /** Chờ đóng gói */
+    packagingOrders?: number | null;
 }
 
 class OrderService {

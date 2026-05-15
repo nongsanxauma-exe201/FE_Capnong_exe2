@@ -49,6 +49,7 @@ export interface OrderResponse {
   items: OrderItemResponse[];
   buyerId?: number;
   trackings?: TrackingResponse[];
+  passedQualityCheck?: boolean | null;
 }
 
 interface UIOrderItem {
@@ -80,7 +81,10 @@ interface UIOrder {
   reportedBy?: string;
   reportedTime?: string;
   hasTracking: boolean;
+  hasQualityReview: boolean;
+  passedQualityCheck?: boolean | null;
   trackings: TrackingResponse[];
+  orderItems: OrderItemResponse[];
   orderInfo: {
     items: UIOrderItem[];
     subtotal: number;
@@ -148,6 +152,10 @@ const IncomingOrders: React.FC = () => {
   const [selectedShipper, setSelectedShipper] = useState<string | null>(null);
   const [assignedShippers, setAssignedShippers] = useState<Record<string, string>>({});
   const [orders, setOrders] = useState<OrderResponse[]>([]);
+  const [qualityReviewItem, setQualityReviewItem] = useState<OrderItemResponse | null>(null);
+  const [qualityImageUrl, setQualityImageUrl] = useState<string | null>(null);
+  const [qualityImageIndex, setQualityImageIndex] = useState(0);
+  const [qualityCurrentResponseIdx, setQualityCurrentResponseIdx] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -203,6 +211,16 @@ const IncomingOrders: React.FC = () => {
       const relevantTracking = order.trackings?.find((tracking) => tracking.status === order.status)
         || order.trackings?.slice().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
       const shopOwner = order.shopOwner;
+      const isComplete = ['ARRIVED_AT_WAREHOUSE', 'QUALITY_CHECKED', 'QUALITY_APPROVED', 'QUALITY_REJECTED'].includes(order.status);
+      const nextStep = order.status === 'ARRIVED_AT_WAREHOUSE'
+        ? 'Chờ kiểm duyệt'
+        : order.status === 'QUALITY_CHECKING'
+          ? 'Đang kiểm duyệt'
+          : order.status === 'QUALITY_CHECKED' || order.status === 'QUALITY_APPROVED'
+            ? 'Chờ đóng gói'
+            : order.status === 'QUALITY_REJECTED'
+              ? 'Xử lý chất lượng'
+              : '';
       return {
         id: order.id.toString(),
         farmer: shopOwner?.shopName || shopOwner?.fullName || order.recipientName,
@@ -213,18 +231,22 @@ const IncomingOrders: React.FC = () => {
         status: order.status,
         statusLabel: getOrderStatusLabel(order.status),
         progress: order.status === 'SHIPPING_TO_WAREHOUSE' ? 60 : order.status === 'ARRIVED_AT_WAREHOUSE' ? 80 : 100,
+        progressCompleted: isComplete,
         avatar: shopOwner?.logoUrl || order.items[0]?.imageUrl || 'https://picsum.photos/seed/staff_order/80/80',
         phone: shopOwner?.phoneNumber || order.recipientPhone,
         time: relevantTracking ? new Date(relevantTracking.createdAt).toLocaleString('vi-VN') : 'Chưa có data',
-        confirmedTime: '',
+        confirmedTime: order.status === 'ARRIVED_AT_WAREHOUSE' ? (relevantTracking ? new Date(relevantTracking.createdAt).toLocaleString('vi-VN') : '') : '',
         confirmedBy: '',
-        nextStep: '',
+        nextStep,
         issueType: '',
         issueDetail: '',
         reportedBy: '',
         reportedTime: '',
         hasTracking: !!order.trackings?.length,
+        hasQualityReview: order.items.some((item) => item.qualityResult != null),
+        passedQualityCheck: order.passedQualityCheck ?? null,
         trackings: order.trackings || [],
+        orderItems: order.items,
         orderInfo: {
           items: order.items.map((item) => ({
             name: item.productName || 'Sản phẩm',
@@ -268,12 +290,12 @@ const IncomingOrders: React.FC = () => {
   );
 
   const qualityApprovedOrders = useMemo(
-    () => normalizedOrders.filter((order) => order.status === 'QUALITY_APPROVED'),
+    () => normalizedOrders.filter((order) => order.passedQualityCheck === true),
     [normalizedOrders]
   );
 
   const qualityRejectedOrders = useMemo(
-    () => normalizedOrders.filter((order) => order.status === 'QUALITY_REJECTED'),
+    () => normalizedOrders.filter((order) => order.passedQualityCheck === false),
     [normalizedOrders]
   );
 
@@ -416,10 +438,10 @@ const IncomingOrders: React.FC = () => {
                           <span className="text-[10px] font-bold text-gray-400 flex items-center gap-1"><MapPin className="size-3 text-primary" /> Kho XẤU MÃ</span>
                         </div>
                         <div className="relative h-2.5 bg-gray-100 rounded-full overflow-visible">
-                          <div className="absolute left-0 top-0 h-full bg-gradient-to-r from-blue-400 to-primary rounded-full" style={{ width: `${order.progress}%` }} />
+                          <div className={`absolute left-0 top-0 h-full rounded-full ${order.progressCompleted ? 'bg-gradient-to-r from-emerald-400 to-emerald-600' : 'bg-gradient-to-r from-blue-400 to-primary'}`} style={{ width: `${order.progress}%` }} />
                           <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2" style={{ left: `${order.progress}%` }}>
-                            <div className="size-5 bg-white border-2 border-primary rounded-full shadow-md flex items-center justify-center">
-                              <Truck className="size-2.5 text-primary" />
+                            <div className={`size-5 rounded-full shadow-md flex items-center justify-center ${order.progressCompleted ? 'bg-emerald-50 border-2 border-emerald-500' : 'bg-white border-2 border-primary'}`}>
+                              <Truck className={`size-2.5 ${order.progressCompleted ? 'text-emerald-600' : 'text-primary'}`} />
                             </div>
                           </div>
                         </div>
@@ -449,10 +471,10 @@ const IncomingOrders: React.FC = () => {
                         </div>
                       )}
                       <button onClick={() => {
-                          setConfirmingOrderId(order.id);
-                          setConfirmEvidenceFiles([]);
-                          setConfirmError(null);
-                        }}
+                        setConfirmingOrderId(order.id);
+                        setConfirmEvidenceFiles([]);
+                        setConfirmError(null);
+                      }}
                         className="w-full py-4 bg-green-500 text-white font-black rounded-2xl flex items-center justify-center gap-2 hover:bg-green-600 transition-all shadow-sm shadow-green-500/20 mt-3">
                         <CheckCircle2 className="size-4" /> Xác nhận đã đến kho
                       </button>
@@ -504,6 +526,13 @@ const IncomingOrders: React.FC = () => {
                       </div>
                     </div>
                     <div className="w-full md:w-80 flex flex-col gap-3 justify-center">
+                      {order.status === 'ARRIVED_AT_WAREHOUSE' && (
+                        <div className="p-5 bg-emerald-50 border border-emerald-100 rounded-3xl text-center">
+                          <CheckCircle2 className="size-8 text-emerald-600 mx-auto mb-3" />
+                          <p className="text-sm font-black text-emerald-700">Nhận hàng thành công</p>
+                          <p className="text-[10px] text-emerald-500 font-bold mt-1">Đã tới kho lúc {order.time}</p>
+                        </div>
+                      )}
                       <div className="grid grid-cols-2 gap-3">
                         <button onClick={() => setOrderDetailId(order.id)}
                           className="py-3 border border-gray-100 text-gray-600 font-bold text-xs rounded-2xl flex items-center justify-center gap-2 hover:bg-gray-50 transition-all">
@@ -576,12 +605,16 @@ const IncomingOrders: React.FC = () => {
                       <div>
                         <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Tiến trình xử lý</p>
                         <div className="flex items-center gap-0">
-                          {[
-                            { label: 'Đến kho', time: order.time, done: true },
-                            { label: 'Xác nhận', time: order.time, done: true },
-                            { label: 'Kiểm duyệt', time: 'Đang chờ', done: false },
-                            { label: 'Đóng gói', time: '--', done: false },
-                          ].map((step, i, arr) => (
+                          {(() => {
+                            const confirmed = order.status !== 'SHIPPING_TO_WAREHOUSE';
+                            const qualityDone = ['QUALITY_CHECKED', 'QUALITY_APPROVED', 'QUALITY_REJECTED'].includes(order.status);
+                            return [
+                              { label: 'Đến kho', time: order.time, done: confirmed },
+                              { label: 'Xác nhận', time: order.time, done: confirmed },
+                              { label: 'Kiểm duyệt', time: qualityDone ? order.time : order.status === 'QUALITY_CHECKING' ? 'Đang kiểm' : 'Đang chờ', done: qualityDone },
+                              { label: 'Đóng gói', time: '--', done: false },
+                            ];
+                          })().map((step, i, arr) => (
                             <React.Fragment key={i}>
                               <div className="flex flex-col items-center gap-1">
                                 <div className={`size-7 rounded-full flex items-center justify-center border-2 ${step.done ? 'bg-primary border-primary' : 'bg-white border-gray-200'}`}>
@@ -591,7 +624,7 @@ const IncomingOrders: React.FC = () => {
                                 <p className="text-[8px] text-gray-400 font-medium">{step.time}</p>
                               </div>
                               {i < arr.length - 1 && (
-                                <div className={`flex-1 h-0.5 mb-6 ${step.done && arr[i+1].done ? 'bg-primary' : step.done ? 'bg-gradient-to-r from-primary to-gray-200' : 'bg-gray-200'}`} />
+                                <div className={`flex-1 h-0.5 mb-6 ${step.done && arr[i + 1].done ? 'bg-primary' : step.done ? 'bg-gradient-to-r from-primary to-gray-200' : 'bg-gray-200'}`} />
                               )}
                             </React.Fragment>
                           ))}
@@ -600,11 +633,15 @@ const IncomingOrders: React.FC = () => {
                     </div>
 
                     <div className="w-full md:w-80 flex flex-col gap-4 justify-center border-l border-gray-100 md:pl-8">
-                      <div className="p-6 bg-green-50/50 rounded-[32px] border border-primary/10 text-center w-full">
-                        <CheckCircle2 className="size-10 text-primary mx-auto mb-3" />
-                        <p className="text-sm font-black text-primary">Nhận hàng thành công</p>
-                        <p className="text-[10px] text-gray-400 font-bold mt-1">Xác nhận bởi: {order.confirmedBy}</p>
-                        <p className="text-[10px] text-gray-400 font-bold">Lúc {order.confirmedTime}, 14/10/2024</p>
+                      <div className={`p-6 rounded-[32px] text-center w-full ${order.status === 'QUALITY_REJECTED' ? 'bg-red-50 border-red-100 text-red-700' : 'bg-green-50 border-primary/10 text-primary'}`}>
+                        <CheckCircle2 className={`size-10 mx-auto mb-3 ${order.status === 'QUALITY_REJECTED' ? 'text-red-600' : 'text-primary'}`} />
+                        <p className="text-sm font-black">
+                          {order.status === 'QUALITY_CHECKING' && 'Đang kiểm duyệt'}
+                          {order.status === 'QUALITY_CHECKED' && 'Đã kiểm duyệt'}
+                          {order.status === 'QUALITY_APPROVED' && 'Đạt chất lượng'}
+                          {order.status === 'QUALITY_REJECTED' && 'Không đạt chất lượng'}
+                        </p>
+                        <p className="text-[10px] text-gray-400 font-bold mt-1">{order.nextStep || 'Đang cập nhật tiến độ'}</p>
                       </div>
                       <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 flex items-center gap-3">
                         <Package className="size-5 text-blue-500 shrink-0" />
@@ -620,7 +657,7 @@ const IncomingOrders: React.FC = () => {
                       {order.hasTracking && (
                         <button onClick={() => setTrackingOrderId(order.id)}
                           className="w-full py-3 bg-primary/10 text-primary font-black rounded-2xl flex items-center justify-center gap-2 hover:bg-primary hover:text-white transition-all shadow-sm shadow-primary/10">
-                          <Navigation className="size-4" /> Xem tracking
+                          <Navigation className="size-4" /> Xem vận đơn
                         </button>
                       )}
                     </div>
@@ -704,9 +741,7 @@ const IncomingOrders: React.FC = () => {
                       <button className="w-full py-3 border border-orange-100 text-orange-600 font-bold text-xs rounded-2xl flex items-center justify-center gap-2 hover:bg-orange-50 transition-all">
                         <MessageSquare className="size-4" /> Liên hệ shop
                       </button>
-                      <button className="w-full py-3 border border-blue-100 text-blue-600 font-bold text-xs rounded-2xl flex items-center justify-center gap-2 hover:bg-blue-50 transition-all">
-                        <Camera className="size-4" /> Xem ảnh bằng chứng
-                      </button>
+
                     </div>
                   </div>
                 </div>
@@ -729,12 +764,96 @@ const IncomingOrders: React.FC = () => {
         </div>
       </div>
 
+      {/* ── MODAL: XEM ẢNH KIỂM DUYỆT PHÓNG TO ── */}
+      {qualityImageUrl && qualityReviewItem?.qualityResult?.qualityCheckingResponses && (
+        <ImageLightbox
+          imageUrl={qualityImageUrl}
+          alt="Ảnh phóng to"
+          images={qualityReviewItem.qualityResult.qualityCheckingResponses[qualityCurrentResponseIdx]?.images}
+          currentIndex={qualityImageIndex}
+          onIndexChange={(newIndex) => {
+            setQualityImageIndex(newIndex);
+            const images = qualityReviewItem.qualityResult?.qualityCheckingResponses[qualityCurrentResponseIdx]?.images || [];
+            if (images[newIndex]) {
+              setQualityImageUrl(images[newIndex].imageUrl);
+            }
+          }}
+          onClose={() => setQualityImageUrl(null)}
+        />
+      )}
+
       {/* ── MODAL: THEO DÕI HÀNH TRÌNH ── */}
+      {qualityReviewItem && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-300 overflow-y-auto">
+          <div className="bg-white w-full max-w-[520px] rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 max-h-[90vh]">
+            <div className="p-8 overflow-y-auto max-h-[90vh]">
+              <div className="flex items-center justify-between mb-5 gap-4">
+                <div>
+                  <h3 className="text-xl font-black text-gray-900">Thông tin kiểm duyệt</h3>
+                  <p className="text-xs text-gray-400 font-medium mt-0.5">{qualityReviewItem.productName || qualityReviewItem.mysteryBoxType || 'Sản phẩm'}</p>
+                </div>
+                <button onClick={() => setQualityReviewItem(null)} className="size-9 rounded-2xl border border-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-50">
+                  <X className="size-4" />
+                </button>
+              </div>
+              <div className="space-y-4">
+                <div className="p-5 bg-gray-50 rounded-3xl border border-gray-100">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-widest font-black text-gray-400">Kết quả tổng</p>
+                      <p className="text-sm font-black text-gray-900">{qualityReviewItem.qualityResult?.qualityResult === 'APPROVED' ? 'Đạt' : 'Không đạt'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase tracking-widest font-black text-gray-400">Ghi chú</p>
+                      <p className="text-sm font-medium text-gray-700">{qualityReviewItem.qualityResult?.note || 'Không có'}</p>
+                    </div>
+                  </div>
+                </div>
+                {(qualityReviewItem.qualityResult?.qualityCheckingResponses || []).map((response, idx) => (
+                  <div key={idx} className="p-4 bg-white rounded-3xl border border-gray-100 shadow-sm">
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <div>
+                        <p className="text-xs font-black text-gray-500 uppercase tracking-widest">Tiêu chí</p>
+                        <p className="text-sm font-black text-gray-900">{response.qualityName}</p>
+                      </div>
+                      <span className={`text-[10px] font-black uppercase rounded-full px-3 py-1 ${response.passed ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-red-50 text-red-700 border border-red-100'}`}>
+                        {response.passed ? 'Đạt' : 'Không đạt'}
+                      </span>
+                    </div>
+                    {response.images && response.images.length > 0 && (
+                      <div className="grid grid-cols-3 gap-3">
+                        {response.images.map((image, imageIndex) => (
+                          <button
+                            key={imageIndex}
+                            type="button"
+                            onClick={() => {
+                              setQualityImageUrl(image.imageUrl);
+                              setQualityImageIndex(imageIndex);
+                              setQualityCurrentResponseIdx(idx);
+                            }}
+                            className="w-full h-20 object-cover rounded-2xl overflow-hidden border border-gray-100 hover:border-primary transition-all cursor-pointer hover:opacity-80"
+                          >
+                            <img
+                              src={image.imageUrl}
+                              alt={`Ảnh tiêu chí ${idx + 1} - ${imageIndex + 1}`}
+                              className="w-full h-20 object-cover"
+                            />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {trackingOrder && (
         <>
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-300">
-            <div className="bg-white w-full max-w-[620px] rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
-              <div className="p-8">
+          <div className="fixed inset-0 z-[100] overflow-y-auto px-4 py-8 bg-black/40 backdrop-blur-sm animate-in fade-in duration-300">
+            <div className="mx-auto bg-white w-full max-w-[620px] rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 max-h-[90vh]">
+              <div className="p-8 overflow-y-auto max-h-[90vh]">
                 <div className="flex items-center justify-between mb-6 gap-4">
                   <div>
                     <h3 className="text-xl font-black text-gray-900">Theo Dõi Hành Trình</h3>
@@ -927,15 +1046,30 @@ const IncomingOrders: React.FC = () => {
                 <div>
                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Sản phẩm</p>
                   <div className="flex flex-col gap-3">
-                    {orderDetailData.orderInfo.items.map((item, j) => (
-                      <div key={j} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100">
-                        <div>
-                          <p className="text-sm font-black text-gray-800">{item.name}</p>
-                          <p className="text-[11px] text-gray-400 font-medium mt-0.5">{item.qty} × {item.unitPrice.toLocaleString()}đ/kg</p>
+                    {orderDetailData.orderInfo.items.map((item, j) => {
+                      const matchedItem = orderDetailData.orderItems[j];
+                      const hasItemQuality = Boolean(matchedItem?.qualityResult);
+                      return (
+                        <div key={j} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                          <div>
+                            <p className="text-sm font-black text-gray-800">{item.name}</p>
+                            <p className="text-[11px] text-gray-400 font-medium mt-0.5">{item.qty} × {item.unitPrice.toLocaleString()}đ/kg</p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            {hasItemQuality && (
+                              <button
+                                type="button"
+                                onClick={() => setQualityReviewItem(matchedItem)}
+                                className="text-[10px] font-black text-primary border border-primary rounded-full px-3 py-2 hover:bg-primary/10 transition-all"
+                              >
+                                Xem kiểm duyệt
+                              </button>
+                            )}
+                            <span className="text-sm font-black text-primary">{item.total.toLocaleString()}đ</span>
+                          </div>
                         </div>
-                        <span className="text-sm font-black text-primary">{item.total.toLocaleString()}đ</span>
-                      </div>
-                    ))}
+                      );
+                    })}
                     <div className="p-4 bg-green-50 rounded-2xl border border-green-100">
                       <div className="flex justify-between text-xs font-bold text-gray-500 mb-1"><span>TẠM TÍNH:</span><span>{orderDetailData.orderInfo.subtotal.toLocaleString()}đ</span></div>
                       <div className="flex justify-between text-xs font-bold text-gray-500 mb-2"><span>PHÍ VẬN CHUYỂN:</span><span>{orderDetailData.orderInfo.shipping.toLocaleString()}đ</span></div>

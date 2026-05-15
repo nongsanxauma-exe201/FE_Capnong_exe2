@@ -11,8 +11,11 @@ import {
   Users,
   RefreshCw,
 } from 'lucide-react';
+import { ImageLightbox } from '../../components/ui';
 import {
   orderService,
+  qualityService,
+  type QualityCheckRequest,
   type OrderResponse,
   type OrderItemResponse,
   type StaffOrderReportResponse,
@@ -80,6 +83,29 @@ function orderArrivedTime(ord: OrderResponse): string {
   return '—';
 }
 
+function getQualityCriteriaKeyFromName(qualityName: string): string | undefined {
+  const normalized = qualityName.trim().toLowerCase();
+  if (normalized.includes('màu')) return 'appearance';
+  if (normalized.includes('mùi')) return 'smell';
+  if (normalized.includes('tươi')) return 'freshness';
+  if (normalized.includes('đóng gói')) return 'packaging';
+  if (normalized.includes('trọng lượng')) return 'weight';
+  if (normalized.includes('chuyên môn') || normalized.includes('đánh giá chuyên môn')) return 'expert';
+  return undefined;
+}
+
+function getExistingDetailResult(item: OrderItemResponse): 'pass' | 'fail' | null {
+  if (!item.qualityResult) return null;
+  const overall = item.qualityResult.qualityResult;
+  if (overall === 'APPROVED') return 'pass';
+  if (overall === 'REJECTED') return 'fail';
+  const responses = item.qualityResult.qualityCheckingResponses;
+  if (responses && responses.length > 0) {
+    return responses.some((r) => !r.passed) ? 'fail' : 'pass';
+  }
+  return 'pass';
+}
+
 const ARRIVED_ORDERS_PAGE_SIZE = 10;
 
 const QualityInspection: React.FC = () => {
@@ -88,6 +114,14 @@ const QualityInspection: React.FC = () => {
   const [selectedDetailId, setSelectedDetailId] = useState<string | null>(null);
   const [detailResults, setDetailResults] = useState<Record<string, 'pass' | 'fail' | null>>({});
   const [criteriaResults, setCriteriaResults] = useState<CriteriaResult>({});
+  const [criteriaEvidence, setCriteriaEvidence] = useState<Record<string, Record<string, File[]>>>({});
+  const [criteriaImages, setCriteriaImages] = useState<Record<string, Record<string, string[]>>>({});
+  const [qualityResult, setQualityResult] = useState<Record<string, 'APPROVED' | 'REJECTED' | null>>({});
+  const [inspectionNotes, setInspectionNotes] = useState<Record<string, string>>({});
+  const [criteriaPage, setCriteriaPage] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [inspectionError, setInspectionError] = useState<string | null>(null);
+  const [imageViewer, setImageViewer] = useState<{ images: string[]; currentIndex: number } | null>(null);
 
   const [arrivedOrders, setArrivedOrders] = useState<OrderResponse[]>([]);
   const [ordersPage, setOrdersPage] = useState(0);
@@ -107,17 +141,27 @@ const QualityInspection: React.FC = () => {
     setIsOrdersLoading(true);
     setLoadError(null);
     try {
-      const res = await orderService.getOrdersForStaff(page, ARRIVED_ORDERS_PAGE_SIZE, 'ARRIVED_AT_WAREHOUSE');
-      const data = res.result;
-      if (!data) {
-        setArrivedOrders([]);
-        setOrdersPageTotalElements(0);
-        setOrdersTotalPages(0);
-        return;
-      }
-      setArrivedOrders(data.content || []);
-      setOrdersPageTotalElements(data.totalElements);
-      setOrdersTotalPages(data.totalPages);
+      // Load orders with ARRIVED_AT_WAREHOUSE status
+      const arrivedRes = await orderService.getOrdersForStaff(page, ARRIVED_ORDERS_PAGE_SIZE, 'ARRIVED_AT_WAREHOUSE');
+      const arrivedData = arrivedRes.result;
+
+      // Load orders with QUALITY_CHECKING status
+      const checkingRes = await orderService.getOrdersForStaff(page, ARRIVED_ORDERS_PAGE_SIZE, 'QUALITY_CHECKING');
+      const checkingData = checkingRes.result;
+
+      // Merge the results
+      const mergedContent = [
+        ...(arrivedData?.content || []),
+        ...(checkingData?.content || []),
+      ];
+
+      // Use the pagination info from the first response, or calculate total
+      const totalElements = (arrivedData?.totalElements || 0) + (checkingData?.totalElements || 0);
+      const totalPages = Math.max(arrivedData?.totalPages || 0, checkingData?.totalPages || 0);
+
+      setArrivedOrders(mergedContent);
+      setOrdersPageTotalElements(totalElements);
+      setOrdersTotalPages(totalPages);
     } catch (e: unknown) {
       const err = e as { data?: { message?: string }; message?: string };
       setLoadError(err?.data?.message || err?.message || 'Không thể tải đơn hàng');
@@ -167,6 +211,61 @@ const QualityInspection: React.FC = () => {
     return detailRowsForOrder.find((r) => r.detailId === selectedDetailId) ?? null;
   }, [detailRowsForOrder, selectedDetailId]);
 
+  const detailsDoneOnPage = detailRowsPage.filter((r) => detailResults[r.detailId] != null || r.item.qualityResult != null).length;
+
+  useEffect(() => {
+    if (!selectedRow) return;
+    const detailId = selectedRow.detailId;
+    const existing = selectedRow.item.qualityResult;
+    if (!existing) return;
+
+    if (existing.qualityResult === 'APPROVED' || existing.qualityResult === 'REJECTED') {
+      setQualityResult((prev) => ({
+        ...(prev as Record<string, 'APPROVED' | 'REJECTED' | null>),
+        [detailId]: existing.qualityResult,
+      }) as Record<string, 'APPROVED' | 'REJECTED' | null>);
+      const previousOverall = existing.qualityResult === 'APPROVED' ? 'pass' : 'fail';
+      setDetailResults((prev) => ({
+        ...prev,
+        [detailId]: previousOverall,
+      }));
+    }
+
+    if (existing.note != null) {
+      setInspectionNotes((prev) => ({
+        ...(prev as Record<string, string>),
+        [detailId]: existing.note,
+      }) as Record<string, string>);
+    }
+
+    if (existing.qualityCheckingResponses && existing.qualityCheckingResponses.length > 0) {
+      const nextCriteria = existing.qualityCheckingResponses.reduce<Record<string, 'pass' | 'fail' | null>>((resultMap, item) => {
+        const key = getQualityCriteriaKeyFromName(item.qualityName);
+        if (!key) return resultMap;
+        return {
+          ...resultMap,
+          [key]: item.passed ? 'pass' : 'fail',
+        };
+      }, {});
+      setCriteriaResults((prev) => ({
+        ...prev,
+        [detailId]: nextCriteria,
+      }));
+
+      const nextImages: Record<string, string[]> = {};
+      existing.qualityCheckingResponses.forEach((item) => {
+        const key = getQualityCriteriaKeyFromName(item.qualityName);
+        if (key && item.images && item.images.length > 0) {
+          nextImages[key] = item.images.map(img => img.imageUrl);
+        }
+      });
+      setCriteriaImages((prev) => ({
+        ...prev,
+        [detailId]: nextImages,
+      }));
+    }
+  }, [selectedRow]);
+
   useEffect(() => {
     if (view === 'inspection' && selectedDetailId && !selectedRow) {
       setView(selectedOrderId != null ? 'detail-list' : 'order-list');
@@ -182,12 +281,12 @@ const QualityInspection: React.FC = () => {
   }, [view, selectedOrderId, arrivedOrders]);
 
   const criteria = [
-    { label: 'Màu sắc', key: 'appearance' },
-    { label: 'Mùi hương (không có mùi lạ)', key: 'smell' },
-    { label: 'Độ tươi (không héo, dập nát)', key: 'freshness' },
-    { label: 'Đóng gói (còn nguyên vẹn)', key: 'packaging' },
-    { label: 'Trọng lượng (khớp với khai báo)', key: 'weight' },
-    { label: 'Đánh giá chuyên môn', key: 'expert' },
+    { id: 1, label: 'Màu sắc', key: 'appearance' },
+    { id: 2, label: 'Mùi hương (không có mùi lạ)', key: 'smell' },
+    { id: 3, label: 'Độ tươi (không héo, dập nát)', key: 'freshness' },
+    { id: 4, label: 'Đóng gói (còn nguyên vẹn)', key: 'packaging' },
+    { id: 5, label: 'Trọng lượng (khớp với khai báo)', key: 'weight' },
+    { id: 6, label: 'Đánh giá chuyên môn', key: 'expert' },
   ];
 
   const setCriteria = (detailId: string, key: string, value: 'pass' | 'fail') => {
@@ -198,6 +297,100 @@ const QualityInspection: React.FC = () => {
   };
 
   const getCriteria = (detailId: string, key: string) => criteriaResults[detailId]?.[key] ?? null;
+
+  const setEvidence = (detailId: string, key: string, files: File[]) => {
+    setCriteriaEvidence((prev) => ({
+      ...prev,
+      [detailId]: {
+        ...(prev[detailId] || {}),
+        [key]: [...(prev[detailId]?.[key] || []), ...files],
+      },
+    }));
+  };
+
+  const removeEvidence = (detailId: string, key: string, fileIndex: number) => {
+    setCriteriaEvidence((prev) => {
+      const current = prev[detailId]?.[key] || [];
+      return {
+        ...prev,
+        [detailId]: {
+          ...(prev[detailId] || {}),
+          [key]: current.filter((_, i) => i !== fileIndex),
+        },
+      };
+    });
+  };
+
+  const setNote = (detailId: string, note: string) => {
+    setInspectionNotes((prev) => ({
+      ...prev,
+      [detailId]: note,
+    }));
+  };
+
+  const handleSubmitQuality = async (detailId: string) => {
+    if (!selectedRow) return;
+
+    const criteriaPayload = criteria.map((c) => ({
+      qualityCrieriaId: c.id,
+      passed: getCriteria(detailId, c.key) === 'pass',
+    }));
+
+    const unfilled = criteria.filter((c) => getCriteria(detailId, c.key) == null);
+    if (unfilled.length > 0) {
+      setInspectionError('Vui lòng đánh giá tất cả các tiêu chí trước khi gửi.');
+      return;
+    }
+
+    const currentQualityResult = qualityResult[detailId];
+    if (!currentQualityResult) {
+      setInspectionError('Vui lòng chọn kết quả cuối cùng.');
+      return;
+    }
+
+    const orderDetailId = selectedRow.item.orderDetailId ?? Number(detailId);
+    if (!orderDetailId || Number.isNaN(orderDetailId)) {
+      setInspectionError('Không xác định được orderDetailId.');
+      return;
+    }
+
+    const request: QualityCheckRequest = {
+      orderDetailId,
+      qualityResult: currentQualityResult,
+      qualityChecks: criteriaPayload,
+      note: inspectionNotes[detailId]?.trim() || undefined,
+    };
+    const fileMap: Record<string, File[]> = {};
+
+    criteria.forEach((c, index) => {
+      const files = criteriaEvidence[detailId]?.[c.key] || [];
+
+      fileMap[`qc_${index + 1}`] = files;
+    });
+
+    setIsSubmitting(true);
+    setInspectionError(null);
+    try {
+      await qualityService.checkQuality(request, fileMap);
+      const overallResult = criteriaPayload.some((item) => !item.passed) ? 'fail' : 'pass';
+      setDetailResults((prev) => ({ ...prev, [detailId]: overallResult }));
+      setInspectionError(null);
+      setView('detail-list');
+    } catch (error: unknown) {
+      const err = error as { data?: { message?: string }; message?: string };
+      setInspectionError(err?.data?.message || err?.message || 'Gửi kiểm tra chất lượng thất bại.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const CRITERIA_PAGE_SIZE = 10;
+  const criteriaPageCount = Math.max(1, Math.ceil(criteria.length / CRITERIA_PAGE_SIZE));
+  const visibleCriteria = criteria.slice(criteriaPage * CRITERIA_PAGE_SIZE, (criteriaPage + 1) * CRITERIA_PAGE_SIZE);
+
+  useEffect(() => {
+    setCriteriaPage(0);
+  }, [selectedDetailId]);
 
   const passCount = (detailId: string) => criteria.filter((c) => getCriteria(detailId, c.key) === 'pass').length;
   const failCount = (detailId: string) => criteria.filter((c) => getCriteria(detailId, c.key) === 'fail').length;
@@ -210,8 +403,6 @@ const QualityInspection: React.FC = () => {
     !isOrdersLoading && ordersPageTotalElements > 0
       ? `${arrivedOrders.length} đơn trang này · ${detailRowsPage.length} dòng chi tiết (items) · Tổng ${statArrivedOrdersTotal} đơn · Trang ${ordersPage + 1}/${Math.max(1, ordersTotalPages)}`
       : undefined;
-
-  const detailsDoneOnPage = detailRowsPage.filter((r) => detailResults[r.detailId] != null).length;
 
   // ── ORDER LIST (mỗi dòng = 1 đơn hàng) ─────────────────────────────
   if (view === 'order-list') {
@@ -316,7 +507,7 @@ const QualityInspection: React.FC = () => {
               const items = ord.items || [];
               const productNames = [...new Set(items.map((i) => i.productName).filter(Boolean))] as string[];
               const lines = detailRowsPage.filter((r) => r.orderId === ord.id);
-              const done = lines.filter((l) => detailResults[l.detailId] != null).length;
+              const done = lines.filter((l) => detailResults[l.detailId] != null || l.item.qualityResult != null).length;
               const totalLines = lines.length;
               const allDone = totalLines > 0 && done === totalLines;
               const itemQtySum = items.reduce((s, i) => s + (i.quantity || 0), 0);
@@ -393,15 +584,20 @@ const QualityInspection: React.FC = () => {
                       </div>
                     </div>
                     <div
-                      className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-black transition-all ${
-                        allDone
+                      className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-black transition-all ${allDone
                           ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'
-                          : 'bg-orange-50 text-orange-600 border border-orange-100'
-                      }`}
+                          : ord.status === 'QUALITY_CHECKING'
+                            ? 'bg-sky-50 text-sky-600 border border-sky-100'
+                            : 'bg-orange-50 text-orange-600 border border-orange-100'
+                        }`}
                     >
                       {allDone ? (
                         <>
                           <CheckCircle className="size-3.5" /> Xong
+                        </>
+                      ) : ord.status === 'QUALITY_CHECKING' ? (
+                        <>
+                          <Clock className="size-3.5" /> Đang kiểm
                         </>
                       ) : (
                         <>
@@ -504,7 +700,9 @@ const QualityInspection: React.FC = () => {
           )}
           {detailRowsForOrder.map((row) => {
             const { detailId, orderId, item } = row;
-            const result = detailResults[detailId];
+            const existingResult = getExistingDetailResult(item);
+            const result = detailResults[detailId] ?? existingResult;
+            const isChecked = Boolean(item.qualityResult?.qualityResult);
             const pCount = passCount(detailId);
             const fCount = failCount(detailId);
             const inspected = pCount + fCount;
@@ -557,6 +755,9 @@ const QualityInspection: React.FC = () => {
   // ── INSPECTION (theo orderDetail) ─────────────────────────────────
   if (view === 'inspection' && selectedRow) {
     const { detailId, orderId, item, farmerName } = selectedRow;
+    const existingQualityResult = item.qualityResult?.qualityResult;
+    const selectedQualityResult = qualityResult[detailId] ?? existingQualityResult;
+    const isAlreadyChecked = Boolean(existingQualityResult);
     const pCount = passCount(detailId);
     const fCount = failCount(detailId);
     const inspected = pCount + fCount;
@@ -624,78 +825,240 @@ const QualityInspection: React.FC = () => {
         </div>
 
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-          <h4 className="font-black text-gray-800 text-xs uppercase tracking-widest mb-3">Tiêu chí</h4>
+          <div className="flex items-center justify-between gap-4 mb-3">
+            <h4 className="font-black text-gray-800 text-xs uppercase tracking-widest">Tiêu chí</h4>
+            {criteriaPageCount > 1 && (
+              <div className="flex items-center gap-2 text-[11px] font-black text-gray-600">
+                <button
+                  type="button"
+                  disabled={criteriaPage <= 0}
+                  onClick={() => setCriteriaPage((page) => Math.max(0, page - 1))}
+                  className="px-2 py-1 rounded-lg border border-gray-200 bg-white disabled:opacity-40"
+                >
+                  <ChevronLeft className="size-3" />
+                </button>
+                <span>
+                  {criteriaPage * CRITERIA_PAGE_SIZE + 1}-{Math.min((criteriaPage + 1) * CRITERIA_PAGE_SIZE, criteria.length)}/{criteria.length}
+                </span>
+                <button
+                  type="button"
+                  disabled={criteriaPage >= criteriaPageCount - 1}
+                  onClick={() => setCriteriaPage((page) => Math.min(criteriaPageCount - 1, page + 1))}
+                  className="px-2 py-1 rounded-lg border border-gray-200 bg-white disabled:opacity-40"
+                >
+                  <ChevronRight className="size-3" />
+                </button>
+              </div>
+            )}
+          </div>
           <div className="flex flex-col gap-2">
-            {criteria.map((c, i) => {
+            {visibleCriteria.map((c, i) => {
               const val = getCriteria(detailId, c.key);
               return (
                 <div
-                  key={i}
-                  className={`flex items-center justify-between gap-3 p-3 rounded-xl border text-left ${
-                    val === 'pass'
+                  key={`${criteriaPage}-${i}-${c.key}`}
+                  className={`flex flex-col gap-3 p-3 rounded-xl border text-left ${val === 'pass'
                       ? 'bg-emerald-50/60 border-emerald-200'
                       : val === 'fail'
                         ? 'bg-red-50/60 border-red-200'
                         : 'bg-gray-50 border-gray-100'
-                  }`}
+                    }`}
                 >
-                  <span className={`text-xs font-black min-w-0 flex-1 ${val === 'pass' ? 'text-emerald-800' : val === 'fail' ? 'text-red-700' : 'text-gray-700'}`}>
-                    {c.label}
-                  </span>
-                  <div className="flex gap-1.5 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setCriteria(detailId, c.key, 'pass')}
-                      className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black ${
-                        val === 'pass' ? 'bg-emerald-500 text-white' : 'bg-white border border-gray-200 text-gray-500'
-                      }`}
-                    >
-                      Đạt
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCriteria(detailId, c.key, 'fail')}
-                      className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black ${
-                        val === 'fail' ? 'bg-red-500 text-white' : 'bg-white border border-gray-200 text-gray-500'
-                      }`}
-                    >
-                      Không
-                    </button>
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <span className={`text-xs font-black min-w-0 ${val === 'pass' ? 'text-emerald-800' : val === 'fail' ? 'text-red-700' : 'text-gray-700'}`}>
+                      {c.label}
+                    </span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {!isAlreadyChecked && (
+                        <label className="inline-flex items-center gap-2 rounded-full border px-3 py-2 text-[10px] font-black border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 cursor-pointer">
+                          📷 Chọn ảnh
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            className="hidden"
+                            onChange={(event) => {
+                              const files = event.target.files;
+                              if (files && files.length > 0) {
+                                setEvidence(detailId, c.key, Array.from(files));
+                              }
+                              event.target.value = '';
+                            }}
+                          />
+                        </label>
+                      )}
+                      <div className="flex gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          disabled={isAlreadyChecked}
+                          onClick={() => setCriteria(detailId, c.key, 'pass')}
+                          className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black ${val === 'pass'
+                              ? 'bg-emerald-500 text-white'
+                              : isAlreadyChecked
+                                ? 'bg-gray-100 border border-gray-200 text-gray-400 cursor-not-allowed'
+                                : 'bg-white border border-gray-200 text-gray-500'
+                            }`}
+                        >
+                          Đạt
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isAlreadyChecked}
+                          onClick={() => setCriteria(detailId, c.key, 'fail')}
+                          className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black ${val === 'fail'
+                              ? 'bg-red-500 text-white'
+                              : isAlreadyChecked
+                                ? 'bg-gray-100 border border-gray-200 text-gray-400 cursor-not-allowed'
+                                : 'bg-white border border-gray-200 text-gray-500'
+                            }`}
+                        >
+                          Không
+                        </button>
+                      </div>
+                    </div>
                   </div>
+                  {/* Show selected files (not yet submitted) */}
+                  {!isAlreadyChecked && criteriaEvidence[detailId]?.[c.key] && criteriaEvidence[detailId][c.key].length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {criteriaEvidence[detailId][c.key].map((file, fIdx) => (
+                        <div key={fIdx} className="relative group">
+                          <img
+                            src={URL.createObjectURL(file)}
+                            alt={file.name}
+                            className="size-14 rounded-lg object-cover border border-gray-200"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeEvidence(detailId, c.key, fIdx)}
+                            className="absolute -top-1.5 -right-1.5 size-5 bg-red-500 text-white rounded-full text-[10px] font-black flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                          >
+                            ✕
+                          </button>
+                          <p className="text-[8px] text-gray-400 truncate max-w-[56px] mt-0.5 text-center">{file.name}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {/* Show saved evidence images (already submitted) with click-to-zoom */}
+                  {criteriaImages[detailId]?.[c.key] && criteriaImages[detailId][c.key].length > 0 && (
+                    <div className="flex gap-2 mt-2 overflow-x-auto">
+                      {criteriaImages[detailId][c.key].map((imgUrl, imgIdx) => (
+                        <img
+                          key={imgIdx}
+                          src={imgUrl}
+                          alt={`Evidence ${imgIdx + 1}`}
+                          className="size-14 rounded-lg object-cover border border-gray-200 cursor-pointer hover:opacity-80 hover:ring-2 hover:ring-primary/40 transition-all"
+                          onClick={() => setImageViewer({ images: criteriaImages[detailId][c.key], currentIndex: imgIdx })}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
               );
             })}
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Ghi chú</label>
-          <textarea
-            rows={2}
-            placeholder="Ghi chú ngắn…"
-            className="w-full mt-2 px-3 py-2 bg-gray-50 rounded-xl text-sm font-medium text-gray-800 outline-none border border-gray-100 resize-none placeholder:text-gray-300"
-          />
+        <div className="grid gap-4">
+          {isAlreadyChecked && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-sm font-black text-emerald-700">
+              Đã kiểm duyệt trước đó: <span className="text-black">{existingQualityResult === 'APPROVED' ? 'Đạt' : 'Không đạt'}</span>
+            </div>
+          )}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div>
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Kết quả kiểm định</p>
+                <p className="text-sm font-medium text-gray-600 mt-1">Chọn kết quả cuối cùng trước khi gửi.</p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  disabled={isAlreadyChecked}
+                  onClick={() => setQualityResult((prev) => ({ ...prev, [detailId]: 'APPROVED' }))}
+                  className={`px-4 py-2 rounded-full text-sm font-black transition ${selectedQualityResult === 'APPROVED'
+                      ? 'bg-emerald-600 text-white'
+                      : isAlreadyChecked
+                        ? 'bg-gray-100 border border-gray-200 text-gray-400 cursor-not-allowed'
+                        : 'bg-white border border-gray-200 text-gray-600 hover:bg-emerald-50'
+                    }`}
+                >
+                  Đạt
+                </button>
+                <button
+                  type="button"
+                  disabled={isAlreadyChecked}
+                  onClick={() => setQualityResult((prev) => ({ ...prev, [detailId]: 'REJECTED' }))}
+                  className={`px-4 py-2 rounded-full text-sm font-black transition ${selectedQualityResult === 'REJECTED'
+                      ? 'bg-red-500 text-white'
+                      : isAlreadyChecked
+                        ? 'bg-gray-100 border border-gray-200 text-gray-400 cursor-not-allowed'
+                        : 'bg-white border border-gray-200 text-gray-600 hover:bg-red-50'
+                    }`}
+                >
+                  Không đạt
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Ghi chú</label>
+            <textarea
+              rows={2}
+              value={inspectionNotes[detailId] ?? ''}
+              onChange={(event) => setNote(detailId, event.target.value)}
+              placeholder="Ghi chú ngắn…"
+              disabled={isAlreadyChecked}
+              className="w-full mt-2 px-3 py-2 bg-gray-50 rounded-xl text-sm font-medium text-gray-800 outline-none border border-gray-100 resize-none placeholder:text-gray-300 disabled:cursor-not-allowed disabled:opacity-60"
+            />
+          </div>
+
+          <div className="text-sm font-black text-gray-600">
+            Kết quả cuối cùng: <span className="text-base text-black">{selectedQualityResult === 'APPROVED' ? 'Đạt' : selectedQualityResult === 'REJECTED' ? 'Không đạt' : 'Chưa chọn'}</span>
+          </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-3">
+        {inspectionError && (
+          <p className="text-sm font-bold text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+            {inspectionError}
+          </p>
+        )}
+
+        <div className="flex flex-col gap-3">
           <button
             type="button"
-            onClick={() => setDetailResults((prev) => ({ ...prev, [detailId]: 'pass' }))}
-            className={`flex-1 py-3 font-black rounded-xl text-sm flex items-center justify-center gap-2 ${
-              result === 'pass' ? 'bg-emerald-600 text-white' : 'bg-[#38703d] text-white hover:bg-emerald-700'
-            }`}
+            onClick={() => handleSubmitQuality(detailId)}
+            disabled={isSubmitting || isAlreadyChecked}
+            className={`w-full py-3 font-black rounded-xl text-sm flex items-center justify-center gap-2 ${isAlreadyChecked
+                ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                : isSubmitting
+                  ? 'bg-gray-300 text-gray-700 cursor-not-allowed'
+                  : 'bg-primary text-white hover:bg-primary/90'
+              }`}
           >
-            <CheckCircle className="size-4" /> Đạt
+            <Package className="size-4" /> {isAlreadyChecked ? 'Đã kiểm định' : isSubmitting ? 'Đang gửi...' : 'Gửi kiểm định'}
           </button>
-          <button
-            type="button"
-            onClick={() => setDetailResults((prev) => ({ ...prev, [detailId]: 'fail' }))}
-            className={`flex-1 py-3 font-black rounded-xl text-sm flex items-center justify-center gap-2 ${
-              result === 'fail' ? 'bg-red-500 text-white' : 'bg-red-50 border border-red-100 text-red-600'
-            }`}
-          >
-            <XCircle className="size-4" /> Không đạt
-          </button>
+          {/* <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setDetailResults((prev) => ({ ...prev, [detailId]: 'pass' }))}
+              className={`w-full py-3 font-black rounded-xl text-sm flex items-center justify-center gap-2 ${
+                result === 'pass' ? 'bg-emerald-600 text-white' : 'bg-[#38703d] text-white hover:bg-emerald-700'
+              }`}
+            >
+              <CheckCircle className="size-4" /> Đạt
+            </button>
+            <button
+              type="button"
+              onClick={() => setDetailResults((prev) => ({ ...prev, [detailId]: 'fail' }))}
+              className={`w-full py-3 font-black rounded-xl text-sm flex items-center justify-center gap-2 ${
+                result === 'fail' ? 'bg-red-500 text-white' : 'bg-red-50 border border-red-100 text-red-600'
+              }`}
+            >
+              <XCircle className="size-4" /> Không đạt
+            </button>
+          </div> */}
         </div>
 
         {result === 'pass' && (
@@ -704,11 +1067,35 @@ const QualityInspection: React.FC = () => {
         {result === 'fail' && (
           <p className="text-center text-xs font-bold text-red-600">Đã đánh dấu không đạt cho chi tiết #{detailId}.</p>
         )}
+
+        {imageViewer && (
+          <ImageLightbox
+            imageUrl={imageViewer.images[imageViewer.currentIndex]}
+            alt="Ảnh chứng cứ"
+            onClose={() => setImageViewer(null)}
+            images={imageViewer.images.map((url) => ({ imageUrl: url }))}
+            currentIndex={imageViewer.currentIndex}
+            onIndexChange={(idx) => setImageViewer((prev) => prev ? { ...prev, currentIndex: idx } : null)}
+          />
+        )}
       </div>
     );
   }
 
-  return null;
+  return (
+    <>
+      {imageViewer && (
+        <ImageLightbox
+          imageUrl={imageViewer.images[imageViewer.currentIndex]}
+          alt="Ảnh chứng cứ"
+          onClose={() => setImageViewer(null)}
+          images={imageViewer.images.map((url) => ({ imageUrl: url }))}
+          currentIndex={imageViewer.currentIndex}
+          onIndexChange={(idx) => setImageViewer((prev) => prev ? { ...prev, currentIndex: idx } : null)}
+        />
+      )}
+    </>
+  );
 };
 
 export default QualityInspection;
