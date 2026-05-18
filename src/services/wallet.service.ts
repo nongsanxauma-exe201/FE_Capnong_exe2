@@ -61,14 +61,26 @@ class WalletService {
         return httpClient.get<WithdrawRequestResponse[]>('/wallets/withdraw-requests');
     }
 
-    async confirmWithdrawSuccess(id: number, note?: string): Promise<ApiResponse<WithdrawRequestResponse>> {
-        const params = note ? { note } : {};
-        return httpClient.put<WithdrawRequestResponse>(`/wallets/withdraw-requests/${id}/confirm-success`, null, { params });
+    async confirmWithdrawSuccess(id: number, note?: string, evidents?: File[]): Promise<ApiResponse<WithdrawRequestResponse>> {
+        const formData = new FormData();
+        if (note) formData.append('note', note);
+        if (evidents && evidents.length > 0) {
+            evidents.forEach((file) => {
+                formData.append('evidents', file);
+            });
+        }
+        return httpClient.put<WithdrawRequestResponse>(`/wallets/withdraw-requests/${id}/confirm-success`, formData);
     }
 
-    async rejectWithdraw(id: number, note?: string): Promise<ApiResponse<WithdrawRequestResponse>> {
-        const params = note ? { note } : {};
-        return httpClient.put<WithdrawRequestResponse>(`/wallets/withdraw-requests/${id}/reject`, null, { params });
+    async rejectWithdraw(id: number, note?: string, evidents?: File[]): Promise<ApiResponse<WithdrawRequestResponse>> {
+        const formData = new FormData();
+        if (note) formData.append('note', note);
+        if (evidents && evidents.length > 0) {
+            evidents.forEach((file) => {
+                formData.append('evidents', file);
+            });
+        }
+        return httpClient.put<WithdrawRequestResponse>(`/wallets/withdraw-requests/${id}/reject`, formData);
     }
 
     async createWithdrawQr(id: number): Promise<ApiResponse<WithdrawRequestResponse>> {

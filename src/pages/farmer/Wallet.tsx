@@ -18,6 +18,11 @@ const Wallet: React.FC = () => {
    const [bankHolder, setBankHolder] = useState('');
    const [isSubmitting, setIsSubmitting] = useState(false);
 
+   // Banks list (static)
+   const bankOptions = [
+      'Vietcombank', 'BIDV', 'VietinBank', 'Agribank', 'Techcombank', 'ACB', 'Sacombank', 'MB Bank', 'VPBank', 'TPBank', 'SHB', 'HDBank', 'VIB', 'OCB', 'SeABank', 'Eximbank', 'MSB', 'Nam A Bank', 'Bac A Bank', 'ABBank', 'PVcomBank', 'LPBank', 'KienlongBank', 'VietBank', 'BaoViet Bank', 'Saigonbank', 'Woori Bank', 'CIMB'
+   ];
+
    useEffect(() => {
       const fetchData = async () => {
          try {
@@ -40,6 +45,38 @@ const Wallet: React.FC = () => {
       fetchData();
    }, []);
 
+     // Load bank info from localStorage if present
+     useEffect(() => {
+        try {
+           const userStr = localStorage.getItem('user_info');
+           if (userStr) {
+              const user = JSON.parse(userStr);
+              if (user) {
+                 if (user.bankAccount) setBankAccount(user.bankAccount);
+                 if (user.bankAccountHolder) setBankHolder(user.bankAccountHolder);
+                 if (user.bankName) setBankName(user.bankName);
+              }
+           }
+        } catch (e) {
+           console.warn('Failed to parse user_info from localStorage', e);
+        }
+     }, []);
+
+     const openWithdrawModal = () => {
+        try {
+           const userStr = localStorage.getItem('user_info');
+           if (userStr) {
+              const user = JSON.parse(userStr);
+              setBankAccount(user.bankAccount || '');
+              setBankHolder(user.bankAccountHolder || '');
+              setBankName(user.bankName || '');
+           }
+        } catch (e) {
+           /* ignore */
+        }
+        setIsWithdrawModalOpen(true);
+     };
+
    const handleWithdrawSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
       const amountNum = Number(withdrawAmount);
@@ -47,7 +84,7 @@ const Wallet: React.FC = () => {
          globalShowAlert('Vui lòng nhập số tiền hợp lệ', 'Lỗi', 'warning');
          return;
       }
-      if (wallet && amountNum > wallet.frozenBalance) {
+      if (wallet && amountNum > wallet.totalBalance) {
          globalShowAlert('Số tiền rút vượt quá số dư khả dụng', 'Lỗi', 'warning');
          return;
       }
@@ -70,6 +107,20 @@ const Wallet: React.FC = () => {
             // Reload requests
             const withdrawRes = await walletService.getMyWithdrawRequests();
             if (withdrawRes.result) setWithdrawRequests(withdrawRes.result);
+            // Save bank info to localStorage user_info for future prefill
+            try {
+               const existingStr = localStorage.getItem('user_info');
+               const existing = existingStr ? JSON.parse(existingStr) : {};
+               const updated = {
+                  ...existing,
+                  bankAccount: bankAccount || existing.bankAccount,
+                  bankAccountHolder: bankHolder || existing.bankAccountHolder,
+                  bankName: bankName || existing.bankName,
+               };
+               localStorage.setItem('user_info', JSON.stringify(updated));
+            } catch (e) {
+               console.warn('Failed to save user_info', e);
+            }
          }
       } catch (err: any) {
          globalShowAlert(err?.data?.message || 'Có lỗi xảy ra khi tạo yêu cầu rút tiền', 'Lỗi', 'error');
@@ -123,7 +174,7 @@ const Wallet: React.FC = () => {
             </div>
             <button
                id="tour-wallet-withdraw-btn"
-               onClick={() => setIsWithdrawModalOpen(true)}
+               onClick={openWithdrawModal}
                className="flex items-center justify-center gap-2 px-6 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-primary/20"
             >
                <span className="material-symbols-outlined text-lg">payments</span>
@@ -296,7 +347,7 @@ const Wallet: React.FC = () => {
 
                   <div className="mb-6">
                      <h3 className="text-2xl font-bold text-slate-900 mb-1">Tạo Yêu Cầu Rút Tiền</h3>
-                     <p className="text-sm text-slate-500">Số dư khả dụng: <span className="font-bold text-primary">{(wallet?.frozenBalance || 0).toLocaleString('vi-VN')}đ</span></p>
+                     <p className="text-sm text-slate-500">Số dư khả dụng: <span className="font-bold text-primary">{(wallet?.totalBalance || 0).toLocaleString('vi-VN')}đ</span></p>
                   </div>
 
                   <form onSubmit={handleWithdrawSubmit} className="space-y-4">
@@ -324,13 +375,16 @@ const Wallet: React.FC = () => {
                      <div className="pt-4 border-t border-slate-100">
                         <p className="text-xs font-bold text-slate-500 mb-4">Thông tin nhận tiền (Tùy chọn)</p>
                         <div className="space-y-3">
-                           <input
-                              type="text"
+                           <select
                               value={bankName}
                               onChange={(e) => setBankName(e.target.value)}
                               className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm"
-                              placeholder="Tên ngân hàng (VD: MB Bank, Vietcombank)"
-                           />
+                           >
+                              <option value="">Chọn ngân hàng (hoặc để trống)</option>
+                              {bankOptions.map((b) => (
+                                 <option key={b} value={b}>{b}</option>
+                              ))}
+                           </select>
                            <input
                               type="text"
                               value={bankAccount}

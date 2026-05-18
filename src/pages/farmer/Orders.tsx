@@ -719,6 +719,12 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
                       <p className="text-[10px] uppercase tracking-widest font-black text-gray-400">Ghi chú</p>
                       <p className="text-sm font-medium text-gray-700">{qualityReviewItem.qualityResult?.note || 'Không có'}</p>
                     </div>
+                    {qualityReviewItem.qualityResult?.qualityResult === 'REJECTED' && qualityReviewItem.qualityResult?.rejectedWeight != null && (
+                      <div>
+                        <p className="text-[10px] uppercase tracking-widest font-black text-red-600">Khối lượng ko đạt</p>
+                        <p className="text-sm font-black text-red-600">{qualityReviewItem.qualityResult.rejectedWeight} kg</p>
+                      </div>
+                    )}
                   </div>
                 </div>
                 {(qualityReviewItem.qualityResult?.qualityCheckingResponses || []).map((response, idx) => (

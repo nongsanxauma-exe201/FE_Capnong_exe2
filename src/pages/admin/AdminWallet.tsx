@@ -9,9 +9,18 @@ const AdminWallet: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+  const [qrRequest, setQrRequest] = useState<WithdrawRequestResponse | null>(null);
+  const [qrUrl, setQrUrl] = useState<string | null>(null);
+  
+  const [isConfirmTransferModalOpen, setIsConfirmTransferModalOpen] = useState(false);
+  const [confirmTransferId, setConfirmTransferId] = useState<number | null>(null);
+  const [confirmTransferFiles, setConfirmTransferFiles] = useState<File[]>([]);
+  
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
   const [rejectId, setRejectId] = useState<number | null>(null);
   const [rejectNote, setRejectNote] = useState('');
+  const [rejectFiles, setRejectFiles] = useState<File[]>([]);
   
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -59,18 +68,47 @@ const AdminWallet: React.FC = () => {
   }, []);
 
   const handleApprove = async (id: number) => {
-    if (!await globalShowConfirm('Tạo thanh toán', `Bạn muốn điều hướng đến PayOS để chuyển khoản cho yêu cầu #${id}?`)) return;
+    if (!await globalShowConfirm('Tạo thanh toán', `Bạn muốn tạo mã QR để chuyển khoản cho yêu cầu #${id}?`)) return;
 
     try {
       setIsProcessing(true);
       const res = await walletService.createWithdrawQr(id);
-      if (res.result && res.result.checkoutUrl) {
-        window.location.href = res.result.checkoutUrl;
+      if (res.result) {
+        setQrRequest(res.result);
+        setQrUrl(res.result.qrCodeUrl || null);
+        setIsQrModalOpen(true);
       } else {
-        globalShowAlert('Không thể tạo trang thanh toán, vui lòng thử lại', 'Lỗi', 'error');
+        globalShowAlert('Không thể tạo mã QR, vui lòng thử lại', 'Lỗi', 'error');
       }
     } catch (err: any) {
-      globalShowAlert(err?.data?.message || 'Có lỗi khi tạo thanh toán', 'Lỗi', 'error');
+      globalShowAlert(err?.data?.message || 'Có lỗi khi tạo mã QR', 'Lỗi', 'error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleConfirmTransferClick = (id: number) => {
+    setConfirmTransferId(id);
+    setConfirmTransferFiles([]);
+    setIsConfirmTransferModalOpen(true);
+  };
+
+  const handleConfirmTransferSubmit = async () => {
+    if (!confirmTransferId) return;
+
+    try {
+      setIsProcessing(true);
+      await walletService.confirmWithdrawSuccess(confirmTransferId, undefined, confirmTransferFiles.length > 0 ? confirmTransferFiles : undefined);
+      globalShowAlert(`Đã xác nhận chuyển khoản thành công cho yêu cầu #${confirmTransferId}`, 'Thành công', 'success');
+      setIsConfirmTransferModalOpen(false);
+      setConfirmTransferId(null);
+      setConfirmTransferFiles([]);
+      setIsQrModalOpen(false);
+      setQrUrl(null);
+      setQrRequest(null);
+      fetchData();
+    } catch (err: any) {
+      globalShowAlert(err?.data?.message || 'Có lỗi khi xác nhận chuyển khoản', 'Lỗi', 'error');
     } finally {
       setIsProcessing(false);
     }
@@ -78,6 +116,8 @@ const AdminWallet: React.FC = () => {
 
   const handleOpenReject = (id: number) => {
     setRejectId(id);
+    setRejectNote('');
+    setRejectFiles([]);
     setIsRejectModalOpen(true);
   };
 
@@ -89,10 +129,11 @@ const AdminWallet: React.FC = () => {
 
     try {
       setIsProcessing(true);
-      await walletService.rejectWithdraw(rejectId, rejectNote);
+      await walletService.rejectWithdraw(rejectId, rejectNote, rejectFiles.length > 0 ? rejectFiles : undefined);
       globalShowAlert(`Đã từ chối yêu cầu #${rejectId}`, 'Thành công', 'success');
       setIsRejectModalOpen(false);
       setRejectNote('');
+      setRejectFiles([]);
       setRejectId(null);
       fetchData();
     } catch (err: any) {
@@ -403,19 +444,177 @@ const AdminWallet: React.FC = () => {
         </div>
       </div>
 
+      {/* QR Code Modal */}
+      {isQrModalOpen && qrUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+          onClick={() => {
+            setIsQrModalOpen(false);
+            setQrUrl(null);
+            setQrRequest(null);
+          }}
+        >
+          <div
+            className="bg-white rounded-3xl w-full max-w-md p-8 shadow-2xl relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setIsQrModalOpen(false);
+                setQrUrl(null);
+                setQrRequest(null);
+              }}
+              className="absolute top-6 right-6 text-slate-400 hover:text-slate-900 transition-colors"
+            >
+              <XCircle className="size-6" />
+            </button>
+            <h3 className="text-2xl font-black text-gray-900 mb-2">Mã QR Chuyển Khoản</h3>
+            <p className="text-sm text-gray-500 mb-6">Quét mã QR để thực hiện chuyển khoản</p>
+
+            <div className="bg-gray-50 p-4 rounded-2xl mb-6 flex items-center justify-center">
+              <img src={qrUrl} alt="QR Code" className="w-64 h-64 object-contain" />
+            </div>
+
+            {qrRequest && (
+              <div className="bg-blue-50 rounded-2xl p-4 mb-6 space-y-2">
+                <p className="text-xs font-bold text-blue-600 uppercase tracking-wider">Thông tin chuyển khoản</p>
+                <p className="text-sm text-gray-700"><span className="font-bold">Số tiền:</span> {(qrRequest.receiveAmount || 0).toLocaleString('vi-VN')} đ</p>
+                <p className="text-sm text-gray-700"><span className="font-bold">Tài khoản:</span> {qrRequest.bankAccountNumber}</p>
+                <p className="text-sm text-gray-700"><span className="font-bold">Ngân hàng:</span> {qrRequest.bankName}</p>
+              </div>
+            )}
+
+            <div className="flex gap-4">
+              <button
+                onClick={() => handleConfirmTransferClick(qrRequest?.id || 0)}
+                className="flex-1 py-4 bg-primary text-white rounded-2xl font-black shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
+              >
+                ĐÃ CHUYỂN KHOẢN
+              </button>
+              <button
+                onClick={() => {
+                  setIsQrModalOpen(false);
+                  setQrUrl(null);
+                  setQrRequest(null);
+                }}
+                className="px-6 py-4 bg-gray-100 text-gray-600 font-bold rounded-2xl hover:bg-gray-200 transition-all"
+              >
+                Hủy
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Transfer Modal */}
+      {isConfirmTransferModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl w-full max-w-md p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <h3 className="text-2xl font-black text-gray-900 mb-2">Xác Nhận Chuyển Khoản Thành Công</h3>
+            <p className="text-sm text-gray-500 mb-6">Hãy tải lên ảnh chứng minh chuyển khoản (Tùy chọn)</p>
+
+            {/* File Upload Section - Optional */}
+            <div className="mb-6">
+              <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-3">
+                Ảnh chứng minh (Tùy chọn)
+              </label>
+              <div className="border-2 border-dashed border-gray-200 rounded-2xl p-4 text-center hover:border-gray-300 transition-colors">
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files || []);
+                    setConfirmTransferFiles(files);
+                  }}
+                  className="hidden"
+                  id="confirm-transfer-file-input"
+                />
+                <label htmlFor="confirm-transfer-file-input" className="cursor-pointer block">
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">
+                    Click để chọn ảnh
+                  </p>
+                  {confirmTransferFiles.length > 0 && (
+                    <div className="mt-3 space-y-1">
+                      {confirmTransferFiles.map((file, idx) => (
+                        <p key={idx} className="text-xs text-gray-600">{file.name}</p>
+                      ))}
+                    </div>
+                  )}
+                </label>
+              </div>
+            </div>
+
+            <div className="flex gap-4">
+              <button
+                disabled={isProcessing}
+                onClick={handleConfirmTransferSubmit}
+                className="flex-1 py-4 bg-green-500 text-white rounded-2xl font-black shadow-lg shadow-green-500/20 hover:bg-green-600 transition-all disabled:opacity-50"
+              >
+                XÁC NHẬN
+              </button>
+              <button
+                onClick={() => {
+                  setIsConfirmTransferModalOpen(false);
+                  setConfirmTransferId(null);
+                  setConfirmTransferFiles([]);
+                }}
+                disabled={isProcessing}
+                className="px-6 py-4 bg-gray-100 text-gray-600 font-bold rounded-2xl hover:bg-gray-200 transition-all disabled:opacity-50"
+              >
+                Hủy
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Reject Modal */}
       {isRejectModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl w-full max-w-md p-8 shadow-2xl">
+          <div className="bg-white rounded-3xl w-full max-w-md p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
             <h3 className="text-2xl font-black text-gray-900 mb-2">Từ chối Yêu Cầu #{rejectId}</h3>
             <p className="text-sm text-gray-500 mb-6">Xin vui lòng nhập lý do từ chối để thông báo cho người dùng.</p>
 
             <textarea
               value={rejectNote}
               onChange={(e) => setRejectNote(e.target.value)}
-              className="w-full h-32 px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:ring-2 focus:ring-red-500/20 transition-all resize-none mb-6"
+              className="w-full h-24 px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:ring-2 focus:ring-red-500/20 transition-all resize-none mb-4"
               placeholder="Lý do từ chối (VD: Thông tin tài khoản sai lệch...)"
             />
+
+            {/* File Upload Section - Optional */}
+            <div className="mb-6">
+              <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-3">
+                Ảnh chứng minh (Tùy chọn)
+              </label>
+              <div className="border-2 border-dashed border-gray-200 rounded-2xl p-4 text-center hover:border-gray-300 transition-colors">
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files || []);
+                    setRejectFiles(files);
+                  }}
+                  className="hidden"
+                  id="reject-file-input"
+                />
+                <label htmlFor="reject-file-input" className="cursor-pointer block">
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">
+                    Click để chọn ảnh
+                  </p>
+                  {rejectFiles.length > 0 && (
+                    <div className="mt-3 space-y-1">
+                      {rejectFiles.map((file, idx) => (
+                        <p key={idx} className="text-xs text-gray-600">{file.name}</p>
+                      ))}
+                    </div>
+                  )}
+                </label>
+              </div>
+            </div>
 
             <div className="flex gap-4">
               <button
@@ -429,6 +628,7 @@ const AdminWallet: React.FC = () => {
                 onClick={() => {
                   setIsRejectModalOpen(false);
                   setRejectNote('');
+                  setRejectFiles([]);
                   setRejectId(null);
                 }}
                 disabled={isProcessing}
