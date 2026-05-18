@@ -13,6 +13,7 @@ export interface QualityCheckRequest {
   qualityResult: QualityResult;
   orderDetailId: number;
   qualityChecks: QualityCheckingRequest[];
+  rejectedWeight?: number;
 }
 
 export interface QualityCheckImage {
@@ -35,6 +36,7 @@ export interface QualityCheckResponse {
   createdAt?: string;
   status?: string;
   summary?: string;
+  rejectedWeight?: number;
 }
 
 export interface QualityCriteriaItem {

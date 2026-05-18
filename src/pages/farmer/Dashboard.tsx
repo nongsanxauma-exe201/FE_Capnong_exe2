@@ -47,7 +47,7 @@ const FarmerDashboard: React.FC<{ onNavigate: (id: string) => void }> = ({ onNav
   }, []);
 
   const totalOrders = orders.length;
-  const frozenBalance = wallet?.frozenBalance || 0;
+  const totalBalance = wallet?.totalBalance || 0;
   const totalBlindBoxes = mysteryBoxes.length;
 
   if (loading) {
@@ -91,7 +91,7 @@ const FarmerDashboard: React.FC<{ onNavigate: (id: string) => void }> = ({ onNav
     { label: 'Sản phẩm đang bán', value: products.length.toString(), trend: 'Đang hoạt động', icon: TrendingUp },
     { label: 'Hộp mù (Blind Box)', value: totalBlindBoxes.toString(), trend: 'Giải cứu nông sản', icon: Sparkles },
     { label: 'Chất lượng Shop', value: '98%', trend: 'Top 5%', icon: Star, bar: 98 },
-    { label: 'Số dư khả dụng', value: `${frozenBalance.toLocaleString('vi-VN')}đ`, icon: Wallet, isPrimary: true, frozen: `${frozenBalance.toLocaleString('vi-VN')}đ` },
+    { label: 'Số dư khả dụng', value: `${totalBalance.toLocaleString('vi-VN')}đ`, icon: Wallet, isPrimary: true, frozen: `${totalBalance.toLocaleString('vi-VN')}đ` },
   ].map((stat, i) => (
     <div 
       key={i} 
@@ -287,11 +287,11 @@ const FarmerDashboard: React.FC<{ onNavigate: (id: string) => void }> = ({ onNav
             <div id="tour-overview-finance-cards" className="grid grid-cols-2 gap-4">
               <div className="p-6 bg-gray-50/50 rounded-2xl border border-gray-100">
                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Số dư khả dụng</p>
-                <h3 className="text-2xl font-black text-gray-900 mt-1">{frozenBalance.toLocaleString('vi-VN')}đ</h3>
+                <h3 className="text-2xl font-black text-gray-900 mt-1">{totalBalance.toLocaleString('vi-VN')}đ</h3>
               </div>
               <div className="p-6 bg-yellow-50/50 rounded-2xl border border-yellow-100">
                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest text-yellow-600">Số dư đóng băng</p>
-                <h3 className="text-2xl font-black text-yellow-700 mt-1">{frozenBalance.toLocaleString('vi-VN')}đ</h3>
+                <h3 className="text-2xl font-black text-yellow-700 mt-1">{wallet?.frozenBalance?.toLocaleString('vi-VN')}đ</h3>
               </div>
             </div>
             <div className="flex gap-4 mt-6">

@@ -116,6 +116,7 @@ const QualityInspection: React.FC = () => {
   const [criteriaResults, setCriteriaResults] = useState<CriteriaResult>({});
   const [criteriaEvidence, setCriteriaEvidence] = useState<Record<string, Record<string, File[]>>>({});
   const [criteriaImages, setCriteriaImages] = useState<Record<string, Record<string, string[]>>>({});
+  const [detailRejectedWeights, setDetailRejectedWeights] = useState<Record<string, number>>({});
   const [qualityResult, setQualityResult] = useState<Record<string, 'APPROVED' | 'REJECTED' | null>>({});
   const [inspectionNotes, setInspectionNotes] = useState<Record<string, string>>({});
   const [criteriaPage, setCriteriaPage] = useState(0);
@@ -238,6 +239,13 @@ const QualityInspection: React.FC = () => {
       }) as Record<string, string>);
     }
 
+    if (existing.rejectedWeight != null && existing.qualityResult === 'REJECTED') {
+      setDetailRejectedWeights((prev) => ({
+        ...prev,
+        [detailId]: existing.rejectedWeight as number,
+      }));
+    }
+
     if (existing.qualityCheckingResponses && existing.qualityCheckingResponses.length > 0) {
       const nextCriteria = existing.qualityCheckingResponses.reduce<Record<string, 'pass' | 'fail' | null>>((resultMap, item) => {
         const key = getQualityCriteriaKeyFromName(item.qualityName);
@@ -354,12 +362,26 @@ const QualityInspection: React.FC = () => {
       return;
     }
 
-    const request: QualityCheckRequest = {
+    const rejectedWeight = detailRejectedWeights[detailId];
+    if (currentQualityResult === 'REJECTED') {
+      if (rejectedWeight === undefined || rejectedWeight === null || Number.isNaN(rejectedWeight) || rejectedWeight <= 0) {
+        setInspectionError('Vui lòng nhập số lượng không đạt chuẩn hợp lệ.');
+        return;
+      }
+      const itemQuantity = selectedRow.item.quantity ?? 0;
+      if (itemQuantity > 0 && rejectedWeight >= itemQuantity) {
+        setInspectionError('Số lượng không đạt chuẩn phải nhỏ hơn số lượng của đơn hàng.');
+        return;
+      }
+    }
+
+    const request = {
       orderDetailId,
       qualityResult: currentQualityResult,
       qualityChecks: criteriaPayload,
       note: inspectionNotes[detailId]?.trim() || undefined,
-    };
+      rejectedWeight: currentQualityResult === 'REJECTED' ? rejectedWeight : undefined,
+    } as QualityCheckRequest;
     const fileMap: Record<string, File[]> = {};
 
     criteria.forEach((c, index) => {
@@ -961,8 +983,14 @@ const QualityInspection: React.FC = () => {
 
         <div className="grid gap-4">
           {isAlreadyChecked && (
-            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-sm font-black text-emerald-700">
-              Đã kiểm duyệt trước đó: <span className="text-black">{existingQualityResult === 'APPROVED' ? 'Đạt' : 'Không đạt'}</span>
+            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
+              <div className="text-sm font-black text-emerald-700">
+              </div>
+              {existingQualityResult === 'REJECTED' && item.qualityResult?.rejectedWeight != null && (
+                <div className="mt-2 text-sm font-black text-emerald-700">
+                  Khối lượng không đạt: <span className="text-red-600">{item.qualityResult.rejectedWeight} kg</span>
+                </div>
+              )}
             </div>
           )}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
@@ -1001,6 +1029,36 @@ const QualityInspection: React.FC = () => {
               </div>
             </div>
           </div>
+
+          {selectedQualityResult === 'REJECTED' && !isAlreadyChecked && (
+            <div className="bg-red-50 border border-red-200 rounded-2xl shadow-sm p-4">
+              <label className="text-[10px] font-black text-red-700 uppercase tracking-widest">Số lượng không đạt chuẩn</label>
+              <input
+                type="number"
+                min="0"
+                max={item.quantity ?? undefined}
+                step="0.1"
+                value={detailRejectedWeights[detailId] ?? ''}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val) {
+                    setDetailRejectedWeights((prev) => ({
+                      ...prev,
+                      [detailId]: parseFloat(val),
+                    }));
+                  } else {
+                    setDetailRejectedWeights((prev) => {
+                      const updated = { ...prev };
+                      delete updated[detailId];
+                      return updated;
+                    });
+                  }
+                }}
+                placeholder="Nhập khối lượng bị lỗi"
+                className="w-full mt-2 px-3 py-2 bg-white rounded-xl text-sm font-bold text-red-700 border border-red-200 outline-none placeholder:text-red-300"
+              />
+            </div>
+          )}
 
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Ghi chú</label>
