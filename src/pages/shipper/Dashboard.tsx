@@ -294,10 +294,11 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
 
   // ===================== RENDER: ORDER CARDS (ĐƠN MỚI) =====================
   // ✅ Dùng biến thay vì function để React re-render đúng khi radius thay đổi
-  const radiusKm = parseInt(radius); // '5km' → 5, '10km' → 10, '15km' → 15
-  const filteredOrders = availableOrders.filter(order =>
-    order.shipToShopKm == null || order.shipToShopKm <= radiusKm
-  );
+  // const radiusKm = parseInt(radius); // '5km' → 5, '10km' → 10, '15km' → 15
+  // const filteredOrders = availableOrders.filter(order =>
+  //   order.shipToShopKm == null || order.shipToShopKm <= radiusKm
+  // );
+  const filteredOrders = availableOrders;
 
   const renderOrderCards = () => (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">

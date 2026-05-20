@@ -1,30 +1,36 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Package, Truck, ClipboardCheck, PackageCheck,
-  ArrowRight, Clock, CheckCircle, AlertCircle, TrendingUp, Box, Zap, BarChart3
+  ArrowRight, Clock, CheckCircle, AlertCircle, TrendingUp, Box, Zap, BarChart3, Loader2
 } from 'lucide-react';
+import { orderService } from '../../services';
+import type { StaffOrderReportResponse } from '../../services';
 
 const StaffDashboard: React.FC = () => {
   const navigate = useNavigate();
+  const [report, setReport] = useState<StaffOrderReportResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    orderService.getStaffOrderReport()
+      .then(res => { if (res.result) setReport(res.result); })
+      .catch(() => {/* silent — hiển thị 0 */})
+      .finally(() => setIsLoading(false));
+  }, []);
+
   const onNavigate = (page: string) => {
     const route = page.replace('staff-', '');
     navigate(`/staff/${route}`);
   };
 
-  const pipeline = [
-    { label: 'Đơn đang đến kho', value: 14, color: 'text-blue-500', bg: 'bg-blue-50', icon: Truck, page: 'staff-orders' },
-    { label: 'Chờ xác nhận', value: 6, color: 'text-orange-500', bg: 'bg-orange-50', icon: Package, page: 'staff-orders' },
-    { label: 'Chờ kiểm duyệt', value: 9, color: 'text-purple-500', bg: 'bg-purple-50', icon: ClipboardCheck, page: 'staff-inspect' },
-    { label: 'Chờ đóng gói', value: 4, color: 'text-emerald-500', bg: 'bg-emerald-50', icon: Box, page: 'staff-pack' },
-  ];
+  const v = (n?: number | null) => isLoading ? '...' : (n ?? 0);
 
-  const recentActivities = [
-    { text: 'Đơn #WH-2201 đã được xác nhận nhập kho', time: '5 phút trước', type: 'success' },
-    { text: 'Đơn #WH-2198 kiểm duyệt KHÔNG ĐẠT - Cam bị nứt', time: '12 phút trước', type: 'error' },
-    { text: 'Đơn #WH-2195 đã gọi shipper thành công', time: '28 phút trước', type: 'success' },
-    { text: 'Đơn #WH-2190 đã đóng gói xong, sẵn sàng giao', time: '1 giờ trước', type: 'success' },
-    { text: 'Đơn #WH-2185 đang trên đường đến kho (còn ~20 phút)', time: '1.5 giờ trước', type: 'info' },
+  const pipeline = [
+    { label: 'Đơn đang đến kho', value: v(report?.incomingOrders), color: 'text-blue-500', bg: 'bg-blue-50', icon: Truck, page: 'staff-orders' },
+    { label: 'Chờ kiểm duyệt', value: v(report?.qualityCheckingOrders), color: 'text-purple-500', bg: 'bg-purple-50', icon: ClipboardCheck, page: 'staff-inspect' },
+    { label: 'Chờ đóng gói', value: v(report?.packagingOrders), color: 'text-emerald-500', bg: 'bg-emerald-50', icon: Box, page: 'staff-pack' },
+    { label: 'Sẵn sàng giao', value: v(report?.readyOrders), color: 'text-amber-500', bg: 'bg-amber-50', icon: PackageCheck, page: 'staff-shipper' },
   ];
 
   return (
@@ -33,11 +39,13 @@ const StaffDashboard: React.FC = () => {
       <div className="bg-white rounded-[32px] border border-gray-100 shadow-sm p-8 flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-black text-gray-900 tracking-tight">Tổng quan kho hàng hôm nay</h2>
-          <p className="text-sm text-gray-400 font-medium mt-1">Thứ Hai, 14/10/2024 — Ca sáng 08:00–16:00</p>
+          <p className="text-sm text-gray-400 font-medium mt-1">
+            {new Date().toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })}
+          </p>
         </div>
         <div className="flex items-center gap-3 px-6 py-3 bg-emerald-50 border border-emerald-100 rounded-2xl">
           <div className="size-2.5 bg-emerald-500 rounded-full animate-pulse" />
-          <span className="text-xs font-black text-emerald-700 uppercase tracking-widest">Ca làm việc đang diễn ra</span>
+          <span className="text-xs font-black text-emerald-700 uppercase tracking-widest">Đang hoạt động</span>
         </div>
       </div>
 
@@ -53,7 +61,9 @@ const StaffDashboard: React.FC = () => {
               <item.icon className="size-6" />
             </div>
             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">{item.label}</p>
-            <h3 className="text-4xl font-black text-gray-900">{item.value}</h3>
+            <h3 className="text-4xl font-black text-gray-900">
+              {isLoading ? <Loader2 className="size-7 animate-spin text-gray-300" /> : item.value}
+            </h3>
             <p className="text-[10px] font-black text-gray-300 uppercase mt-3 flex items-center gap-1 group-hover:text-primary transition-colors">
               Xem chi tiết <ArrowRight className="size-3" />
             </p>
@@ -70,12 +80,12 @@ const StaffDashboard: React.FC = () => {
           </div>
           <div className="grid grid-cols-2 gap-4">
             {[
-              { label: 'Đơn đang đến kho', sub: '14 đơn cần theo dõi', icon: Truck, color: 'text-blue-500', bg: 'bg-blue-50', page: 'staff-orders' },
-              { label: 'Xác nhận nhận hàng', sub: '6 đơn đang chờ', icon: Package, color: 'text-orange-500', bg: 'bg-orange-50', page: 'staff-orders' },
-              { label: 'Kiểm duyệt chất lượng', sub: '9 đơn chờ kiểm', icon: ClipboardCheck, color: 'text-purple-500', bg: 'bg-purple-50', page: 'staff-inspect' },
-              { label: 'Đóng gói đơn hàng', sub: '4 đơn sẵn sàng', icon: Box, color: 'text-emerald-500', bg: 'bg-emerald-50', page: 'staff-pack' },
-              { label: 'Gọi Shipper', sub: '3 đơn chờ lấy hàng', icon: PackageCheck, color: 'text-rose-500', bg: 'bg-rose-50', page: 'staff-shipper' },
-              { label: 'Thống kê ca làm', sub: 'Xem báo cáo hôm nay', icon: BarChart3, color: 'text-gray-500', bg: 'bg-gray-50', page: 'staff-orders' },
+              { label: 'Đơn đang đến kho', sub: `${v(report?.incomingOrders)} đơn cần theo dõi`, icon: Truck, color: 'text-blue-500', bg: 'bg-blue-50', page: 'staff-orders' },
+              { label: 'Kiểm duyệt chất lượng', sub: `${v(report?.qualityCheckingOrders)} đơn chờ kiểm`, icon: ClipboardCheck, color: 'text-purple-500', bg: 'bg-purple-50', page: 'staff-inspect' },
+              { label: 'Đóng gói đơn hàng', sub: `${v(report?.packagingOrders)} đơn sẵn sàng`, icon: Box, color: 'text-emerald-500', bg: 'bg-emerald-50', page: 'staff-pack' },
+              { label: 'Gọi Shipper', sub: `${v(report?.readyOrders)} đơn chờ lấy hàng`, icon: PackageCheck, color: 'text-rose-500', bg: 'bg-rose-50', page: 'staff-shipper' },
+              { label: 'Nông dân chờ duyệt', sub: `${v(report?.pendingFarmerApprovals)} nông dân`, icon: Package, color: 'text-orange-500', bg: 'bg-orange-50', page: 'staff-orders' },
+              { label: 'Thống kê ca làm', sub: `${v(report?.approvedTodayOrders)} duyệt hôm nay`, icon: BarChart3, color: 'text-gray-500', bg: 'bg-gray-50', page: 'staff-orders' },
             ].map((action, i) => (
               <button
                 key={i}
@@ -94,25 +104,31 @@ const StaffDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Activity Log */}
+        {/* Summary */}
         <div className="bg-white rounded-[40px] border border-gray-100 shadow-sm p-10 flex flex-col gap-6">
           <div className="flex items-center gap-3">
-            <Clock className="size-5 text-gray-400" />
-            <h4 className="font-black text-gray-800 uppercase tracking-tight">Nhật ký hoạt động</h4>
+            <TrendingUp className="size-5 text-gray-400" />
+            <h4 className="font-black text-gray-800 uppercase tracking-tight">Tóm tắt hôm nay</h4>
           </div>
-          <div className="flex flex-col gap-5">
-            {recentActivities.map((act, i) => (
-              <div key={i} className="flex items-start gap-4">
-                <div className={`mt-0.5 size-2 rounded-full shrink-0 ${act.type === 'success' ? 'bg-emerald-500' : act.type === 'error' ? 'bg-red-500' : 'bg-blue-400'}`} />
-                <div>
-                  <p className="text-xs font-bold text-gray-700 leading-relaxed">{act.text}</p>
-                  <p className="text-[10px] text-gray-400 font-medium mt-1">{act.time}</p>
-                </div>
+          <div className="flex flex-col gap-4">
+            {[
+              { label: 'Duyệt thành công', value: v(report?.approvedTodayOrders), color: 'text-emerald-600', bg: 'bg-emerald-50' },
+              { label: 'Bị từ chối chất lượng', value: v(report?.quantityCheckedReject), color: 'text-red-600', bg: 'bg-red-50' },
+              { label: 'Nông dân chờ duyệt', value: v(report?.pendingFarmerApprovals), color: 'text-orange-600', bg: 'bg-orange-50' },
+            ].map((item, i) => (
+              <div key={i} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                <p className="text-xs font-black text-gray-700">{item.label}</p>
+                <span className={`px-3 py-1 text-sm font-black rounded-xl ${item.bg} ${item.color}`}>
+                  {item.value}
+                </span>
               </div>
             ))}
           </div>
-          <button className="w-full py-3 text-[10px] font-black text-gray-400 uppercase tracking-widest border border-gray-100 rounded-2xl hover:bg-gray-50 transition-colors mt-2">
-            Xem toàn bộ lịch sử
+          <button
+            onClick={() => onNavigate('staff-profile')}
+            className="w-full py-3 text-[10px] font-black text-gray-400 uppercase tracking-widest border border-gray-100 rounded-2xl hover:bg-gray-50 transition-colors mt-2"
+          >
+            Xem hồ sơ nhân viên
           </button>
         </div>
       </div>

@@ -82,6 +82,8 @@ export interface StaffOrderReportResponse {
     qualityCheckingOrders?: number | null;
     /** Đơn hàng đã đạt chuẩn và cần đóng gói */
     packagingOrders?: number | null;
+    /** Đơn hàng đã đóng gói xong, chờ shipper lấy */
+    readyOrders?: number | null;
     /** Số lượng nông dân cần được duyệt / xử lý */
     pendingFarmerApprovals?: number | null;
     /** Số đơn hàng đã kiểm duyệt thành công hôm nay */
