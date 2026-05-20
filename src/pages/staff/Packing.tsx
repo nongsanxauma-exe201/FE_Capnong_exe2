@@ -23,7 +23,7 @@ const Packing: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await orderService.getOrdersForStaff(0, 50, 'QUALITY_APPROVED');
+      const res = await orderService.getOrdersForStaff(0, 50, 'QUALITY_CHECKED');
       setOrders(res.result?.content ?? []);
     } catch (err: any) {
       setError(err?.data?.message || err?.message || 'Không thể tải danh sách đơn');
