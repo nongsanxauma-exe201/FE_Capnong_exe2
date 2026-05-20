@@ -15,6 +15,7 @@ export { walletService } from './wallet.service';
 export { blogService } from './blog.service';
 export { qualityService } from './quality.service';
 export { paymentService } from './payment.service';
+export { vehicleService } from './vehicle.service';
 export { comboService } from './combo.service';
 export { cartService } from './cart.service';
 export { reviewService } from './review.service';
@@ -34,6 +35,7 @@ export type { OrderResponse, OrderItemResponse, OrderCreationRequest, TrackingRe
 export type { WalletResponse, WithdrawRequestResponse } from './wallet.service';
 export type { BlogResponse, BlogCreationRequest } from './blog.service';
 export type { PaymentResponse, CreatePaymentRequest } from './payment.service';
+export type { VehicleResponse, VehicleCreateRequest, VehicleUpdateRequest } from './vehicle.service';
 export type { QualityCheckRequest, QualityCheckResponse, QualityCriteriaItem, QualityCriteriaPageResponse } from './quality.service';
 export type {
     BuildComboResponse,

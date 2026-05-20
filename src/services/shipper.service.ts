@@ -1,5 +1,6 @@
 import { httpClient, ApiResponse } from './http.client';
 import { API_BASE_URL, TOKEN_KEY } from './api.config';
+import { PageResponse } from '../types';
 
 // ===================== TYPES =====================
 
@@ -113,6 +114,10 @@ class ShipperService {
 
   async getNearbyOrders(lat: number, lng: number): Promise<ApiResponse<AvailableOrderResponse[]>> {
     return httpClient.get<AvailableOrderResponse[]>(`/shipper/orders/nearby?lat=${lat}&lng=${lng}`);
+  }
+
+  async getAvailableOrders(page = 0, size = 10): Promise<ApiResponse<PageResponse<AvailableOrderResponse>>> {
+    return httpClient.get<PageResponse<AvailableOrderResponse>>(`/shipper/orders?page=${page}&size=${size}`);
   }
 
   async acceptOrder(orderId: number): Promise<ApiResponse<ShipperOrderResponse>> {

@@ -204,6 +204,16 @@ const UserProfile: React.FC = () => {
                                 </div>
                                 <ArrowRight className="size-4 opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0" />
                             </button>
+
+                            <button onClick={() => navigate('/wallet')} className="group flex items-center justify-between p-4 bg-white/10 hover:bg-white/20 rounded-2xl transition-all">
+                                <div className="flex items-center gap-3">
+                                    <div className="size-10 bg-white/10 rounded-xl flex items-center justify-center">
+                                        <Wallet className="size-5" />
+                                    </div>
+                                    <span className="font-bold text-sm">Rút tiền</span>
+                                </div>
+                                <ArrowRight className="size-4 opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0" />
+                            </button>
                         </div>
                     </div>
                 </div>

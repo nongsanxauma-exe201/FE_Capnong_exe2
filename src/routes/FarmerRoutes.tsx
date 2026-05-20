@@ -15,6 +15,7 @@ import Orders from '../pages/farmer/Orders';
 import OrderPreparation from '../pages/farmer/OrderPreparation';
 import Wallet from '../pages/farmer/Wallet';
 import Profile from '../pages/farmer/Profile';
+import Vehicles from '../pages/farmer/Vehicles';
 import FarmerDisputes from '../pages/farmer/FarmerDisputes';
 import { AppRole, KYCStatus } from '../types';
 // ── Wrapper components ──────────────────────────────────────────────────────
@@ -44,6 +45,11 @@ const EditProductWrapper = () => {
 const MysteryBoxEditorWrapper = () => {
     const navigate = useNavigate();
     return <MysteryBoxEditor onBack={() => navigate('/farmer/products')} />;
+};
+
+const VehiclesWrapper = () => {
+    const navigate = useNavigate();
+    return <Vehicles onNavigate={(path) => navigate(`/farmer/${path}`)} />;
 };
 
 const OrdersWrapper = () => {
@@ -88,6 +94,7 @@ const FarmerRoutes = () => {
             <Route path="edit-product/:productId" element={<EditProductWrapper />} />
             <Route path="mystery-box-editor" element={<MysteryBoxEditorWrapper />} />
             <Route path="mystery-box-editor/:boxId" element={<MysteryBoxEditorWrapper />} />
+            <Route path="vehicles" element={<VehiclesWrapper />} />
             <Route path="wallet" element={<Wallet />} />
             <Route path="orders" element={<OrdersWrapper />} />
             <Route path="order-prep/:orderId" element={<OrderPreparationWrapper />} />
