@@ -13,8 +13,10 @@ const FarmerLayout: React.FC = () => {
 
     // Extract the segment after /farmer/
     const segments = location.pathname.split('/');
-    const lastSegment = segments[segments.length - 1];
-    const currentPath = lastSegment === 'farmer' ? 'overview' : lastSegment;
+    // segments: ['', 'farmer', 'trip-join', '123']
+    const farmerIndex = segments.indexOf('farmer');
+    const subPath = farmerIndex >= 0 ? segments[farmerIndex + 1] : '';
+    const currentPath = !subPath || subPath === 'farmer' ? 'overview' : subPath;
 
     const handleNavigate = (path: string) => {
         navigate(`/farmer/${path}`);

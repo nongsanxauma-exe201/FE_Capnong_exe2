@@ -71,6 +71,9 @@ const FarmerDashboard: React.FC<{ onNavigate: (id: string) => void }> = ({ onNav
             <input type="text" placeholder="Tìm kiếm nhanh..." className="pl-10 pr-4 py-2.5 bg-white border border-gray-100 rounded-full text-sm outline-none focus:ring-2 focus:ring-primary/20 transition-all w-64 shadow-sm" />
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xl">search</span>
           </div>
+          <button onClick={() => onNavigate('trips')} className="rounded-3xl bg-primary px-4 py-2 text-sm font-black uppercase tracking-widest text-white shadow-sm hover:bg-primary/90 transition">
+            Vận chuyển tới kho
+          </button>
           <button onClick={() => onNavigate('notifications')} className="size-11 bg-white border border-gray-100 rounded-full flex items-center justify-center text-gray-400 relative shadow-sm">
             <span className="material-symbols-outlined fill-1">notifications</span>
             <span className="absolute top-2 right-2 size-2.5 bg-red-500 border-2 border-white rounded-full"></span>

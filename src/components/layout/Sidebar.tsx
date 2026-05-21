@@ -22,7 +22,8 @@ import {
   ChevronRight,
   ChefHat,
   MessageSquare,
-  ClipboardCheck
+  ClipboardCheck,
+  MapPin
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -38,6 +39,8 @@ const Sidebar: React.FC<SidebarProps> = ({ role, user, currentPath, onNavigate, 
     { name: 'Tổng quan', icon: LayoutDashboard, id: 'overview' },
     { name: 'Sản phẩm', icon: Package, id: 'products' },
     { name: 'Phương tiện', icon: Truck, id: 'vehicles' },
+    { name: 'Vận chuyển tới kho', icon: MapPin, id: 'trips' },
+    { name: 'Ghép đơn', icon: ChefHat, id: 'trip-join' },
     { name: 'Đơn hàng', icon: ShoppingCart, id: 'orders' },
     { name: 'Đánh giá', icon: MessageSquare, id: 'reviews' },
     { name: 'Thông báo', icon: Bell, id: 'notifications' },

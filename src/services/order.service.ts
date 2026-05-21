@@ -41,6 +41,7 @@ export interface OrderItemResponse {
     productName?: string;
     mysteryBoxType?: string;
     quantity: number;
+    unit?: string;
     unitPrice: number;
     itemType: 'PRODUCT' | 'MYSTERY_BOX';
     category?: string;
