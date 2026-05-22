@@ -70,6 +70,72 @@ function fmtDuration(min: number) {
   return `${Math.floor(min / 60)}h ${Math.round(min % 60)}p`;
 }
 
+function distanceKm(a: [number, number], b: [number, number]) {
+  const toRad = (v: number) => v * Math.PI / 180;
+  const r = 6371;
+  const dLat = toRad(b[0] - a[0]);
+  const dLng = toRad(b[1] - a[1]);
+  const lat1 = toRad(a[0]);
+  const lat2 = toRad(b[0]);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * r * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+// ─── Thuật toán tìm vị trí chèn tối ưu (Minimum Detour) ─────────────────────
+function insertJoinRequestWaypoint<T extends { lat: number; lng: number }>(
+  startPt: [number, number],
+  stops: T[],
+  pickupPt: [number, number],
+) {
+  // Gom tất cả các điểm thành 1 mảng theo thứ tự: Start -> Stop1 -> Stop2 ...
+  const allPoints: [number, number][] = [
+    startPt,
+    ...stops.map((s) => [s.lat, s.lng] as [number, number]),
+  ];
+
+  let bestIndex = 1; // Mặc định chèn sau điểm Start
+  let minDetour = Infinity;
+
+  // Duyệt qua từng cặp điểm nối tiếp nhau để tìm xem chèn vào đâu thì tốn ít quãng đường nhất
+  for (let i = 0; i < allPoints.length; i++) {
+    const current = allPoints[i];
+    const next = i === allPoints.length - 1 ? null : allPoints[i + 1];
+
+    if (next) {
+      // Độ lệch = (khoảng cách current->pickup + pickup->next) - khoảng cách current->next ban đầu
+      const detour = distanceKm(current, pickupPt) + distanceKm(pickupPt, next) - distanceKm(current, next);
+      if (detour < minDetour) {
+        minDetour = detour;
+        bestIndex = i + 1; 
+      }
+    } else {
+      // Nếu chèn ở điểm cuối cùng
+      const detour = distanceKm(current, pickupPt);
+      if (detour < minDetour) {
+        minDetour = detour;
+        bestIndex = i + 1;
+      }
+    }
+  }
+
+  // bestIndex đang tính cả điểm Start, nên index trong mảng stops sẽ lùi 1
+  const insertIndexInStops = bestIndex - 1;
+  const before = stops.slice(0, insertIndexInStops);
+  const after = stops.slice(insertIndexInStops);
+
+  return {
+    insertIndex: insertIndexInStops,
+    waypoints: [
+      startPt,
+      ...before.map((stop) => [stop.lat, stop.lng] as [number, number]),
+      pickupPt,
+      ...after.map((stop) => [stop.lat, stop.lng] as [number, number]),
+    ],
+  };
+}
+
 // ─── Status badge ─────────────────────────────────────────────────────────────
 const STATUS_CFG: Record<string, { label: string; cls: string }> = {
   PENDING: { label: 'Chờ duyệt', cls: 'bg-yellow-100 text-yellow-700' },
@@ -129,20 +195,17 @@ const TripJoinRequestDetail: React.FC = () => {
     const trip = req.trip;
     if (!trip?.startLat || !trip?.startLng) return;
 
-    // Check if current user is the trip owner
     const currentUserId = getCurrentUserId();
     const isOwner = currentUserId != null && trip.ownerId === currentUserId;
 
     let dead = false;
 
     (async () => {
-      // Reverse geocode (non-blocking)
       if (trip.startLat && trip.startLng)
         reverseGeocode(trip.startLat, trip.startLng).then(a => { if (!dead) setStartAddr(a); });
       if (req.pickupLat && req.pickupLng)
         reverseGeocode(req.pickupLat, req.pickupLng).then(a => { if (!dead) setPickupAddr(a); });
 
-      // Leaflet CSS
       if (!document.querySelector('link[href*="leaflet.css"]')) {
         const l = document.createElement('link');
         l.rel = 'stylesheet'; l.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
@@ -162,20 +225,21 @@ const TripJoinRequestDetail: React.FC = () => {
       }).addTo(map);
       leafletRef.current = map;
 
-      // ── Icons ──────────────────────────────────────────────────────────────
-      const mkIcon = (color: string, label: string) => L.divIcon({
+      // ── Icons Helper ───────────────────────────────────────────────────────
+      const mkIcon = (color: string, label: string, extraStyle = '') => L.divIcon({
         className: '',
-        html: `<div style="background:${color};color:#fff;border-radius:50%;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.3)">${label}</div>`,
+        html: `<div style="background:${color};color:#fff;border-radius:50%;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.3); ${extraStyle}">${label}</div>`,
         iconSize: [34, 34], iconAnchor: [17, 17],
       });
 
-      // Always show start marker
       L.marker(startPt, { icon: mkIcon('#3b82f6', 'S') })
         .addTo(map).bindPopup('<b>Điểm xuất phát</b>');
 
-      // Always show pickup marker
-      L.marker(pickupPt, { icon: mkIcon('#f59e0b', 'P') })
-        .addTo(map).bindPopup(`<b>Điểm lấy hàng</b><br/>${req.farmerName || ''}`);
+      // Join request marker - Nổi bật màu cam (Amber) cùng box-shadow sáng
+      L.marker(pickupPt, { icon: mkIcon('#f59e0b', 'Y/C', 'box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.4); transform: scale(1.05);') })
+        .addTo(map).bindPopup(
+          `<b>Yêu cầu ghép chuyến (MỚI)</b><br/>${req.farmerName || ''}<br/><span style="color:#6b7280">Điểm đang chờ duyệt vào lộ trình</span>`
+        );
 
       const sortedStops = (trip.tripStops ?? [])
         .slice()
@@ -186,47 +250,35 @@ const TripJoinRequestDetail: React.FC = () => {
       if (isOwner) {
         // ── OWNER: show all stops + full route ──────────────────────────────
         sortedStops.forEach(stop => {
-          const color = stop.isPickup ? '#10b981' : '#f59e0b';
+          const color = stop.isPickup ? '#10b981' : '#6366f1';
           L.marker([stop.lat, stop.lng], { icon: mkIcon(color, String(stop.sequence)) })
             .addTo(map)
             .bindPopup(`<b>Điểm ${stop.sequence}</b><br/>${stop.farmer?.shopName || stop.farmer?.fullName || ''}`);
         });
 
-        // Build full route: decode original polyline + extend to pickup
-        if (trip.encodedPolyline) {
-          const originalPts = decodePolyline(trip.encodedPolyline);
-          if (req.pickupLat && req.pickupLng) {
-            const lastPt = originalPts[originalPts.length - 1] ?? startPt;
-            const extra = await fetchOSRMRoute([lastPt, pickupPt]);
-            if (!dead) {
-              finalGeometry = extra
-                ? [...originalPts, ...extra.geometry.slice(1)]
-                : [...originalPts, pickupPt];
-              if (extra) {
-                setRouteDistKm((trip.totalEstimatedDistanceKm ?? 0) + extra.distanceKm);
-                setRouteDurMin(extra.durationMin);
-              }
-            }
-          } else {
-            finalGeometry = decodePolyline(trip.encodedPolyline);
-          }
-        } else {
-          // No polyline: OSRM through all waypoints
-          const waypoints: [number, number][] = [
-            startPt,
-            ...sortedStops.map(s => [s.lat, s.lng] as [number, number]),
-            pickupPt,
-          ];
-          const osrm = await fetchOSRMRoute(waypoints);
-          if (!dead && osrm) {
-            finalGeometry = osrm.geometry;
-            setRouteDistKm(osrm.distanceKm);
-            setRouteDurMin(osrm.durationMin);
-          }
+        // Tìm vị trí chèn tốt nhất dựa vào thuật toán tối ưu độ lệch
+        const { insertIndex, waypoints } = insertJoinRequestWaypoint(startPt, sortedStops, pickupPt);
+        
+        // Vẽ tia đứt nét màu cam tới điểm Join Request để dễ hình dung đoạn chèn thêm
+        const prevStop = insertIndex === 0 ? null : sortedStops[insertIndex - 1];
+        const nextStop = insertIndex === sortedStops.length ? null : sortedStops[insertIndex];
+
+        const prevPt: [number, number] = prevStop ? [prevStop.lat, prevStop.lng] : startPt;
+        const nextPt: [number, number] | null = nextStop ? [nextStop.lat, nextStop.lng] : null;
+
+        // L.polyline([prevPt, pickupPt], { color: '#f59e0b', weight: 4, opacity: 0.9, dashArray: '6 8' }).addTo(map);
+        // if (nextPt) {
+        //   L.polyline([pickupPt, nextPt], { color: '#f59e0b', weight: 4, opacity: 0.9, dashArray: '6 8' }).addTo(map);
+        // }
+
+        const osrm = await fetchOSRMRoute(waypoints);
+        if (!dead && osrm) {
+          finalGeometry = osrm.geometry;
+          setRouteDistKm(osrm.distanceKm);
+          setRouteDurMin(osrm.durationMin);
         }
       } else {
-        // ── NON-OWNER: only start → pickup, no other stops ──────────────────
-        // Route: start → pickup only (OSRM 2 points)
+        // ── NON-OWNER ──────────────────
         const osrm = await fetchOSRMRoute([startPt, pickupPt]);
         if (!dead) {
           if (osrm) {
@@ -240,7 +292,6 @@ const TripJoinRequestDetail: React.FC = () => {
       }
 
       if (!dead) {
-        // Fallback distance/duration from trip data
         if (trip.totalEstimatedDistanceKm && routeDistKm == null)
           setRouteDistKm(trip.totalEstimatedDistanceKm);
         if (trip.departureTime && trip.estimatedArrivalTime && routeDurMin == null) {
@@ -345,8 +396,8 @@ const TripJoinRequestDetail: React.FC = () => {
           <div className="px-6 py-4 border-b border-gray-50 flex items-center gap-3">
             <Navigation className="size-5 text-primary" />
             <div>
-              <p className="font-black text-gray-900">Lộ trình chuyến đi</p>
-              <p className="text-xs text-gray-500">Xuất phát → Các điểm dừng → Điểm lấy hàng</p>
+              <p className="font-black text-gray-900">Lộ trình đề xuất cập nhật</p>
+              <p className="text-xs text-gray-500">Xem trước tuyến đường nếu duyệt điểm ghép chuyến</p>
             </div>
           </div>
 
@@ -354,9 +405,9 @@ const TripJoinRequestDetail: React.FC = () => {
           <div className="flex flex-wrap gap-4 px-6 pt-4">
             {[
               { color: 'bg-blue-500', label: 'S', text: 'Xuất phát' },
-              { color: 'bg-amber-500', label: 'P', text: 'Lấy hàng (join request)' },
+              { color: 'bg-amber-500 ring-2 ring-amber-500/40', label: 'Y/C', text: 'Điểm ghép (Đang chờ)' },
               ...(getCurrentUserId() === req?.trip?.ownerId
-                ? [{ color: 'bg-emerald-500', label: 'N', text: 'Điểm dừng khác' }]
+                ? [{ color: 'bg-emerald-500', label: '#', text: 'Điểm dừng hiện tại' }]
                 : []
               ),
             ].map(i => (
@@ -377,13 +428,13 @@ const TripJoinRequestDetail: React.FC = () => {
             <div className="grid grid-cols-2 gap-4 px-6 pb-4">
               {routeDistKm != null && (
                 <div className="rounded-xl bg-indigo-50 border border-indigo-100 p-4">
-                  <p className="text-[11px] uppercase tracking-widest text-indigo-400 font-bold">Khoảng cách</p>
+                  <p className="text-[11px] uppercase tracking-widest text-indigo-400 font-bold">Tổng quãng đường</p>
                   <p className="text-xl font-black text-indigo-700 mt-1">{routeDistKm.toFixed(1)} km</p>
                 </div>
               )}
               {routeDurMin != null && (
                 <div className="rounded-xl bg-violet-50 border border-violet-100 p-4">
-                  <p className="text-[11px] uppercase tracking-widest text-violet-400 font-bold">Thời gian</p>
+                  <p className="text-[11px] uppercase tracking-widest text-violet-400 font-bold">Thời gian lái xe</p>
                   <p className="text-xl font-black text-violet-700 mt-1">{fmtDuration(routeDurMin)}</p>
                 </div>
               )}
@@ -396,16 +447,16 @@ const TripJoinRequestDetail: React.FC = () => {
               <p className="text-[11px] uppercase tracking-widest text-gray-400 font-bold mb-1">Điểm xuất phát</p>
               <p className="text-sm font-bold text-gray-700 leading-snug">{startAddr || '—'}</p>
             </div>
-            <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
-              <p className="text-[11px] uppercase tracking-widest text-gray-400 font-bold mb-1">Điểm lấy hàng</p>
-              <p className="text-sm font-bold text-gray-700 leading-snug">{pickupAddr || '—'}</p>
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+              <p className="text-[11px] uppercase tracking-widest text-amber-500 font-bold mb-1">Điểm lấy hàng (Yêu cầu)</p>
+              <p className="text-sm font-bold text-amber-900 leading-snug">{pickupAddr || '—'}</p>
             </div>
           </div>
 
 
           {/* Pricing */}
           {trip && (trip.basePrice || trip.distanceRate || trip.weightRate) && (
-            <section className="rounded-2xl border border-primary/20 bg-primary/5 p-5">
+            <section className="rounded-2xl border border-primary/20 bg-primary/5 p-5 mx-6 mb-6">
               <div className="flex items-center gap-2 mb-3">
                 <DollarSign className="size-4 text-primary" />
                 <p className="font-black text-gray-900">Cấu hình giá</p>
@@ -417,15 +468,14 @@ const TripJoinRequestDetail: React.FC = () => {
             </section>
           )}
 
-
         </div>
 
         {/* ── Right: Info panels ── */}
         <div className="space-y-4">
           {/* Join request info */}
-          <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+          <section className="rounded-2xl border border-amber-100 bg-amber-50/50 p-5 shadow-sm">
             <div className="flex items-center gap-2 mb-3">
-              <User className="size-4 text-primary" />
+              <User className="size-4 text-amber-600" />
               <p className="font-black text-gray-900">Chi tiết yêu cầu</p>
             </div>
             <Row label="Nông dân" value={req.farmerName || '—'} />

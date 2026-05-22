@@ -76,8 +76,8 @@ export interface TripStopResponse {
   };
   stopType?: string;
   orderResponses?: OrderResponse[];
-  isPickup: boolean;
-  isPicked?: boolean;
+  pickup: boolean;
+
   actualArrivalTime?: string;
   priceForStop: number;
 }

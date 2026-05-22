@@ -128,7 +128,13 @@ const isPickupStop = (stop: TripStopResponse) =>
   stop.stopType === "PICKUP" ;
 
 const isStopPicked = (stop: TripStopResponse) =>
-  stop.isPicked === true ;
+  stop.pickup === true ;
+
+const canPickStop = (stop: TripStopResponse) =>
+  stop.pickup === false && !isStopPicked(stop);
+
+const isStopDoneForSequence = (stop: TripStopResponse) =>
+  isStopPicked(stop);
 
 const getHeading = (from: RoutePoint, to: RoutePoint) => {
   const lat1 = from.lat * Math.PI / 180;
@@ -186,6 +192,8 @@ const TripDetail: React.FC = () => {
   const [fakeGpsRunning, setFakeGpsRunning] = useState(false);
   const [fakeGpsStep, setFakeGpsStep] = useState(0);
   const [pickingStopId, setPickingStopId] = useState<number | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
+  const [isTripOwner, setIsTripOwner] = useState(false);
 
   /* map refs */
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
@@ -229,6 +237,28 @@ const TripDetail: React.FC = () => {
     document.head.appendChild(link);
   };
 
+  /* ─── Get current user from localStorage ───────────────────────────────── */
+  useEffect(() => {
+    const userInfoStr = localStorage.getItem('user_info');
+    if (userInfoStr) {
+      try {
+        const userInfo = JSON.parse(userInfoStr);
+        setCurrentUserId(userInfo.id || userInfo.userId);
+      } catch (e) {
+        console.error('Failed to parse user_info from localStorage', e);
+      }
+    }
+  }, []);
+
+  /* ─── Check if current user is trip owner ──────────────────────────────── */
+  useEffect(() => {
+    if (trip && currentUserId != null) {
+      // Check if current user is the owner (farmerId) of the trip
+      const owner = trip.ownerId !== undefined && trip.ownerId === currentUserId;
+      setIsTripOwner(owner);
+    }
+  }, [trip, currentUserId]);
+
   /* ─── data fetch ───────────────────────────────────────────────────────── */
   useEffect(() => {
     if (!tripId) {
@@ -249,7 +279,13 @@ const TripDetail: React.FC = () => {
 
         setTrip(response.result);
         setRouteOrigin(null);
-        setSelectedStop(response.result.tripStops?.[0] ?? null);
+        // Only auto-select first stop for trip owner; non-owners start with no selection
+        const loadedTrip = response.result;
+        if (currentUserId != null && loadedTrip.ownerId === currentUserId) {
+          setSelectedStop(loadedTrip.tripStops?.[0] ?? null);
+        } else {
+          setSelectedStop(null);
+        }
       } catch (err) {
         console.error('Load trip detail failed', err);
         setError('Không thể tải thông tin chuyến đi. Vui lòng thử lại.');
@@ -371,9 +407,8 @@ const TripDetail: React.FC = () => {
         ? [routeOrigin.lat, routeOrigin.lng]
         : [trip.startLat, trip.startLng];
 
-      // 2. Router bắt đầu từ vị trí xe và bỏ các stop pickup khỏi waypoint.
-      // Pickup vẫn được render marker ở dưới để người dùng nhìn thấy trên bản đồ.
-      const routeStops = sortedStops.filter((stop) => !isPickupStop(stop));
+      // 2. Router bắt đầu từ vị trí xe và đi qua toàn bộ stop theo sequence.
+      const routeStops = sortedStops;
       const routeWaypoints: [number, number][] = [
         truckPoint,
         ...routeStops.map((stop) => [stop.lat, stop.lng] as [number, number]),
@@ -505,9 +540,14 @@ const TripDetail: React.FC = () => {
           </div>
         `;
 
-        const marker = L.marker([stop.lat, stop.lng], { icon: stopIcon }).addTo(map);
-        marker.bindPopup(popupContent, { maxWidth: 280 });
-        marker.on('click', () => { setSelectedStop(stop); });
+        const marker = L.marker([stop.lat, stop.lng], { icon: stopIcon }).addTo(map);
+        marker.bindPopup(popupContent, { maxWidth: 280 });
+        // Only allow setting selectedStop if user is owner OR this is their own stop
+        marker.on('click', () => {
+          if (isTripOwner || stop.farmer?.id === currentUserId) {
+            setSelectedStop(stop);
+          }
+        });
 
         stopMarkersRef.current.push(marker);
       });
@@ -519,9 +559,16 @@ const TripDetail: React.FC = () => {
   }, [trip, routeOrigin]);
 
   /* ─── derived ──────────────────────────────────────────────────────────── */
-  const stopList = useMemo(() => {
+  const allStops = useMemo(() => {
     return trip?.tripStops?.slice().sort((a, b) => a.sequence - b.sequence) ?? [];
   }, [trip]);
+
+  // For non-owners: filter to only show their own stops
+  const stopList = useMemo(() => {
+    if (isTripOwner) return allStops;
+    // Non-owner: only show stops where their farmerId matches
+    return allStops.filter(stop => stop.farmer?.id === currentUserId);
+  }, [allStops, isTripOwner, currentUserId]);
 
   const selectedStopOrders = selectedStop?.orderResponses ?? [];
 
@@ -531,9 +578,8 @@ const TripDetail: React.FC = () => {
 
   const pickableStopId = useMemo(() => {
     return stopList.find((stop, idx) => {
-      const isLastStop = idx === stopList.length - 1;
-      if (isLastStop || isStopPicked(stop)) return false;
-      return stopList.slice(0, idx).every(isStopPicked);
+      if (!canPickStop(stop)) return false;
+      return stopList.slice(0, idx).every(isStopDoneForSequence);
     })?.id ?? null;
   }, [stopList]);
 
@@ -578,11 +624,9 @@ const TripDetail: React.FC = () => {
     const startPoint: RoutePoint = truckLocation
       ? { lat: truckLocation.lat, lng: truckLocation.lng }
       : { lat: trip.startLat, lng: trip.startLng };
-    const routeStops = stopList.filter((stop) => !isPickupStop(stop));
-    const targets = routeStops.length > 0 ? routeStops : stopList;
     const points: RoutePoint[] = [
       startPoint,
-      ...targets.map((stop) => ({ lat: stop.lat, lng: stop.lng })),
+      ...stopList.map((stop) => ({ lat: stop.lat, lng: stop.lng })),
     ];
 
     let path: Array<RoutePoint & { heading?: number }> = [];
@@ -621,6 +665,7 @@ const TripDetail: React.FC = () => {
         ? {
             ...response.result,
             isPicked: true,
+            isPickup: true,
             actualArrivalTime: response.result.actualArrivalTime ?? new Date().toISOString(),
           }
         : null;
@@ -856,7 +901,7 @@ const TripDetail: React.FC = () => {
           {/* ── Right sidebar: Stops + Selected stop detail ───────────────── */}
           <div className="space-y-6">
             {/* ── Timeline stop list ──────────────────────────────────────── */}
-            <section className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+            <section className="rounded-2xl border border-gray200 bg-white shadow-sm">
               <div className="border-b border-gray-100 px-5 py-4">
                 <h3 className="text-base font-bold text-gray-900">Các điểm dừng</h3>
                 <p className="text-xs text-gray-500">Chọn điểm dừng để xem thông tin shop và đơn hàng</p>
@@ -935,7 +980,8 @@ const TripDetail: React.FC = () => {
                           </div>
                         </div>
                         </button>
-                        {stop.id === pickableStopId && (
+                        {/* Only show Pickup button for trip owner */}
+                        {isTripOwner && stop.id === pickableStopId && (
                           <div className="bg-white px-5 pb-3 pl-16">
                             <button
                               type="button"
@@ -948,7 +994,7 @@ const TripDetail: React.FC = () => {
                               ) : (
                                 <CheckCircle2 className="size-3.5" />
                               )}
-                              Picked
+                              Pickup
                             </button>
                           </div>
                         )}
