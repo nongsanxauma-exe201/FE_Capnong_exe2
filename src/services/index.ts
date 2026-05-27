@@ -19,7 +19,10 @@ export { vehicleService } from './vehicle.service';
 export { comboService } from './combo.service';
 export { cartService } from './cart.service';
 export { reviewService } from './review.service';
-export { buildPlanService } from './buildPlan.service';export { tripService } from './trip.service';export { chatBotService } from './chatbot.service';
+export { buildPlanService } from './buildPlan.service';
+export { tripService } from './trip.service';
+export { chatBotService } from './chatbot.service';
+export { staffService } from './staff.service';
 export { httpClient } from './http.client';
 
 // Export types
@@ -56,6 +59,7 @@ export type {
     BuildPlanItemCreateRequest
 } from '../types';
 export type { ChatRequest, ChatbotApiResponse } from './chatbot.service';
+export type { AvailableShipperResponse } from './staff.service';
 
 // Export constants
 export { API_BASE_URL, TOKEN_KEY, USER_INFO_KEY } from './api.config';
