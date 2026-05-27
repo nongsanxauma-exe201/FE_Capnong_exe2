@@ -38,6 +38,7 @@ export interface OrderItemResponse {
     orderDetailId?: number;
     productId?: number;
     mysteryBoxId?: number;
+    orderMysteryBoxId?: number;
     productName?: string;
     mysteryBoxType?: string;
     quantity: number;

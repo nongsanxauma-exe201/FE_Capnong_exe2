@@ -16,6 +16,22 @@ const toKg = (qty: number, unit = 'kg') =>
 const orderWeightKg = (o: OrderResponse) =>
   o.items.reduce((s, i) => s + toKg(i.quantity, i.unit || 'kg'), 0);
 
+const ORDER_STATUS_MAP: Record<string, string> = {
+  PENDING: 'Chờ xử lý',
+  CONFIRMED: 'Đã xác nhận',
+  READY_FOR_PICKUP: 'Chờ lấy hàng',
+  SHIPPING: 'Đang vận chuyển',
+  SHIPPING_TO_WAREHOUSE: 'Đang đến kho',
+  ARRIVED_AT_WAREHOUSE: 'Đã đến kho',
+  QUALITY_CHECKING: 'Đang kiểm tra chất lượng',
+  QUALITY_CHECKED: 'Đã kiểm tra',
+  READY: 'Chờ shipper lấy',
+  DELIVERED: 'Đã giao hàng',
+  CANCELLED: 'Đã hủy',
+  PAID: 'Đã thanh toán',
+  FAILED: 'Giao hàng thất bại',
+};
+
 // ─── Input component ──────────────────────────────────────────────────────────
 const Field: React.FC<{
   label: string; hint?: string; children: React.ReactNode; col2?: boolean;
@@ -412,7 +428,7 @@ const CreateTrip: React.FC = () => {
                             <p className="text-sm text-gray-500">{order.shippingAddress}</p>
                           </div>
                           <div className="flex flex-wrap gap-2 text-sm text-gray-600">
-                            <span className="rounded-full bg-gray-100 px-3 py-1">{order.status}</span>
+                            <span className="rounded-full bg-gray-100 px-3 py-1">{ORDER_STATUS_MAP[order.status] || order.status}</span>
                             <span className="rounded-full bg-gray-100 px-3 py-1">{order.items.length} sản phẩm</span>
                             <span className="rounded-full bg-gray-100 px-3 py-1">{w.toFixed(2)} kg</span>
                           </div>
