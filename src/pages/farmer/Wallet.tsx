@@ -77,6 +77,8 @@ const Wallet: React.FC = () => {
         setIsWithdrawModalOpen(true);
      };
 
+   
+
    const handleWithdrawSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
       const amountNum = Number(withdrawAmount);

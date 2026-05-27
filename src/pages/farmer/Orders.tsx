@@ -13,6 +13,7 @@ const getStatusLabel = (status: string) => {
     QUALITY_CHECKED: 'Đã kiểm tra', QUALITY_REJECTED: 'Không đạt chất lượng',
     PENDING: 'Chờ xác nhận', CONFIRMED: 'Đã xác nhận', SHIPPING: 'Đang giao',
     DELIVERED: 'Đã giao', CANCELLED: 'Đã hủy', FAILED: 'Thất bại', PAID: 'Đã thanh toán',
+    READY_FOR_PICKUP: 'Đã sẵn sàng để lấy hàng',
   };
   return map[status] || status.replace(/_/g, ' ');
 };
@@ -124,8 +125,17 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
       setIsProcessing(false);
     }
   };
-  const handleConfirmOrder = (orderId: number) => {
-    if (onPrepareOrder) onPrepareOrder(orderId.toString());
+  const handleConfirmOrder = async (orderId: number) => {
+    try {
+      setIsProcessing(true);
+      await orderService.updateOrder(orderId, { status: 'CONFIRMED' });
+      globalShowAlert(`Đã xác nhận đơn hàng #${orderId}`, 'Thành công', 'success');
+      fetchOrders();
+    } catch (err: any) {
+      globalShowAlert(err?.data?.message || 'Có lỗi khi xác nhận đơn hàng', 'Lỗi', 'error');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const tabs = [
@@ -133,6 +143,8 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
 
     // Chờ nông dân xác nhận
     { label: 'Chờ xác nhận', statuses: ['PENDING', 'PAID'] },
+
+     { label: 'Đã sẵn sàng', statuses: ['READY_FOR_PICKUP'] },
 
     // Nông dân chuẩn bị hàng
     { label: 'Đang chuẩn bị', statuses: ['CONFIRMED'] },
@@ -388,12 +400,12 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
                       </>
                     )}
 
-                    {isConfirmed && (
+                    {/* {isConfirmed && (
                       <button disabled={isProcessing} onClick={() => hancleDeliveringWarehouse(order.id)}
                         className="w-full py-4 bg-primary text-white font-black rounded-2xl flex items-center justify-center gap-2 shadow-xl shadow-primary/20 hover:bg-primary-dark transition-all transform active:scale-95 disabled:opacity-50">
                         <CheckCircle2 className="size-5" />Đơn hàng đang giao tới kho
                       </button>
-                    )}
+                    )} */}
 
                     {isShipping && (
                       <div className="p-5 bg-blue-50 rounded-3xl border border-blue-100 text-center">

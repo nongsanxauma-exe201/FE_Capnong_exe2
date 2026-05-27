@@ -1,0 +1,203 @@
+node_modules/@types/react-router-dom/index.d.ts(13,10): error TS2724: '"react-router"' has no exported member named 'match'. Did you mean 'UIMatch'?
+node_modules/@types/react-router-dom/index.d.ts(19,5): error TS2305: Module '"react-router"' has no exported member 'PromptProps'.
+node_modules/@types/react-router-dom/index.d.ts(20,5): error TS2305: Module '"react-router"' has no exported member 'Prompt'.
+node_modules/@types/react-router-dom/index.d.ts(23,5): error TS2305: Module '"react-router"' has no exported member 'RedirectProps'.
+node_modules/@types/react-router-dom/index.d.ts(24,5): error TS2724: '"react-router"' has no exported member named 'Redirect'. Did you mean 'redirect'?
+node_modules/@types/react-router-dom/index.d.ts(25,5): error TS2305: Module '"react-router"' has no exported member 'RouteChildrenProps'.
+node_modules/@types/react-router-dom/index.d.ts(26,5): error TS2305: Module '"react-router"' has no exported member 'RouteComponentProps'.
+node_modules/@types/react-router-dom/index.d.ts(33,5): error TS2305: Module '"react-router"' has no exported member 'SwitchProps'.
+node_modules/@types/react-router-dom/index.d.ts(34,5): error TS2305: Module '"react-router"' has no exported member 'Switch'.
+node_modules/@types/react-router-dom/index.d.ts(35,5): error TS2724: '"react-router"' has no exported member named 'match'. Did you mean 'UIMatch'?
+node_modules/@types/react-router-dom/index.d.ts(37,5): error TS2305: Module '"react-router"' has no exported member 'withRouter'.
+node_modules/@types/react-router-dom/index.d.ts(38,5): error TS2724: '"react-router"' has no exported member named 'RouterChildContext'. Did you mean 'RouterContext'?
+node_modules/@types/react-router-dom/index.d.ts(39,5): error TS2305: Module '"react-router"' has no exported member 'useHistory'.
+node_modules/@types/react-router-dom/index.d.ts(42,5): error TS2724: '"react-router"' has no exported member named 'useRouteMatch'. Did you mean 'RouteMatch'?
+node_modules/react-router-dom/dist/index.d.ts(1,69): error TS2307: Cannot find module 'react-router/dom' or its corresponding type declarations.
+  There are types at 'C:/Users/Lenovo/OneDrive/Desktop/Summer2026/EXE202/Nongsanxauma_FE/FE_Capnong_exe2/node_modules/react-router/dist/development/dom-export.d.mts', but this result could not be resolved under your current 'moduleResolution' setting. Consider updating to 'node16', 'nodenext', or 'bundler'.
+node_modules/react-router/dist/development/index.d.ts(4,8): error TS1259: Module '"C:/Users/Lenovo/OneDrive/Desktop/Summer2026/EXE202/Nongsanxauma_FE/FE_Capnong_exe2/node_modules/@types/react/index"' can only be default-imported using the 'esModuleInterop' flag
+node_modules/react-router/dist/development/instrumentation--6Pioq_G.d.ts(413,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.
+src/pages/shipper/Dashboard.tsx(1,8): error TS1259: Module '"C:/Users/Lenovo/OneDrive/Desktop/Summer2026/EXE202/Nongsanxauma_FE/FE_Capnong_exe2/node_modules/@types/react/index"' can only be default-imported using the 'esModuleInterop' flag
+src/pages/shipper/Dashboard.tsx(4,8): error TS1259: Module '"C:/Users/Lenovo/OneDrive/Desktop/Summer2026/EXE202/Nongsanxauma_FE/FE_Capnong_exe2/node_modules/@types/sockjs-client/index"' can only be default-imported using the 'esModuleInterop' flag
+src/pages/shipper/Dashboard.tsx(18,21): error TS6142: Module './Fakegps' was resolved to 'C:/Users/Lenovo/OneDrive/Desktop/Summer2026/EXE202/Nongsanxauma_FE/FE_Capnong_exe2/src/pages/shipper/Fakegps.tsx', but '--jsx' is not set.
+src/pages/shipper/Dashboard.tsx(21,33): error TS6142: Module '../../contexts/PopupContext' was resolved to 'C:/Users/Lenovo/OneDrive/Desktop/Summer2026/EXE202/Nongsanxauma_FE/FE_Capnong_exe2/src/contexts/PopupContext.tsx', but '--jsx' is not set.
+src/pages/shipper/Dashboard.tsx(234,33): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(234,76): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(236,7): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(237,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(237,130): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(238,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(242,7): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(246,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(247,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(248,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(249,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(250,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(251,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(253,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(255,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(261,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(261,21): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(262,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(263,34): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(265,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(265,21): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(265,80): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(267,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(267,21): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(267,63): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(270,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(272,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(274,21): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(277,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(279,21): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(282,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(284,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(286,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(288,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(293,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(301,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(329,7): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(330,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(332,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(333,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(333,136): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(334,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(337,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(338,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(340,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(344,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(346,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(347,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(348,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(349,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(351,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(355,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(356,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(359,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(360,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(361,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(363,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(364,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(365,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(366,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(368,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(369,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(370,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(378,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(379,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(380,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(382,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(383,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(384,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(385,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(387,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(388,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(389,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(398,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(399,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(400,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(409,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(416,51): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(416,53): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(417,48): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(417,50): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(418,14): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(418,29): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(421,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(427,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(428,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(430,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(431,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(440,5): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(442,7): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(443,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(444,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(444,104): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(445,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(446,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(447,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(450,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(452,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(453,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(454,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(458,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(463,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(465,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(466,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(467,33): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(469,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(470,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(472,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(474,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(479,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(479,178): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(483,7): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(484,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(485,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(487,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(489,44): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(490,45): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(491,45): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(493,76): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(497,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(498,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(499,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(501,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(507,7): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(508,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(509,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(510,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(511,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(517,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(518,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(520,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(522,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(523,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(525,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(532,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(533,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(539,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(540,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(541,42): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(541,88): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(543,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(544,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(549,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(555,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(556,31): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(563,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(564,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(566,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(568,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(573,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(574,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(575,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(579,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(582,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(585,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(588,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(597,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(598,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(599,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(600,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(601,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(602,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(602,177): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(604,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(606,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(607,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(608,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(611,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(612,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(612,169): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(613,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(613,24): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/shipper/Dashboard.tsx(613,79): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/services/api.config.ts(7,29): error TS1343: The 'import.meta' meta-property is only allowed when the '--module' option is 'es2020', 'es2022', 'esnext', 'system', 'node16', 'node18', or 'nodenext'.
+src/services/api.config.ts(7,41): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/services/index.ts(52,5): error TS2724: '"../types"' has no exported member named 'BuildPlanItemResponse'. Did you mean 'BuildPlanResponse'?
+src/services/index.ts(53,5): error TS2724: '"../types"' has no exported member named 'BuildPlanCreateRequest'. Did you mean 'BuildPlanRequest'?
+src/services/index.ts(54,5): error TS2305: Module '"../types"' has no exported member 'BuildPlanItemCreateRequest'.
+src/services/index.ts(56,28): error TS2724: '"./chatbot.service"' has no exported member named 'ChatbotApiResponse'. Did you mean 'ChatResponse'?
+src/services/review.service.ts(2,10): error TS2459: Module '"./product.service"' declares 'PageResponse' locally, but it is not exported.
+src/services/user.service.ts(4,10): error TS2459: Module '"./product.service"' declares 'PageResponse' locally, but it is not exported.

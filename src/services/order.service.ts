@@ -41,6 +41,7 @@ export interface OrderItemResponse {
     productName?: string;
     mysteryBoxType?: string;
     quantity: number;
+    unit?: string;
     unitPrice: number;
     itemType: 'PRODUCT' | 'MYSTERY_BOX';
     category?: string;
@@ -79,16 +80,18 @@ export interface OrderResponse {
 export interface StaffOrderReportResponse {
     /** Đơn hàng đang được vận chuyển tới kho */
     incomingOrders?: number | null;
-    /** Đơn hàng đang kiểm tra */
+    /** Đơn hàng đang kiểm tra (QUALITY_CHECKING) */
     quantityChecking?: number | null;
-    /** Đơn hàng đang chờ kiểm duyệt chất lượng */
+    /** Đơn hàng đang chờ kiểm duyệt chất lượng (ARRIVED_AT_WAREHOUSE) */
     qualityCheckingOrders?: number | null;
+    /** Đơn hàng đã đạt chuẩn và cần đóng gói (QUALITY_CHECKED) */
+    packagingOrders?: number | null;
+    /** Đơn hàng đã đóng gói xong, chờ shipper lấy (READY) */
+    readyOrders?: number | null;
     /** Số lượng nông dân cần được duyệt / xử lý */
     pendingFarmerApprovals?: number | null;
     /** Số đơn hàng đã kiểm duyệt thành công hôm nay */
     approvedTodayOrders?: number | null;
-    /** Chờ đóng gói */
-    packagingOrders?: number | null;
 }
 
 class OrderService {

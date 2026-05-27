@@ -15,11 +15,14 @@ export { walletService } from './wallet.service';
 export { blogService } from './blog.service';
 export { qualityService } from './quality.service';
 export { paymentService } from './payment.service';
+export { vehicleService } from './vehicle.service';
 export { comboService } from './combo.service';
 export { cartService } from './cart.service';
 export { reviewService } from './review.service';
 export { buildPlanService } from './buildPlan.service';
+export { tripService } from './trip.service';
 export { chatBotService } from './chatbot.service';
+export { staffService } from './staff.service';
 export { httpClient } from './http.client';
 
 // Export types
@@ -34,6 +37,8 @@ export type { OrderResponse, OrderItemResponse, OrderCreationRequest, TrackingRe
 export type { WalletResponse, WithdrawRequestResponse } from './wallet.service';
 export type { BlogResponse, BlogCreationRequest } from './blog.service';
 export type { PaymentResponse, CreatePaymentRequest } from './payment.service';
+export type { VehicleResponse, VehicleCreateRequest, VehicleUpdateRequest } from './vehicle.service';
+export type { TripResponse, TripStopResponse, TripStatus, TripJoinStatus, TripJoinRequestResponse, CreateTripJoinRequest, CreateTripRequest, WarehouseResponse } from './trip.service';
 export type { QualityCheckRequest, QualityCheckResponse, QualityCriteriaItem, QualityCriteriaPageResponse } from './quality.service';
 export type {
     BuildComboResponse,
@@ -54,6 +59,7 @@ export type {
     BuildPlanItemCreateRequest
 } from '../types';
 export type { ChatRequest, ChatbotApiResponse } from './chatbot.service';
+export type { AvailableShipperResponse } from './staff.service';
 
 // Export constants
 export { API_BASE_URL, TOKEN_KEY, USER_INFO_KEY } from './api.config';

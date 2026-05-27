@@ -8,6 +8,7 @@ import {
   AvailableOrderResponse,
   ShipperOrderResponse,
 } from '../../services/shipper.service';
+import { PageResponse } from '../../types';
 import { API_BASE_URL, TOKEN_KEY } from '../../services/api.config';
 import {
   Bell, MapPin, Wallet, Navigation, Zap, Clock, Bike, Package,
@@ -37,6 +38,9 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
   const [shipperLat, setShipperLat] = useState<number | null>(null);
   const [shipperLng, setShipperLng] = useState<number | null>(null);
   const [availableOrders, setAvailableOrders] = useState<AvailableOrderResponse[]>([]);
+  const [ordersPage, setOrdersPage] = useState<PageResponse<AvailableOrderResponse> | null>(null);
+  const [pageIndex, setPageIndex] = useState<number>(0);
+  const [pageSize, setPageSize] = useState<number>(10);
   const [myOrders, setMyOrders] = useState<ShipperOrderResponse[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [loadingMyOrders, setLoadingMyOrders] = useState(false);
@@ -74,7 +78,7 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
       try {
         const res = await notificationService.getMyNotifications();
         if (res.result) setNotifications(res.result);
-      } catch {} finally { setLoadingNotifications(false); }
+      } catch { } finally { setLoadingNotifications(false); }
     };
     fetch();
     const interval = setInterval(fetch, 30000);
@@ -86,7 +90,7 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
     try {
       const res = await shipperService.getMyOrders();
       if (res.result) setMyOrders(res.result.filter((o: ShipperOrderResponse) => o.status === 'SHIPPING'));
-    } catch {} finally { setLoadingMyOrders(false); }
+    } catch { } finally { setLoadingMyOrders(false); }
   };
 
   useEffect(() => {
@@ -110,16 +114,36 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'Đơn hàng mới' && gpsStatus === 'idle') requestGpsAndFetchOrders();
-  }, [activeTab]);
+    if (activeTab === 'Đơn hàng mới') {
+      // Load paged orders for shipper (no nearby-only logic)
+      fetchAvailableOrders(pageIndex, pageSize);
+    }
+  }, [activeTab, pageIndex, pageSize]);
 
   const fetchNearbyOrders = async (lat: number, lng: number) => {
     setLoadingOrders(true);
     try {
       const res = await shipperService.getNearbyOrders(lat, lng);
-      if (res.result) setAvailableOrders(res.result);
+      setAvailableOrders(res.result ?? []);
     } catch { setOrdersError('Không tải được danh sách đơn.'); }
     finally { setLoadingOrders(false); }
+  };
+
+  const fetchAvailableOrders = async (p = 0, s = 10) => {
+    setLoadingOrders(true);
+    setOrdersError(null);
+    try {
+      const res = await shipperService.getAvailableOrders(p, s);
+      if (res.result) {
+        setOrdersPage(res.result);
+        setAvailableOrders(res.result.content ?? []);
+      } else {
+        setAvailableOrders([]);
+      }
+    } catch (err) {
+      setOrdersError('Không tải được danh sách đơn.');
+      setAvailableOrders([]);
+    } finally { setLoadingOrders(false); }
   };
 
   const handleAcceptOrder = async (orderId: number) => {
@@ -228,15 +252,14 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
                 </div>
                 <span className="text-xl font-black text-primary">{fmtCur(order.shippingFee)}</span>
               </div>
-              <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl ${
-                isTracking && trackingStatus === 'active' ? 'bg-green-50 border border-green-100' :
+              <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl ${isTracking && trackingStatus === 'active' ? 'bg-green-50 border border-green-100' :
                 isTracking && trackingStatus === 'starting' ? 'bg-yellow-50 border border-yellow-100' :
-                'bg-gray-50 border border-gray-100'
-              }`}>
+                  'bg-gray-50 border border-gray-100'
+                }`}>
                 {isTracking && trackingStatus === 'active' ? (
                   <><div className="size-2 bg-green-500 rounded-full animate-pulse" />
-                  <span className="text-xs font-black text-green-700">Đang phát GPS live</span>
-                  {shipperLat && <span className="text-[10px] text-green-500 ml-auto font-mono">{shipperLat.toFixed(4)}, {shipperLng?.toFixed(4)}</span>}</>
+                    <span className="text-xs font-black text-green-700">Đang phát GPS live</span>
+                    {shipperLat && <span className="text-[10px] text-green-500 ml-auto font-mono">{shipperLat.toFixed(4)}, {shipperLng?.toFixed(4)}</span>}</>
                 ) : isTracking && trackingStatus === 'starting' ? (
                   <><Loader2 className="size-4 text-yellow-600 animate-spin" /><span className="text-xs font-black text-yellow-700">Đang kết nối...</span></>
                 ) : (
@@ -293,109 +316,118 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
   };
 
   // ===================== RENDER: ORDER CARDS (ĐƠN MỚI) =====================
-  // ✅ Dùng biến thay vì function để React re-render đúng khi radius thay đổi
-  const radiusKm = parseInt(radius); // '5km' → 5, '10km' → 10, '15km' → 15
-  const filteredOrders = availableOrders.filter(order =>
-    order.shipToShopKm == null || order.shipToShopKm <= radiusKm
-  );
-
-  const renderOrderCards = () => (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
-      {filteredOrders.length === 0 ? (
-        <div className="col-span-3 flex flex-col items-center justify-center py-24 gap-6 text-center">
-          <div className="size-24 bg-gray-50 rounded-[40px] flex items-center justify-center text-gray-200 border border-gray-100"><Package className="size-12" /></div>
-          <p className="text-lg font-black text-gray-400 uppercase">
-            Không có đơn nào trong vòng {radius}
-          </p>
-          <p className="text-xs text-gray-400">Thử tăng bán kính tìm kiếm hoặc tải lại</p>
-          <button onClick={() => shipperLat && shipperLng ? fetchNearbyOrders(shipperLat, shipperLng) : requestGpsAndFetchOrders()}
-            className="px-8 py-3 bg-primary/10 text-primary rounded-2xl text-xs font-black uppercase flex items-center gap-2">
-            <RefreshCw className="size-4" /> Tải lại
-          </button>
-        </div>
-      ) : filteredOrders.map((order) => (
-        <div key={order.orderId} className="bg-white rounded-[40px] border border-gray-100 shadow-sm hover:shadow-xl transition-all p-8 flex flex-col group relative overflow-hidden">
-          {/* Header */}
-          <div className="flex justify-between items-start mb-6">
-            <div className="px-3 py-1 rounded-lg flex items-center gap-1.5 bg-gray-50 text-gray-400">
-              <Clock className="size-3" />
-              <span className="text-[10px] font-black uppercase">{fmtTime(order.createdAt)}</span>
+  const renderOrderCards = () => {
+    const ordersToShow = ordersPage?.content ?? availableOrders;
+    return (
+      <>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-6">
+          {ordersToShow.length === 0 ? (
+            <div className="col-span-3 flex flex-col items-center justify-center py-24 gap-6 text-center">
+              <div className="size-24 bg-gray-50 rounded-[40px] flex items-center justify-center text-gray-200 border border-gray-100"><Package className="size-12" /></div>
+              <p className="text-lg font-black text-gray-400 uppercase">
+                Không có đơn nào
+              </p>
+              <p className="text-xs text-gray-400">Thử tải lại</p>
+              <button onClick={() => fetchAvailableOrders(pageIndex, pageSize)}
+                className="px-8 py-3 bg-primary/10 text-primary rounded-2xl text-xs font-black uppercase flex items-center gap-2">
+                <RefreshCw className="size-4" /> Tải lại
+              </button>
             </div>
-            <span className="text-2xl font-black text-primary">{fmtCur(order.shippingFee)}</span>
-          </div>
-
-          {/* Route: shipper → shop → buyer */}
-          <div className="space-y-5 relative mb-6">
-            <div className="absolute left-2.5 top-2 bottom-2 w-0.5 border-l border-dashed border-gray-200" />
-
-            {/* Điểm lấy hàng (SHOP) */}
-            <div className="relative flex items-start gap-4">
-              <div className="size-5 bg-orange-100 border-2 border-white rounded-full flex items-center justify-center shrink-0 mt-1 shadow-sm">
-                <div className="size-1.5 bg-orange-500 rounded-full" />
+          ) : ordersToShow.map((order) => (
+            <div key={order.orderId} className="bg-white rounded-[40px] border border-gray-100 shadow-sm hover:shadow-xl transition-all p-8 flex flex-col group relative overflow-hidden">
+              {/* Header */}
+              <div className="flex justify-between items-start mb-6">
+                <div className="px-3 py-1 rounded-lg flex items-center gap-1.5 bg-gray-50 text-gray-400">
+                  <Clock className="size-3" />
+                  <span className="text-[10px] font-black uppercase">{fmtTime(order.createdAt)}</span>
+                </div>
+                <span className="text-2xl font-black text-primary">{fmtCur(order.shippingFee)}</span>
               </div>
-              <div className="flex-1">
-                <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-0.5">LẤY HÀNG TẠI SHOP</p>
-                <h4 className="text-sm font-black text-gray-900">{order.shopName}</h4>
-                <p className="text-[11px] text-gray-500 font-medium leading-tight">{order.shopAddress}</p>
-                {/* ✅ Khoảng cách shipper → shop */}
-                <div className="flex items-center gap-1 mt-1">
-                  <Navigation className="size-3 text-orange-500" />
-                  <span className="text-[10px] text-orange-600 font-black">
-                    {fmtDist(order.shipToShopKm)} từ vị trí bạn
-                  </span>
+
+              {/* Route: shipper → shop → buyer */}
+              <div className="space-y-5 relative mb-6">
+                <div className="absolute left-2.5 top-2 bottom-2 w-0.5 border-l border-dashed border-gray-200" />
+
+                {/* Điểm lấy hàng (SHOP) */}
+                <div className="relative flex items-start gap-4">
+                  <div className="size-5 bg-orange-100 border-2 border-white rounded-full flex items-center justify-center shrink-0 mt-1 shadow-sm">
+                    <div className="size-1.5 bg-orange-500 rounded-full" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-0.5">LẤY HÀNG TẠI KHO</p>
+                    <h4 className="text-sm font-black text-gray-900">{order.shopName}</h4>
+                    <p className="text-[11px] text-gray-500 font-medium leading-tight">{order.shopAddress}</p>
+                    {/* ✅ Khoảng cách shipper → shop */}
+                    {/* <div className="flex items-center gap-1 mt-1">
+                      <Navigation className="size-3 text-orange-500" />
+                      <span className="text-[10px] text-orange-600 font-black">
+                        {fmtDist(order.shipToShopKm)} từ vị trí bạn
+                      </span>
+                    </div> */}
+                  </div>
+                </div>
+
+                {/* Điểm giao hàng (BUYER) */}
+                <div className="relative flex items-start gap-4">
+                  <div className="size-5 bg-blue-100 border-2 border-white rounded-full flex items-center justify-center shrink-0 mt-1 shadow-sm">
+                    <div className="size-1.5 bg-blue-500 rounded-full" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-0.5">GIAO ĐẾN</p>
+                    <h4 className="text-sm font-black text-gray-900">{order.recipientName}</h4>
+                    <p className="text-[11px] text-gray-500 font-medium leading-tight">{order.shippingAddress}</p>
+                    {/* ✅ Khoảng cách shop → buyer */}
+                    {/* <div className="flex items-center gap-1 mt-1">
+                      <Navigation className="size-3 text-blue-500" />
+                      <span className="text-[10px] text-blue-600 font-black">
+                        {fmtDist(order.shopToBuyerKm)} từ shop
+                      </span>
+                    </div> */}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Điểm giao hàng (BUYER) */}
-            <div className="relative flex items-start gap-4">
-              <div className="size-5 bg-blue-100 border-2 border-white rounded-full flex items-center justify-center shrink-0 mt-1 shadow-sm">
-                <div className="size-1.5 bg-blue-500 rounded-full" />
+              {/* ✅ Tổng khoảng cách */}
+              <div className="flex items-center justify-between bg-gray-50 rounded-2xl px-4 py-2.5 mb-6 border border-gray-100">
+                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Tổng quãng đường</span>
+                <span className="text-sm font-black text-gray-800">
+                  {order.distanceKm != null
+                    ? fmtDist(order.distanceKm)
+                    : '?'
+                  }
+                </span>
               </div>
-              <div className="flex-1">
-                <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-0.5">GIAO ĐẾN</p>
-                <h4 className="text-sm font-black text-gray-900">{order.recipientName}</h4>
-                <p className="text-[11px] text-gray-500 font-medium leading-tight">{order.shippingAddress}</p>
-                {/* ✅ Khoảng cách shop → buyer */}
-                <div className="flex items-center gap-1 mt-1">
-                  <Navigation className="size-3 text-blue-500" />
-                  <span className="text-[10px] text-blue-600 font-black">
-                    {fmtDist(order.shopToBuyerKm)} từ shop
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
 
-          {/* ✅ Tổng khoảng cách */}
-          <div className="flex items-center justify-between bg-gray-50 rounded-2xl px-4 py-2.5 mb-6 border border-gray-100">
-            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Tổng quãng đường</span>
-            <span className="text-sm font-black text-gray-800">
-              {order.shipToShopKm != null && order.shopToBuyerKm != null
-                ? fmtDist(order.shipToShopKm + order.shopToBuyerKm)
-                : '?'
-              }
-            </span>
-          </div>
-
-          {/* Nút nhận đơn */}
-          <button
-            onClick={() => handleAcceptOrder(order.orderId)}
-            disabled={acceptingOrderId === order.orderId}
-            className={`w-full py-4 font-black rounded-2xl flex items-center justify-center gap-2 shadow-xl transition-all transform active:scale-95
+              {/* Nút nhận đơn */}
+              <button
+                onClick={() => handleAcceptOrder(order.orderId)}
+                disabled={acceptingOrderId === order.orderId}
+                className={`w-full py-4 font-black rounded-2xl flex items-center justify-center gap-2 shadow-xl transition-all transform active:scale-95
               ${acceptSuccess === order.orderId ? 'bg-green-500 text-white' : 'bg-primary text-white hover:bg-primary-dark'}
               ${acceptingOrderId === order.orderId ? 'opacity-70 cursor-not-allowed' : ''}`}
-          >
-            {acceptingOrderId === order.orderId ? <><Loader2 className="size-4 animate-spin" /> Đang xử lý...</> :
-             acceptSuccess === order.orderId ? <><CheckCircle2 className="size-4" /> Đã nhận!</> :
-             <>Nhận đơn này <ArrowRight className="size-4 group-hover:translate-x-1 transition-transform" /></>}
-          </button>
+              >
+                {acceptingOrderId === order.orderId ? <><Loader2 className="size-4 animate-spin" /> Đang xử lý...</> :
+                  acceptSuccess === order.orderId ? <><CheckCircle2 className="size-4" /> Đã nhận!</> :
+                    <>Nhận đơn này <ArrowRight className="size-4 group-hover:translate-x-1 transition-transform" /></>}
+              </button>
 
-          <div className="absolute top-0 right-0 size-32 bg-primary/5 rounded-full translate-x-1/2 -translate-y-1/2 blur-2xl group-hover:bg-primary/10 transition-colors" />
+              <div className="absolute top-0 right-0 size-32 bg-primary/5 rounded-full translate-x-1/2 -translate-y-1/2 blur-2xl group-hover:bg-primary/10 transition-colors" />
+            </div>
+          ))}
         </div>
-      ))}
-    </div>
-  );
+        {/* Pagination controls when using paged API */}
+        {ordersPage && (
+          <div className="flex items-center justify-center gap-4 mt-6">
+            <button disabled={pageIndex <= 0} onClick={() => setPageIndex(prev => Math.max(0, prev - 1))}
+              className="px-4 py-2 bg-white border rounded-2xl disabled:opacity-50">Trước</button>
+            <div className="text-sm font-black">{pageIndex + 1} / {ordersPage.totalPages || 1}</div>
+            <button disabled={pageIndex + 1 >= (ordersPage.totalPages || 1)} onClick={() => setPageIndex(prev => prev + 1)}
+              className="px-4 py-2 bg-white border rounded-2xl disabled:opacity-50">Tiếp</button>
+          </div>
+        )}
+      </>
+    );
+  };
 
   // ===================== MAIN RENDER =====================
   return (
@@ -441,7 +473,6 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
           <button onClick={onLogout} className="size-10 bg-red-500/20 text-red-200 rounded-xl flex items-center justify-center hover:bg-red-500 hover:text-white transition-all"><LogOut className="size-5" /></button>
         </div>
       </div>
-
       {/* Sub Nav */}
       <div className="bg-white border-b border-gray-100 shadow-sm sticky top-[72px] z-40 px-4 md:px-10 lg:px-40">
         <div className="max-w-[1280px] mx-auto flex items-center justify-between">
@@ -472,25 +503,16 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
           <div>
             <h1 className="text-4xl font-black text-gray-900 uppercase tracking-tighter">{activeTab}</h1>
             <p className="text-gray-400 font-bold mt-1 uppercase text-xs tracking-widest">
-              {activeTab === 'Đơn hàng mới' && (gpsStatus === 'granted'
-                ? `📍 ${filteredOrders.length} đơn trong vòng ${radius}`
-                : 'Bật GPS để xem đơn')}
+              {activeTab === 'Đơn hàng mới' && (loadingOrders ? 'Đang tải...' : `📍 ${ordersPage?.totalElements ?? availableOrders.length} đơn`)}
               {activeTab === 'Đơn đang giao' && `${myOrders.length} đơn đang giao`}
             </p>
           </div>
           {activeTab === 'Đơn hàng mới' && (
             <div className="flex items-center gap-3">
-              <button onClick={() => shipperLat && shipperLng ? fetchNearbyOrders(shipperLat, shipperLng) : requestGpsAndFetchOrders()}
+              <button onClick={() => fetchAvailableOrders(pageIndex, pageSize)}
                 className="size-10 bg-white border border-gray-100 rounded-2xl flex items-center justify-center text-gray-400 hover:text-primary transition-all">
                 <RefreshCw className={`size-4 ${loadingOrders ? 'animate-spin' : ''}`} />
               </button>
-              <div className="flex items-center gap-2 bg-white p-2 rounded-[28px] border border-gray-100 shadow-sm">
-                <span className="text-[10px] font-black text-gray-400 uppercase ml-3">BÁN KÍNH:</span>
-                {['5km', '10km', '15km'].map(r => (
-                  <button key={r} onClick={() => setRadius(r)}
-                    className={`px-4 py-2 rounded-2xl text-xs font-black transition-all ${radius === r ? 'bg-primary text-white' : 'text-gray-400 hover:bg-gray-50'}`}>{r}</button>
-                ))}
-              </div>
             </div>
           )}
           {activeTab === 'Đơn đang giao' && (
@@ -500,25 +522,9 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
           )}
         </div>
 
-        {activeTab === 'Đơn hàng mới' && gpsStatus !== 'granted' && (
-          <div className={`mb-8 p-6 rounded-[28px] border flex items-center gap-5 ${gpsStatus === 'denied' ? 'bg-red-50 border-red-100 text-red-700' : 'bg-blue-50 border-blue-100 text-blue-700'}`}>
-            <div className="size-12 rounded-2xl bg-white/60 flex items-center justify-center shrink-0">
-              {gpsStatus === 'loading' ? <Loader2 className="size-6 animate-spin" /> : <Navigation className="size-6" />}
-            </div>
-            <div className="flex-1">
-              <p className="font-black text-sm uppercase">
-                {gpsStatus === 'loading' ? 'Đang lấy GPS...' : gpsStatus === 'denied' ? 'Không thể lấy GPS' : 'Cần bật GPS'}
-              </p>
-            </div>
-            {gpsStatus !== 'loading' && (
-              <button onClick={requestGpsAndFetchOrders} className="px-5 py-2.5 bg-white rounded-xl text-xs font-black shadow-sm border border-current/10">Bật GPS</button>
-            )}
-          </div>
-        )}
-
         {activeTab === 'Đơn hàng mới' && (loadingOrders ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {[1,2,3].map(i => <div key={i} className="bg-white rounded-[40px] border border-gray-100 p-8 animate-pulse h-72" />)}
+            {[1, 2, 3].map(i => <div key={i} className="bg-white rounded-[40px] border border-gray-100 p-8 animate-pulse h-72" />)}
           </div>
         ) : renderOrderCards())}
 

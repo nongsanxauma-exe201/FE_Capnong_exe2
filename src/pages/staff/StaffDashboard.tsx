@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Package, Truck, ClipboardCheck,
-  ArrowRight, Clock, CheckCircle, Zap, Box, BarChart3, PackageCheck, RefreshCw, Search,
+  ArrowRight, Clock, CheckCircle, Zap, Box, BarChart3, PackageCheck, RefreshCw, Search, Loader2,
 } from 'lucide-react';
 import { orderService, type StaffOrderReportResponse } from '../../services';
 
@@ -37,16 +37,16 @@ const StaffDashboard: React.FC = () => {
 
   const val = (v: number | null | undefined) => (isLoading ? '—' : v ?? 0);
 
+  const now = new Date();
+  const dayNames = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+  const dateStr = `${dayNames[now.getDay()]}, ${now.toLocaleDateString('vi-VN')}`;
+
   const pipeline = [
     { label: 'Đơn đang đến kho', value: val(report?.incomingOrders), color: 'text-blue-500', bg: 'bg-blue-50', icon: Truck, page: 'staff-orders' },
     { label: 'Đang kiểm tra', value: val(report?.quantityChecking), color: 'text-orange-500', bg: 'bg-orange-50', icon: Search, page: 'staff-orders' },
     { label: 'Chờ kiểm duyệt', value: val(report?.qualityCheckingOrders), color: 'text-purple-500', bg: 'bg-purple-50', icon: ClipboardCheck, page: 'staff-inspect' },
     { label: 'Chờ đóng gói', value: val(report?.packagingOrders), color: 'text-emerald-500', bg: 'bg-emerald-50', icon: Box, page: 'staff-pack' },
   ];
-
-  const now = new Date();
-  const dayNames = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
-  const dateStr = `${dayNames[now.getDay()]}, ${now.toLocaleDateString('vi-VN')}`;
 
   return (
     <div className="flex flex-col gap-8 p-8 animate-in fade-in duration-500">
@@ -89,7 +89,9 @@ const StaffDashboard: React.FC = () => {
               <item.icon className="size-6" />
             </div>
             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">{item.label}</p>
-            <h3 className="text-4xl font-black text-gray-900">{item.value}</h3>
+            <h3 className="text-4xl font-black text-gray-900">
+              {isLoading ? <Loader2 className="size-7 animate-spin text-gray-300" /> : item.value}
+            </h3>
             <p className="text-[10px] font-black text-gray-300 uppercase mt-3 flex items-center gap-1 group-hover:text-primary transition-colors">
               Xem chi tiết <ArrowRight className="size-3" />
             </p>
@@ -110,7 +112,7 @@ const StaffDashboard: React.FC = () => {
               { label: 'Đang kiểm tra', sub: `${val(report?.quantityChecking)} đơn đang kiểm`, icon: Search, color: 'text-orange-500', bg: 'bg-orange-50', page: 'staff-orders' },
               { label: 'Kiểm duyệt chất lượng', sub: `${val(report?.qualityCheckingOrders)} đơn chờ kiểm`, icon: ClipboardCheck, color: 'text-purple-500', bg: 'bg-purple-50', page: 'staff-inspect' },
               { label: 'Đóng gói đơn hàng', sub: `${val(report?.packagingOrders)} đơn sẵn sàng`, icon: Box, color: 'text-emerald-500', bg: 'bg-emerald-50', page: 'staff-pack' },
-              { label: 'Gọi Shipper', sub: 'Gọi shipper lấy hàng', icon: PackageCheck, color: 'text-rose-500', bg: 'bg-rose-50', page: 'staff-shipper' },
+              { label: 'Gọi Shipper', sub: `${val(report?.readyOrders)} đơn chờ lấy hàng`, icon: PackageCheck, color: 'text-rose-500', bg: 'bg-rose-50', page: 'staff-shipper' },
               { label: 'Thống kê', sub: `${val(report?.approvedTodayOrders)} đơn hoàn thành hôm nay`, icon: BarChart3, color: 'text-gray-500', bg: 'bg-gray-50', page: 'staff-orders' },
             ].map((action, i) => (
               <button
@@ -144,6 +146,7 @@ const StaffDashboard: React.FC = () => {
               { label: 'Đang kiểm tra', value: val(report?.quantityChecking), color: 'bg-orange-400' },
               { label: 'Chờ kiểm duyệt', value: val(report?.qualityCheckingOrders), color: 'bg-purple-500' },
               { label: 'Chờ đóng gói', value: val(report?.packagingOrders), color: 'bg-emerald-400' },
+              { label: 'Sẵn sàng giao', value: val(report?.readyOrders), color: 'bg-amber-400' },
             ].map((stat, i) => (
               <div key={i} className="flex items-center gap-4">
                 <div className={`size-2 rounded-full shrink-0 ${stat.color}`} />
@@ -154,6 +157,12 @@ const StaffDashboard: React.FC = () => {
               </div>
             ))}
           </div>
+          <button
+            onClick={() => onNavigate('staff-profile')}
+            className="w-full py-3 text-[10px] font-black text-gray-400 uppercase tracking-widest border border-gray-100 rounded-2xl hover:bg-gray-50 transition-colors mt-2"
+          >
+            Xem hồ sơ nhân viên
+          </button>
         </div>
       </div>
     </div>
