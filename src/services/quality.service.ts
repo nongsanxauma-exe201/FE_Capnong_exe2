@@ -11,7 +11,8 @@ export interface QualityCheckingRequest {
 export interface QualityCheckRequest {
   note?: string;
   qualityResult: QualityResult;
-  orderDetailId: number;
+  orderDetailId?: number;
+  orderMysteryBoxId?: number;
   qualityChecks: QualityCheckingRequest[];
   rejectedWeight?: number;
 }
@@ -28,7 +29,8 @@ export interface QualityCheckingResponse {
 }
 
 export interface QualityCheckResponse {
-  orderDetailId: number;
+  orderDetailId?: number;
+  orderMysteryBoxId?: number;
   orderId?: number;
   qualityResult: QualityResult;
   note?: string | null;
@@ -71,6 +73,10 @@ class QualityService {
 
   async getByOrderItemId(orderDetailId: number): Promise<ApiResponse<QualityCheckResponse>> {
     return httpClient.get<QualityCheckResponse>(`/quality-checks/${orderDetailId}`);
+  }
+
+  async getByMysteryBox(mysteryBoxId: number): Promise<ApiResponse<QualityCheckResponse>> {
+    return httpClient.get<QualityCheckResponse>(`/quality-checks/mystery-box/${mysteryBoxId}`);
   }
 
   async getQualityCriteriaById(page = 0, size = 10): Promise<ApiResponse<QualityCriteriaPageResponse>> {

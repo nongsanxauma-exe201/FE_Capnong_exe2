@@ -40,6 +40,7 @@ interface UIOrderDetailRow {
 }
 
 function detailRowKey(item: OrderItemResponse, orderId: number, lineIndex: number): string {
+  if (item.itemType === 'MYSTERY_BOX' && item.orderMysteryBoxId != null) return `mb-${item.orderMysteryBoxId}`;
   if (item.orderDetailId != null) return String(item.orderDetailId);
   return `ord-${orderId}-line-${lineIndex}`;
 }
@@ -356,9 +357,11 @@ const QualityInspection: React.FC = () => {
       return;
     }
 
-    const orderDetailId = selectedRow.item.orderDetailId ?? Number(detailId);
-    if (!orderDetailId || Number.isNaN(orderDetailId)) {
-      setInspectionError('Không xác định được orderDetailId.');
+    const isMysteryBox = selectedRow.item.itemType === 'MYSTERY_BOX';
+    const reqId = isMysteryBox ? selectedRow.item.orderMysteryBoxId : selectedRow.item.orderDetailId;
+
+    if (!reqId || Number.isNaN(reqId)) {
+      setInspectionError('Không xác định được ID của dòng hàng.');
       return;
     }
 
@@ -376,7 +379,7 @@ const QualityInspection: React.FC = () => {
     }
 
     const request = {
-      orderDetailId,
+      ...(isMysteryBox ? { orderMysteryBoxId: reqId } : { orderDetailId: reqId }),
       qualityResult: currentQualityResult,
       qualityChecks: criteriaPayload,
       note: inspectionNotes[detailId]?.trim() || undefined,
