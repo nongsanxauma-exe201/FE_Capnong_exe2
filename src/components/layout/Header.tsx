@@ -4,6 +4,7 @@ import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { AppRole, User, KYCStatus } from '../../types/index';
 import { Search, ShoppingCart, Bell, Menu, User as UserIcon, LogOut, Phone, X, CheckCircle2, Trash2, Store, Truck, LayoutDashboard, Package, MessageSquare, RefreshCw } from 'lucide-react';
 import { notificationService, NotificationItem, cartService } from '../../services';
+import { useNotificationWebSocket } from '../../services/useNotificationWebSocket';
 
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -27,6 +28,13 @@ const Header: React.FC<HeaderProps> = ({
   const [cartCount, setCartCount] = useState(0);
   const [searchInput, setSearchInput] = useState('');
   const notifRef = useRef<HTMLDivElement>(null);
+
+  // Kích hoạt WebSocket để nhận thông báo realtime
+  useNotificationWebSocket({
+    onNotificationReceived: (newNotif) => {
+      setNotifications((prev) => [newNotif, ...prev]);
+    }
+  });
 
   // Determine active tab based on location if not provided
   const activeTab = activeTabProp || (
