@@ -83,56 +83,77 @@ function distanceKm(a: [number, number], b: [number, number]) {
   return 2 * r * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 }
 
-// ─── Thuật toán tìm vị trí chèn tối ưu (Minimum Detour) ─────────────────────
-function insertJoinRequestWaypoint<T extends { lat: number; lng: number }>(
+// ─── Thuật toán TSP tìm lộ trình tối ưu tổng thể thay vì chèn cục bộ ─────────────────────
+function optimizeTSPRouting<T extends { lat: number; lng: number; sequence?: number }>(
   startPt: [number, number],
   stops: T[],
   pickupPt: [number, number],
 ) {
-  // Gom tất cả các điểm thành 1 mảng theo thứ tự: Start -> Stop1 -> Stop2 ...
-  const allPoints: [number, number][] = [
-    startPt,
-    ...stops.map((s) => [s.lat, s.lng] as [number, number]),
+  const hasStops = stops.length > 0;
+  // Điểm đích cuối cùng luôn là điểm Warehouse (điểm cuối cùng của mảng stops hiện tại)
+  const targetWarehouse = hasStops ? stops[stops.length - 1] : null;
+  
+  // Danh sách các điểm cần đi gom thực tế (loại bỏ điểm kho cuối cùng ra để sắp xếp hoán vị)
+  const intermediateStops = hasStops ? stops.slice(0, -1) : [];
+  
+  interface RouteItem { lat: number; lng: number; isNew?: boolean; originalData?: T }
+  
+  // Tập hợp các điểm gom đơn cần sắp xếp lại (bao gồm điểm mới gửi Y/C)
+  const pool: RouteItem[] = [
+    { lat: pickupPt[0], lng: pickupPt[1], isNew: true },
+    ...intermediateStops.map(s => ({ lat: s.lat, lng: s.lng, originalData: s }))
   ];
 
-  let bestIndex = 1; // Mặc định chèn sau điểm Start
-  let minDetour = Infinity;
+  // Hàm sinh hoán vị (Backtracking) các điểm trung gian
+  const permutations: RouteItem[][] = [];
+  const generatePerm = (arr: RouteItem[], index: number) => {
+    // Đặt lằn ranh an toàn chống treo trình duyệt nếu số điểm gom đột biến quá lớn (> 8 điểm)
+    if (index >= arr.length - 1 || index >= 7) { 
+      permutations.push([...arr]);
+      return;
+    }
+    for (let i = index; i < arr.length; i++) {
+      let temp = arr[index]; arr[index] = arr[i]; arr[i] = temp;
+      generatePerm(arr, index + 1);
+      temp = arr[index]; arr[index] = arr[i]; arr[i] = temp; // backtrack
+    }
+  };
+  generatePerm(pool, 0);
 
-  // Duyệt qua từng cặp điểm nối tiếp nhau để tìm xem chèn vào đâu thì tốn ít quãng đường nhất
-  for (let i = 0; i < allPoints.length; i++) {
-    const current = allPoints[i];
-    const next = i === allPoints.length - 1 ? null : allPoints[i + 1];
+  let bestPermutation: RouteItem[] = [];
+  let minTotalDist = Infinity;
 
-    if (next) {
-      // Độ lệch = (khoảng cách current->pickup + pickup->next) - khoảng cách current->next ban đầu
-      const detour = distanceKm(current, pickupPt) + distanceKm(pickupPt, next) - distanceKm(current, next);
-      if (detour < minDetour) {
-        minDetour = detour;
-        bestIndex = i + 1; 
-      }
-    } else {
-      // Nếu chèn ở điểm cuối cùng
-      const detour = distanceKm(current, pickupPt);
-      if (detour < minDetour) {
-        minDetour = detour;
-        bestIndex = i + 1;
-      }
+  // Duyệt kiểm tra mọi phương án chuỗi đường đi khả thi
+  for (const perm of permutations) {
+    let currentDist = 0;
+    let currentPt = startPt;
+
+    // Tính tổng quãng đường: Start -> Điểm gom 1 -> Điểm gom 2 -> ...
+    for (const item of perm) {
+      currentDist += distanceKm(currentPt, [item.lat, item.lng]);
+      currentPt = [item.lat, item.lng];
+    }
+
+    // Cộng chặng cuối cùng: Từ điểm gom cuối -> Kho đích (Warehouse Dropoff)
+    if (targetWarehouse) {
+      currentDist += distanceKm(currentPt, [targetWarehouse.lat, targetWarehouse.lng]);
+    }
+
+    if (currentDist < minTotalDist) {
+      minTotalDist = currentDist;
+      bestPermutation = perm;
     }
   }
 
-  // bestIndex đang tính cả điểm Start, nên index trong mảng stops sẽ lùi 1
-  const insertIndexInStops = bestIndex - 1;
-  const before = stops.slice(0, insertIndexInStops);
-  const after = stops.slice(insertIndexInStops);
+  // Khôi phục lại mảng Waypoints đầy đủ theo thứ tự ngắn nhất tuyệt đối vừa tìm được
+  const finalWaypoints: [number, number][] = [startPt];
+  bestPermutation.forEach(item => finalWaypoints.push([item.lat, item.lng]));
+  if (targetWarehouse) {
+    finalWaypoints.push([targetWarehouse.lat, targetWarehouse.lng]);
+  }
 
   return {
-    insertIndex: insertIndexInStops,
-    waypoints: [
-      startPt,
-      ...before.map((stop) => [stop.lat, stop.lng] as [number, number]),
-      pickupPt,
-      ...after.map((stop) => [stop.lat, stop.lng] as [number, number]),
-    ],
+    waypoints: finalWaypoints
   };
 }
 
@@ -158,7 +179,7 @@ const Row: React.FC<{ label: string; value: React.ReactNode }> = ({ label, value
   </div>
 );
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
+// ─── Main Component ───────────────────────────────────────────────────────────
 const TripJoinRequestDetail: React.FC = () => {
   const { requestId } = useParams<{ requestId: string }>();
   const navigate = useNavigate();
@@ -235,7 +256,7 @@ const TripJoinRequestDetail: React.FC = () => {
       L.marker(startPt, { icon: mkIcon('#3b82f6', 'S') })
         .addTo(map).bindPopup('<b>Điểm xuất phát</b>');
 
-      // Join request marker - Nổi bật màu cam (Amber) cùng box-shadow sáng
+      // Join request marker - Nổi bật màu cam (Amber) cùng hiệu ứng shadow sáng
       L.marker(pickupPt, { icon: mkIcon('#f59e0b', 'Y/C', 'box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.4); transform: scale(1.05);') })
         .addTo(map).bindPopup(
           `<b>Yêu cầu ghép chuyến (MỚI)</b><br/>${req.farmerName || ''}<br/><span style="color:#6b7280">Điểm đang chờ duyệt vào lộ trình</span>`
@@ -248,7 +269,7 @@ const TripJoinRequestDetail: React.FC = () => {
       let finalGeometry: [number, number][] | null = null;
 
       if (isOwner) {
-        // ── OWNER: show all stops + full route ──────────────────────────────
+        // ── OWNER: Hiển thị các điểm dừng cũ trên bản đồ ──────────────────────
         sortedStops.forEach(stop => {
           const color = stop.isPickup ? '#10b981' : '#6366f1';
           L.marker([stop.lat, stop.lng], { icon: mkIcon(color, String(stop.sequence)) })
@@ -256,20 +277,8 @@ const TripJoinRequestDetail: React.FC = () => {
             .bindPopup(`<b>Điểm ${stop.sequence}</b><br/>${stop.farmer?.shopName || stop.farmer?.fullName || ''}`);
         });
 
-        // Tìm vị trí chèn tốt nhất dựa vào thuật toán tối ưu độ lệch
-        const { insertIndex, waypoints } = insertJoinRequestWaypoint(startPt, sortedStops, pickupPt);
-        
-        // Vẽ tia đứt nét màu cam tới điểm Join Request để dễ hình dung đoạn chèn thêm
-        const prevStop = insertIndex === 0 ? null : sortedStops[insertIndex - 1];
-        const nextStop = insertIndex === sortedStops.length ? null : sortedStops[insertIndex];
-
-        const prevPt: [number, number] = prevStop ? [prevStop.lat, prevStop.lng] : startPt;
-        const nextPt: [number, number] | null = nextStop ? [nextStop.lat, nextStop.lng] : null;
-
-        // L.polyline([prevPt, pickupPt], { color: '#f59e0b', weight: 4, opacity: 0.9, dashArray: '6 8' }).addTo(map);
-        // if (nextPt) {
-        //   L.polyline([pickupPt, nextPt], { color: '#f59e0b', weight: 4, opacity: 0.9, dashArray: '6 8' }).addTo(map);
-        // }
+        // ÁP DỤNG THUẬT TOÁN TSP MỚI ĐỂ SẮP XẾP LẠI TOÀN BỘ CHUỖI ĐƯỜNG ĐI TỐI ƯU
+        const { waypoints } = optimizeTSPRouting(startPt, sortedStops, pickupPt);
 
         const osrm = await fetchOSRMRoute(waypoints);
         if (!dead && osrm) {
@@ -324,7 +333,7 @@ const TripJoinRequestDetail: React.FC = () => {
     finally { setActing(false); }
   };
 
-  // ── Loading / not found ───────────────────────────────────────────────────
+  // ── Loading / Not found States ─────────────────────────────────────────────
   if (loading) return (
     <div className="flex flex-col items-center justify-center min-h-[500px] gap-4">
       <Loader2 className="size-10 text-primary animate-spin" />
@@ -391,13 +400,13 @@ const TripJoinRequestDetail: React.FC = () => {
       {actMsg && <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-emerald-700 flex items-start gap-3"><CheckCircle className="size-5 shrink-0" />{actMsg}</div>}
 
       <div className="grid gap-6 xl:grid-cols-[1fr_380px]">
-        {/* ── Left: Map ── */}
+        {/* ── Left Content: Map ── */}
         <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-50 flex items-center gap-3">
             <Navigation className="size-5 text-primary" />
             <div>
               <p className="font-black text-gray-900">Lộ trình đề xuất cập nhật</p>
-              <p className="text-xs text-gray-500">Xem trước tuyến đường nếu duyệt điểm ghép chuyến</p>
+              <p className="text-xs text-gray-500">Xem trước tuyến đường sau khi phân tách và sắp xếp lại tối ưu</p>
             </div>
           </div>
 
@@ -418,30 +427,30 @@ const TripJoinRequestDetail: React.FC = () => {
             ))}
           </div>
 
-          {/* Map */}
+          {/* Map wrapper */}
           <div className="px-6 py-4">
             <div ref={mapRef} className="h-80 w-full rounded-2xl border border-gray-200 bg-gray-100 overflow-hidden" />
           </div>
 
-          {/* Route stats */}
+          {/* Route Stats Display */}
           {(routeDistKm != null || routeDurMin != null) && (
             <div className="grid grid-cols-2 gap-4 px-6 pb-4">
               {routeDistKm != null && (
                 <div className="rounded-xl bg-indigo-50 border border-indigo-100 p-4">
-                  <p className="text-[11px] uppercase tracking-widest text-indigo-400 font-bold">Tổng quãng đường</p>
+                  <p className="text-[11px] uppercase tracking-widest text-indigo-400 font-bold">Tổng quãng đường mới</p>
                   <p className="text-xl font-black text-indigo-700 mt-1">{routeDistKm.toFixed(1)} km</p>
                 </div>
               )}
               {routeDurMin != null && (
                 <div className="rounded-xl bg-violet-50 border border-violet-100 p-4">
-                  <p className="text-[11px] uppercase tracking-widest text-violet-400 font-bold">Thời gian lái xe</p>
+                  <p className="text-[11px] uppercase tracking-widest text-violet-400 font-bold">Thời gian lái xe mới</p>
                   <p className="text-xl font-black text-violet-700 mt-1">{fmtDuration(routeDurMin)}</p>
                 </div>
               )}
             </div>
           )}
 
-          {/* Addresses */}
+          {/* Location Addresses */}
           <div className="grid grid-cols-1 gap-3 px-6 pb-6 sm:grid-cols-2">
             <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
               <p className="text-[11px] uppercase tracking-widest text-gray-400 font-bold mb-1">Điểm xuất phát</p>
@@ -453,8 +462,7 @@ const TripJoinRequestDetail: React.FC = () => {
             </div>
           </div>
 
-
-          {/* Pricing */}
+          {/* Pricing Info */}
           {trip && (trip.basePrice || trip.distanceRate || trip.weightRate) && (
             <section className="rounded-2xl border border-primary/20 bg-primary/5 p-5 mx-6 mb-6">
               <div className="flex items-center gap-2 mb-3">
@@ -467,12 +475,11 @@ const TripJoinRequestDetail: React.FC = () => {
               <p className="mt-2 text-[11px] text-gray-400">Tổng = basePrice + distanceRate × km + weightRate × kg</p>
             </section>
           )}
-
         </div>
 
-        {/* ── Right: Info panels ── */}
+        {/* ── Right Content: Side panels info ── */}
         <div className="space-y-4">
-          {/* Join request info */}
+          {/* Join request card info */}
           <section className="rounded-2xl border border-amber-100 bg-amber-50/50 p-5 shadow-sm">
             <div className="flex items-center gap-2 mb-3">
               <User className="size-4 text-amber-600" />
@@ -488,7 +495,7 @@ const TripJoinRequestDetail: React.FC = () => {
             )}
           </section>
 
-          {/* Trip info */}
+          {/* Trip Master information */}
           {trip && (
             <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
               <div className="flex items-center gap-2 mb-3">
@@ -510,7 +517,8 @@ const TripJoinRequestDetail: React.FC = () => {
               )}
             </section>
           )}
-          {/* Warehouse */}
+
+          {/* Final Target Warehouse */}
           {trip?.warehouseName && (
             <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
               <div className="flex items-center gap-2 mb-3">
@@ -520,7 +528,8 @@ const TripJoinRequestDetail: React.FC = () => {
               <Row label="Tên kho" value={trip.warehouseName} />
             </section>
           )}
-          {/* Orders */}
+
+          {/* Sub Orders list */}
           {req.orders?.length > 0 && (
             <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
               <div className="flex items-center gap-2 mb-3">
@@ -547,7 +556,6 @@ const TripJoinRequestDetail: React.FC = () => {
               </div>
             </section>
           )}
-
         </div>
       </div>
     </div>
