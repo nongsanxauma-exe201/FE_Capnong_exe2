@@ -63,7 +63,7 @@ interface UIOrderItem {
   qty: string;
   unitPrice: number;
   total: number;
-  image?: string;
+  image: string;
 }
 
 interface UIOrder {
@@ -144,6 +144,13 @@ const tabDefinitions = [
 ] as const;
 
 type TabKey = (typeof tabDefinitions)[number]['key'];
+
+
+const FALLBACK_IMAGE = 'https://picsum.photos/seed/staff_order/80/80';
+
+const getItemImage = (item?: OrderItemResponse) => {
+  return item?.imageUrl || FALLBACK_IMAGE;
+};
 
 const IncomingOrders: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabKey>('all');
@@ -232,6 +239,7 @@ const IncomingOrders: React.FC = () => {
       const relevantTracking = order.trackings?.find((tracking) => tracking.status === order.status)
         || order.trackings?.slice().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
       const shopOwner = order.shopOwner;
+      const firstItem = order.items[0];
       const isComplete = ['ARRIVED_AT_WAREHOUSE', 'QUALITY_CHECKED', 'QUALITY_APPROVED', 'QUALITY_REJECTED'].includes(order.status);
       const nextStep = order.status === 'ARRIVED_AT_WAREHOUSE'
         ? 'Chờ kiểm duyệt'
@@ -245,7 +253,7 @@ const IncomingOrders: React.FC = () => {
       return {
         id: order.id.toString(),
         farmer: shopOwner?.shopName || shopOwner?.fullName || order.recipientName,
-        product: order.items[0]?.productName || 'Sản phẩm',
+        product: firstItem?.productName || firstItem?.mysteryBoxType || 'Sản phẩm',
         qty: `${itemCount} sp`,
         eta: '',
         distance: '---',
@@ -253,7 +261,7 @@ const IncomingOrders: React.FC = () => {
         statusLabel: getOrderStatusLabel(order.status),
         progress: order.status === 'SHIPPING_TO_WAREHOUSE' ? 60 : order.status === 'ARRIVED_AT_WAREHOUSE' ? 80 : 100,
         progressCompleted: isComplete,
-        avatar: shopOwner?.logoUrl || order.items[0]?.imageUrl || 'https://picsum.photos/seed/staff_order/80/80',
+        avatar: shopOwner?.logoUrl || FALLBACK_IMAGE,
         phone: shopOwner?.phoneNumber || order.recipientPhone,
         time: relevantTracking ? new Date(relevantTracking.createdAt).toLocaleString('vi-VN') : 'Chưa có data',
         confirmedTime: order.status === 'ARRIVED_AT_WAREHOUSE' ? (relevantTracking ? new Date(relevantTracking.createdAt).toLocaleString('vi-VN') : '') : '',
@@ -270,11 +278,11 @@ const IncomingOrders: React.FC = () => {
         orderItems: order.items,
         orderInfo: {
           items: order.items.map((item) => ({
-            name: item.productName || 'Sản phẩm',
+            name: item.productName || item.mysteryBoxType || 'Sản phẩm',
             qty: `${item.quantity}`,
             unitPrice: item.unitPrice,
             total: (item.quantity || 0) * (item.unitPrice || 0),
-            image: item.imageUrl,
+            image: getItemImage(item),
           })),
           subtotal: order.totalAmount - order.shippingFee,
           shipping: order.shippingFee,
@@ -438,12 +446,23 @@ const IncomingOrders: React.FC = () => {
                       </div>
                       <div>
                         <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Sản phẩm đang vận chuyển</p>
-                        <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-2xl border border-gray-100 w-fit">
-                          <img src={order.avatar} className="size-10 rounded-xl object-cover" alt="" />
-                          <div>
-                            <p className="text-xs font-bold text-gray-800">{order.product}</p>
-                            <p className="text-[10px] text-gray-400 font-bold">{order.qty}</p>
-                          </div>
+                        <div className="flex flex-wrap gap-3">
+                          {order.orderInfo.items.map((item, j) => (
+                            <div
+                              key={j}
+                              className="flex items-center gap-3 p-3 bg-gray-50 rounded-2xl border border-gray-100 w-fit"
+                            >
+                              <img
+                                src={item.image}
+                                className="size-10 rounded-xl object-cover"
+                                alt={item.name}
+                              />
+                              <div>
+                                <p className="text-xs font-bold text-gray-800">{item.name}</p>
+                                <p className="text-[10px] text-gray-400 font-bold">{item.qty} sp</p>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
 
@@ -620,7 +639,7 @@ const IncomingOrders: React.FC = () => {
                         <FileText className="size-4" /> Xem thông tin đơn hàng
                       </button>
                       {order.hasTracking && (
-                        <button onClick={() => setTrackingOrder(order)}
+                        <button onClick={() => setTrackingOrderId(order.id)}
                           className="w-full py-3 bg-primary/10 text-primary font-black rounded-2xl flex items-center justify-center gap-2 hover:bg-primary hover:text-white transition-all shadow-sm shadow-primary/10">
                           <Navigation className="size-4" /> Xem vận đơn
                         </button>
