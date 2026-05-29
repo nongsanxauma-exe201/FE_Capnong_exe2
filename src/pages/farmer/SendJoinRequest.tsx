@@ -17,7 +17,7 @@ async function fetchOSRMDuration(
   from: [number, number], to: [number, number],
 ): Promise<RouteInfo | null> {
   try {
-    const url  = `https://router.project-osrm.org/route/v1/driving/${from[1]},${from[0]};${to[1]},${to[0]}?overview=false`;
+    const url = `https://router.project-osrm.org/route/v1/driving/${from[1]},${from[0]};${to[1]},${to[0]}?overview=false`;
     const data = await (await fetch(url)).json();
     if (data.code !== 'Ok' || !data.routes?.length) return null;
     return { distanceKm: data.routes[0].distance / 1000, durationMin: data.routes[0].duration / 60 };
@@ -27,11 +27,23 @@ async function fetchOSRMDuration(
 const UNIT_KG: Record<string, number> = {
   kg: 1, g: 0.001, chai: 0.5, hộp: 0.3, hũ: 0.3, cây: 0.2, bịch: 0.4, túi: 0.4, bó: 0.6,
 };
-const toKg = (qty: number, unit = 'kg') =>
-  +(qty * (UNIT_KG[unit.trim().toLowerCase()] ?? 1)).toFixed(2);
-const orderWeightKg = (o: OrderResponse) =>
-  o.items.reduce((s, i) => s + toKg(i.quantity, i.unit), 0);
+const toKg = (qty?: number | null, unit?: string | null, itemType?: string | null) => {
+  const safeQty = Number(qty ?? 0);
 
+  if (itemType === 'MYSTERY_BOX') {
+    // DTO chưa có weightKg nên tạm tính 1 mystery box = 1kg
+    return Number((safeQty * 1).toFixed(2));
+  }
+
+  const safeUnit = (unit ?? 'kg').trim().toLowerCase();
+  return Number((safeQty * (UNIT_KG[safeUnit] ?? 1)).toFixed(2));
+};
+
+const orderWeightKg = (o: OrderResponse) =>
+  (o.items ?? []).reduce(
+    (sum, item) => sum + toKg(item.quantity, item.unit, item.itemType),
+    0
+  );
 function formatDuration(min: number) {
   if (min < 60) return `${Math.round(min)} phút`;
   return `${Math.floor(min / 60)}h ${Math.round(min % 60)}p`;
@@ -46,8 +58,8 @@ function addMinutes(isoStr: string, minutes: number): string {
 // ─── Step bar ─────────────────────────────────────────────────────────────────
 const STEPS: { key: Step; label: string }[] = [
   { key: 'location', label: 'Chọn vị trí & kho' },
-  { key: 'trips',    label: 'Chọn chuyến đi' },
-  { key: 'confirm',  label: 'Xác nhận & gửi' },
+  { key: 'trips', label: 'Chọn chuyến đi' },
+  { key: 'confirm', label: 'Xác nhận & gửi' },
 ];
 
 const StepBar: React.FC<{ current: Step }> = ({ current }) => {
@@ -57,11 +69,10 @@ const StepBar: React.FC<{ current: Step }> = ({ current }) => {
       {STEPS.map((s, i) => (
         <React.Fragment key={s.key}>
           <div className="flex items-center gap-2">
-            <span className={`flex size-7 items-center justify-center rounded-full text-xs font-black transition ${
-              i < idx  ? 'bg-primary text-white' :
+            <span className={`flex size-7 items-center justify-center rounded-full text-xs font-black transition ${i < idx ? 'bg-primary text-white' :
               i === idx ? 'bg-primary text-white ring-4 ring-primary/20' :
-              'bg-gray-100 text-gray-400'
-            }`}>
+                'bg-gray-100 text-gray-400'
+              }`}>
               {i < idx ? '✓' : i + 1}
             </span>
             <span className={`text-sm font-bold hidden sm:block ${i === idx ? 'text-primary' : i < idx ? 'text-primary/70' : 'text-gray-400'}`}>
@@ -85,40 +96,40 @@ const SendJoinRequest: React.FC = () => {
   const [step, setStep] = useState<Step>('location');
 
   // Step 1 – location
-  const [warehouses, setWarehouses]       = useState<WarehouseResponse[]>([]);
-  const [warehouseId, setWarehouseId]     = useState('');
-  const [pickupLat, setPickupLat]         = useState('');
-  const [pickupLng, setPickupLng]         = useState('');
+  const [warehouses, setWarehouses] = useState<WarehouseResponse[]>([]);
+  const [warehouseId, setWarehouseId] = useState('');
+  const [pickupLat, setPickupLat] = useState('');
+  const [pickupLng, setPickupLng] = useState('');
   const [pickupAddress, setPickupAddress] = useState('');
-  const [gpsLoading, setGpsLoading]       = useState(false);
-  const mapRef     = useRef<HTMLDivElement>(null);
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const mapRef = useRef<HTMLDivElement>(null);
   const leafletRef = useRef<any>(null);
-  const markerRef  = useRef<any>(null);
+  const markerRef = useRef<any>(null);
 
   // Step 2 – trips + orders
-  const [trips, setTrips]                       = useState<TripWithRoute[]>([]);
-  const [tripsLoading, setTripsLoading]         = useState(false);
-  const [selectedTrip, setSelectedTrip]         = useState<TripWithRoute | null>(null);
-  const [orders, setOrders]                     = useState<OrderResponse[]>([]);
-  const [ordersLoading, setOrdersLoading]       = useState(false);
+  const [trips, setTrips] = useState<TripWithRoute[]>([]);
+  const [tripsLoading, setTripsLoading] = useState(false);
+  const [selectedTrip, setSelectedTrip] = useState<TripWithRoute | null>(null);
+  const [orders, setOrders] = useState<OrderResponse[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
   const [selectedOrderIds, setSelectedOrderIds] = useState<number[]>([]);
-  const [requestedKg, setRequestedKg]           = useState('');
+  const [requestedKg, setRequestedKg] = useState('');
 
   // Global
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError]           = useState<string | null>(null);
-  const [success, setSuccess]       = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
   // Load warehouses once
   useEffect(() => {
-    tripService.getWarehouses().then(r => setWarehouses(r.result || [])).catch(() => {});
+    tripService.getWarehouses().then(r => setWarehouses(r.result || [])).catch(() => { });
   }, []);
 
   // Load orders once
   useEffect(() => {
     tripService.getOrdersForTrip(0, 50)
       .then(r => setOrders(r.result?.content || []))
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // Init map on step 1
@@ -175,13 +186,13 @@ const SendJoinRequest: React.FC = () => {
       }
       setGpsLoading(false);
     }, () => { setError('Không lấy được vị trí GPS.'); setGpsLoading(false); },
-    { enableHighAccuracy: true, timeout: 15000 });
+      { enableHighAccuracy: true, timeout: 15000 });
   };
 
   // ── Step 1 → 2: fetch suggested trips + OSRM ──────────────────────────────
   const handleFindTrips = async () => {
     if (!pickupLat || !pickupLng) { setError('Vui lòng chọn vị trí lấy hàng.'); return; }
-    if (!warehouseId)             { setError('Vui lòng chọn kho đích.'); return; }
+    if (!warehouseId) { setError('Vui lòng chọn kho đích.'); return; }
     setError(null); setTripsLoading(true);
     try {
       const res = await tripService.getSuggestedTrips(+pickupLat, +pickupLng, +warehouseId);
@@ -189,16 +200,26 @@ const SendJoinRequest: React.FC = () => {
       setTrips(raw);
       setStep('trips');
       // Fetch OSRM for each trip concurrently, update one by one
+      const selectedWarehouse = warehouses.find(w => String(w.id) === warehouseId);
+
+      if (!selectedWarehouse?.latitude || !selectedWarehouse?.longitude) {
+        setError('Kho chưa có tọa độ để tính phí.');
+        setTripsLoading(false);
+        return;
+      }
+
       raw.forEach(async (trip, idx) => {
         const info = await fetchOSRMDuration(
-          [+pickupLat, +pickupLng], [trip.startLat, trip.startLng],
+          [+pickupLat, +pickupLng],
+          [Number(selectedWarehouse.latitude), Number(selectedWarehouse.longitude)],
         );
+
         setTrips(prev => prev.map((t, i) =>
           i === idx ? { ...t, routeInfo: info ?? undefined, routeLoading: false } : t,
         ));
       });
     } catch { setError('Không thể tải chuyến đi đề xuất.'); }
-    finally   { setTripsLoading(false); }
+    finally { setTripsLoading(false); }
   };
 
   // ── Derived ────────────────────────────────────────────────────────────────
@@ -223,8 +244,8 @@ const SendJoinRequest: React.FC = () => {
   const handleSubmit = async () => {
     if (!selectedTrip) return;
     if (selectedOrderIds.length === 0) { setError('Chọn ít nhất 1 đơn hàng.'); return; }
-    if (effectiveKg <= 0)              { setError('Khối lượng phải lớn hơn 0.'); return; }
-    if (effectiveKg < selectedWeight)  {
+    if (effectiveKg <= 0) { setError('Khối lượng phải lớn hơn 0.'); return; }
+    if (effectiveKg < selectedWeight) {
       setError(`Khối lượng yêu cầu (${effectiveKg} kg) không được nhỏ hơn tổng khối lượng đơn hàng (${selectedWeight.toFixed(1)} kg).`);
       return;
     }
@@ -242,7 +263,7 @@ const SendJoinRequest: React.FC = () => {
       });
       setSuccess(true);
     } catch { setError('Gửi yêu cầu thất bại. Vui lòng thử lại.'); }
-    finally   { setSubmitting(false); }
+    finally { setSubmitting(false); }
   };
 
   // ── Success screen ─────────────────────────────────────────────────────────
@@ -397,11 +418,10 @@ const SendJoinRequest: React.FC = () => {
                     return (
                       <div key={trip.id}
                         onClick={() => { if (!overCapacity) { setSelectedTrip(trip); setError(null); } }}
-                        className={`rounded-xl border p-4 transition ${
-                          overCapacity ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed' :
-                          isSelected   ? 'border-primary bg-primary/5 shadow-sm cursor-pointer' :
-                          'border-gray-200 hover:border-primary/50 hover:shadow-sm cursor-pointer'
-                        }`}
+                        className={`rounded-xl border p-4 transition ${overCapacity ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed' :
+                          isSelected ? 'border-primary bg-primary/5 shadow-sm cursor-pointer' :
+                            'border-gray-200 hover:border-primary/50 hover:shadow-sm cursor-pointer'
+                          }`}
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1 min-w-0 space-y-1.5">
@@ -472,7 +492,15 @@ const SendJoinRequest: React.FC = () => {
                                       <div className="flex-1 min-w-0">
                                         <p className="text-sm font-bold text-gray-900">Đơn #{o.id}</p>
                                         <p className="text-xs text-gray-500 truncate">
-                                          {o.items.map(i => `${i.productName} (${i.quantity} ${i.unit})`).join(', ')}
+                                          {o.items
+                                            .map(i => {
+                                              const unitLabel = i.itemType === 'MYSTERY_BOX'
+                                                ? 'box'
+                                                : (i.unit || 'kg');
+
+                                              return `${i.productName} (${i.quantity} ${unitLabel})`;
+                                            })
+                                            .join(', ')}
                                         </p>
                                       </div>
                                       <span className="text-xs font-bold text-gray-600 shrink-0">{w.toFixed(1)} kg</span>
@@ -539,12 +567,12 @@ const SendJoinRequest: React.FC = () => {
             {/* Confirm button */}
             {selectedTrip && selectedOrderIds.length > 0 && (
               <button type="button" onClick={() => {
-                  if (effectiveKg > (selectedTrip.availableCapacityKg ?? Infinity)) {
-                    setError(`Khối lượng (${effectiveKg} kg) vượt quá sức chứa còn lại (${selectedTrip.availableCapacityKg} kg).`);
-                    return;
-                  }
-                  setError(null); setStep('confirm');
-                }}
+                if (effectiveKg > (selectedTrip.availableCapacityKg ?? Infinity)) {
+                  setError(`Khối lượng (${effectiveKg} kg) vượt quá sức chứa còn lại (${selectedTrip.availableCapacityKg} kg).`);
+                  return;
+                }
+                setError(null); setStep('confirm');
+              }}
                 className="w-full rounded-xl bg-primary py-3.5 text-sm font-black uppercase text-white hover:bg-primary/90 transition flex items-center justify-center gap-2">
                 <CheckCircle className="size-4" /> Tiếp tục xác nhận
               </button>
@@ -580,9 +608,9 @@ const SendJoinRequest: React.FC = () => {
                     ['Thời gian di chuyển', formatDuration(selectedTrip.routeInfo.durationMin)],
                     ...(selectedTrip.departureTime ? [['Dự kiến đến', addMinutes(selectedTrip.departureTime, selectedTrip.routeInfo.durationMin)]] : []),
                     ...((() => {
-                      const base  = (selectedTrip as any).basePrice    ?? 0;
-                      const dRate = (selectedTrip as any).distanceRate  ?? 0;
-                      const wRate = (selectedTrip as any).weightRate    ?? 0;
+                      const base = (selectedTrip as any).basePrice ?? 0;
+                      const dRate = (selectedTrip as any).distanceRate ?? 0;
+                      const wRate = (selectedTrip as any).weightRate ?? 0;
                       if (base === 0 && dRate === 0 && wRate === 0) return [];
                       const total = base + dRate * selectedTrip.routeInfo.distanceKm + wRate * effectiveKg;
                       return [['Chi phí ước tính', `~${Math.round(total).toLocaleString('vi-VN')}đ`]];

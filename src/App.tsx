@@ -7,6 +7,7 @@ import AppRouter from './routes/AppRouter';
 import ScrollToTop from './components/layout/ScrollToTop';
 import { PopupProvider } from './contexts/PopupContext';
 import './App.css';
+import { useNotificationWebSocket } from './services/useNotificationWebSocket';
 
 const ChatBotWrapper: React.FC = () => {
   const { user, isAuthenticated } = useAuth();
@@ -39,11 +40,20 @@ const ChatBotWrapper: React.FC = () => {
 
 const ChatWidgetWrapper: React.FC = () => {
   const { isAuthenticated, user } = useAuth();
-  
+
   // Chỉ hiển thị ChatWidget cho BUYER
   if (!isAuthenticated || !user || user.role !== 'BUYER') return null;
-  
+
   return <ChatWidget />;
+};
+const NotificationWebSocketWrapper: React.FC = () => {
+  useNotificationWebSocket({
+    onNotificationReceived: (notif) => {
+      console.log('[Global Notification] Received:', notif);
+    },
+  });
+
+  return null;
 };
 
 const App: React.FC = () => {
@@ -52,6 +62,7 @@ const App: React.FC = () => {
       <ScrollToTop />
       <PopupProvider>
         <AuthProvider>
+          <NotificationWebSocketWrapper />
           <AppRouter />
           <ChatBotWrapper />
           <ChatWidgetWrapper />

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Package, Clock, Truck, CheckCircle2, XCircle, Eye,
-  ArrowLeft, RefreshCw, AlertCircle, Filter, Search
+  ArrowLeft, RefreshCw, AlertCircle, Search
 } from 'lucide-react';
 import { orderService, OrderResponse, OrderItemResponse } from '../../services/order.service';
 import { authService } from '../../services/auth.service';
@@ -21,7 +21,43 @@ interface MyOrdersProps {
   onViewTracking: (orderId: number) => void;
 }
 
-type OrderStatusFilter = 'ALL' | 'PENDING' | 'CONFIRMED' | 'SHIPPING' | 'DELIVERED' | 'CANCELLED';
+type OrderStatusFilter =
+  | 'ALL'
+  | 'WAITING'
+  | 'PROCESSING'
+  | 'SHIPPING'
+  | 'DELIVERED'
+  | 'CANCELLED';
+
+const BUYER_STATUS_GROUPS: Record<OrderStatusFilter, string[]> = {
+  ALL: [],
+  WAITING: ['PENDING', 'PAID'],
+  PROCESSING: [
+    'CONFIRMED',
+    'READY_FOR_PICKUP',
+    'SHIPPING_TO_WAREHOUSE',
+    'ARRIVED_AT_WAREHOUSE',
+    'QUALITY_CHECKING',
+    'QUALITY_CHECKED',
+    'READY',
+  ],
+  SHIPPING: ['SHIPPING'],
+  DELIVERED: ['DELIVERED'],
+  CANCELLED: ['CANCELLED', 'FAILED'],
+};
+
+const BUYER_FILTERS: Array<{ key: OrderStatusFilter; label: string }> = [
+  { key: 'ALL', label: 'Tất cả' },
+  { key: 'WAITING', label: 'Chờ xử lý' },
+  { key: 'PROCESSING', label: 'Đang chuẩn bị' },
+  { key: 'SHIPPING', label: 'Đang giao' },
+  { key: 'DELIVERED', label: 'Đã giao' },
+  { key: 'CANCELLED', label: 'Đã hủy / lỗi' },
+];
+
+const getFilterLabel = (filter: OrderStatusFilter) => {
+  return BUYER_FILTERS.find(item => item.key === filter)?.label ?? 'Tất cả';
+};
 
 const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -67,7 +103,6 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
           return;
         }
       }
-
       const response = await orderService.getOrdersByUserIdPaged(uid, page, PAGE_SIZE);
 
       if (response.result) {
@@ -228,26 +263,112 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
 
   const getStatusConfig = (status: string) => {
     const configs: Record<string, { label: string; color: string; icon: any; bg: string }> = {
-      PENDING: { label: 'Chờ duyệt', color: 'text-yellow-600', icon: Clock, bg: 'bg-yellow-50' },
-      PAID: { label: 'Đã thanh toán', color: 'text-blue-600', icon: Clock, bg: 'bg-blue-50' },
-      CONFIRMED: { label: 'Đã duyệt', color: 'text-green-600', icon: CheckCircle2, bg: 'bg-green-50' },
-      SHIPPING: { label: 'Đang giao', color: 'text-blue-600', icon: Truck, bg: 'bg-blue-50' },
-      DELIVERED: { label: 'Đã giao', color: 'text-green-600', icon: CheckCircle2, bg: 'bg-green-50' },
-      CANCELLED: { label: 'Đã hủy', color: 'text-red-600', icon: XCircle, bg: 'bg-red-50' },
-      FAILED: { label: 'Thất bại', color: 'text-red-600', icon: XCircle, bg: 'bg-red-50' },
+      PENDING: {
+        label: 'Chờ thanh toán/duyệt',
+        color: 'text-yellow-600',
+        icon: Clock,
+        bg: 'bg-yellow-50',
+      },
+      PAID: {
+        label: 'Chờ shop xác nhận',
+        color: 'text-yellow-600',
+        icon: Clock,
+        bg: 'bg-yellow-50',
+      },
+      CONFIRMED: {
+        label: 'Shop đã xác nhận',
+        color: 'text-blue-600',
+        icon: CheckCircle2,
+        bg: 'bg-blue-50',
+      },
+      READY_FOR_PICKUP: {
+        label: 'Chờ lấy hàng',
+        color: 'text-blue-600',
+        icon: Package,
+        bg: 'bg-blue-50',
+      },
+      SHIPPING_TO_WAREHOUSE: {
+        label: 'Đang gom hàng',
+        color: 'text-blue-600',
+        icon: Truck,
+        bg: 'bg-blue-50',
+      },
+      ARRIVED_AT_WAREHOUSE: {
+        label: 'Đã đến kho',
+        color: 'text-indigo-600',
+        icon: Package,
+        bg: 'bg-indigo-50',
+      },
+      QUALITY_CHECKING: {
+        label: 'Đang kiểm tra hàng',
+        color: 'text-indigo-600',
+        icon: Package,
+        bg: 'bg-indigo-50',
+      },
+      QUALITY_CHECKED: {
+        label: 'Đã kiểm tra hàng',
+        color: 'text-indigo-600',
+        icon: CheckCircle2,
+        bg: 'bg-indigo-50',
+      },
+      READY: {
+        label: 'Chờ giao đến bạn',
+        color: 'text-purple-600',
+        icon: Package,
+        bg: 'bg-purple-50',
+      },
+      SHIPPING: {
+        label: 'Đang giao đến bạn',
+        color: 'text-blue-600',
+        icon: Truck,
+        bg: 'bg-blue-50',
+      },
+      DELIVERED: {
+        label: 'Đã giao',
+        color: 'text-green-600',
+        icon: CheckCircle2,
+        bg: 'bg-green-50',
+      },
+      CANCELLED: {
+        label: 'Đã hủy',
+        color: 'text-red-600',
+        icon: XCircle,
+        bg: 'bg-red-50',
+      },
+      FAILED: {
+        label: 'Giao thất bại',
+        color: 'text-red-600',
+        icon: XCircle,
+        bg: 'bg-red-50',
+      },
     };
-    return configs[status] || configs.PENDING;
+
+    return configs[status] || {
+      label: 'Đang xử lý',
+      color: 'text-gray-600',
+      icon: Clock,
+      bg: 'bg-gray-50',
+    };
   };
 
   const canTrack = (status: string) => {
-    return ['CONFIRMED', 'SHIPPING', 'DELIVERED'].includes(status);
+    return [
+      'SHIPPING',
+      'DELIVERED',
+    ].includes(status);
   };
 
   const filteredOrders = orders.filter(order => {
-    const matchesFilter = filter === 'ALL' || order.status === filter;
-    const matchesSearch = searchQuery === '' ||
+    const statuses = BUYER_STATUS_GROUPS[filter];
+
+    const matchesFilter =
+      filter === 'ALL' || statuses.includes(order.status);
+
+    const matchesSearch =
+      searchQuery === '' ||
       order.id.toString().includes(searchQuery) ||
       order.recipientName.toLowerCase().includes(searchQuery.toLowerCase());
+
     return matchesFilter && matchesSearch;
   });
 
@@ -278,12 +399,12 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
               {orderIdFromUrl ? `Chi tiết đơn #${orderIdFromUrl}` : 'Đơn Hàng Của Tôi'}
             </h1>
             <p className="text-gray-400 font-bold text-sm mt-1">
-              {orderIdFromUrl 
-                ? 'Đang hiển thị đơn hàng cụ thể từ yêu cầu trả hàng' 
+              {orderIdFromUrl
+                ? 'Đang hiển thị đơn hàng cụ thể từ yêu cầu trả hàng'
                 : 'Quản lý và theo dõi tất cả đơn hàng của bạn'
               }
               {orderIdFromUrl && (
-                <button 
+                <button
                   onClick={() => { setSearchParams({}); setSearchQuery(''); }}
                   className="ml-4 text-primary hover:underline font-black"
                 >
@@ -319,16 +440,17 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
 
             {/* Status Filter */}
             <div className="flex flex-wrap items-center gap-3">
-              {(['ALL', 'PENDING', 'PAID', 'CONFIRMED', 'SHIPPING', 'DELIVERED', 'CANCELLED', 'FAILED'] as OrderStatusFilter[]).map((status) => (
+              {BUYER_FILTERS.map(({ key, label }) => (
                 <button
-                  key={status}
-                  onClick={() => setFilter(status)}
-                  className={`px-6 py-3 rounded-[18px] text-[11px] font-black uppercase tracking-wider transition-all transform hover:scale-105 active:scale-95 ${filter === status
-                    ? 'bg-primary text-white shadow-xl shadow-primary/20 scale-105'
-                    : 'bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-gray-600'
-                    }`}
+                  key={key}
+                  onClick={() => setFilter(key)}
+                  className={`px-6 py-3 rounded-[18px] text-[11px] font-black uppercase tracking-wider transition-all transform hover:scale-105 active:scale-95 ${
+                    filter === key
+                      ? 'bg-primary text-white shadow-xl shadow-primary/20 scale-105'
+                      : 'bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-gray-600'
+                  }`}
                 >
-                  {status === 'ALL' ? 'Tất cả' : getStatusConfig(status).label}
+                  {label}
                 </button>
               ))}
             </div>
@@ -349,7 +471,7 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
             <h3 className="text-2xl font-black text-gray-900 mb-2">Chưa có đơn hàng nào</h3>
             <p className="text-gray-500 mb-8">
               {filter !== 'ALL'
-                ? `Không tìm thấy đơn hàng với trạng thái "${getStatusConfig(filter).label}"`
+                ? `Không tìm thấy đơn hàng trong nhóm "${getFilterLabel(filter)}"`
                 : 'Hãy bắt đầu mua sắm để tạo đơn hàng đầu tiên nhé!'
               }
             </p>
@@ -362,7 +484,8 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
           </div>
         ) : (
           <div className="space-y-6">
-            {filteredOrders.map((order) => {              const statusConfig = getStatusConfig(order.status);
+            {filteredOrders.map((order) => {
+              const statusConfig = getStatusConfig(order.status);
               const StatusIcon = statusConfig.icon;
               const trackable = canTrack(order.status);
 
@@ -428,18 +551,17 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
                                       Đánh giá
                                     </button>
                                     {item.isRequestedReturn ? (
-                                       <span className={`font-black text-[10px] uppercase tracking-wider italic ${
-                                         item.returnStatus === 'REJECTED' ? 'text-red-500' : 
-                                         item.returnStatus === 'COMPLETED' ? 'text-green-500' : 'text-orange-500'
-                                       }`}>
-                                         {item.returnStatus === 'PENDING' ? 'Đang chờ duyệt' :
+                                      <span className={`font-black text-[10px] uppercase tracking-wider italic ${item.returnStatus === 'REJECTED' ? 'text-red-500' :
+                                        item.returnStatus === 'COMPLETED' ? 'text-green-500' : 'text-orange-500'
+                                        }`}>
+                                        {item.returnStatus === 'PENDING' ? 'Đang chờ duyệt' :
                                           item.returnStatus === 'SHOP_APPROVED' ? 'Shop đã duyệt' :
-                                          item.returnStatus === 'APPROVED' ? 'Admin đã duyệt' :
-                                          item.returnStatus === 'REJECTED' ? 'Bị từ chối' :
-                                          item.returnStatus === 'DISPUTED' ? 'Đang khiếu nại' :
-                                          item.returnStatus === 'COMPLETED' ? 'Đã hoàn tiền' :
-                                          item.returnStatus === 'REFUND_PENDING' ? 'Đang hoàn tiền' : 'Đã y/c trả'}
-                                       </span>
+                                            item.returnStatus === 'APPROVED' ? 'Admin đã duyệt' :
+                                              item.returnStatus === 'REJECTED' ? 'Bị từ chối' :
+                                                item.returnStatus === 'DISPUTED' ? 'Đang khiếu nại' :
+                                                  item.returnStatus === 'COMPLETED' ? 'Đã hoàn tiền' :
+                                                    item.returnStatus === 'REFUND_PENDING' ? 'Đang hoàn tiền' : 'Đã y/c trả'}
+                                      </span>
                                     ) : (
                                       <button
                                         onClick={() => setSelectedReturnItem(item)}
@@ -638,10 +760,10 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
       )}
 
       {selectedReturnItem && (
-        <ReturnRequestModal 
-            item={selectedReturnItem} 
-            onClose={() => setSelectedReturnItem(null)} 
-            onSuccess={() => { setSelectedReturnItem(null); fetchOrders(); }} 
+        <ReturnRequestModal
+          item={selectedReturnItem}
+          onClose={() => setSelectedReturnItem(null)}
+          onSuccess={() => { setSelectedReturnItem(null); fetchOrders(); }}
         />
       )}
 

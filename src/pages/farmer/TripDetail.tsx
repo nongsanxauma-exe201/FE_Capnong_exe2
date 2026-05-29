@@ -125,10 +125,10 @@ const formatCurrency = (v?: number) => {
 
 /* ─── component ──────────────────────────────────────────────────────────── */
 const isPickupStop = (stop: TripStopResponse) =>
-  stop.stopType === "PICKUP" ;
+  stop.stopType === "PICKUP";
 
 const isStopPicked = (stop: TripStopResponse) =>
-  stop.pickup === true ;
+  stop.pickup === true;
 
 const canPickStop = (stop: TripStopResponse) =>
   stop.pickup === false && !isStopPicked(stop);
@@ -188,12 +188,12 @@ const TripDetail: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
   const [truckLocation, setTruckLocation] = useState<TripTrackingResponse | null>(null);
-  const [routeOrigin, setRouteOrigin] = useState<RoutePoint | null>(null);
   const [fakeGpsRunning, setFakeGpsRunning] = useState(false);
   const [fakeGpsStep, setFakeGpsStep] = useState(0);
   const [pickingStopId, setPickingStopId] = useState<number | null>(null);
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [isTripOwner, setIsTripOwner] = useState(false);
+  const [initialTruckPoint, setInitialTruckPoint] = useState<RoutePoint | null>(null);
 
   /* map refs */
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
@@ -277,10 +277,30 @@ const TripDetail: React.FC = () => {
           return;
         }
 
-        setTrip(response.result);
-        setRouteOrigin(null);
+        const loadedTrip = response.result as TripResponse & {
+          tripTrackingResponse?: TripTrackingResponse | null;
+        };
+
+        setTrip(loadedTrip);
+
+        // Ưu tiên vị trí tracking mới nhất từ backend khi mở lại trang
+        // Vị trí ban đầu của xe khi mở trang:
+        // có tripTrackingResponse thì lấy vị trí mới nhất,
+        // không có thì lấy startLat/startLng.
+        const firstTruckPoint: RoutePoint = loadedTrip.tripTrackingResponse
+          ? {
+            lat: loadedTrip.tripTrackingResponse.lat,
+            lng: loadedTrip.tripTrackingResponse.lng,
+          }
+          : {
+            lat: loadedTrip.startLat,
+            lng: loadedTrip.startLng,
+          };
+
+        setInitialTruckPoint(firstTruckPoint);
+        setTruckLocation(loadedTrip.tripTrackingResponse ?? null);
+
         // Only auto-select first stop for trip owner; non-owners start with no selection
-        const loadedTrip = response.result;
         if (currentUserId != null && loadedTrip.ownerId === currentUserId) {
           setSelectedStop(loadedTrip.tripStops?.[0] ?? null);
         } else {
@@ -354,12 +374,15 @@ const TripDetail: React.FC = () => {
   /* ─── Update truck marker when location changes ────────────────────────── */
   useEffect(() => {
     if (!truckLocation) return;
+
     const { lat, lng, heading } = truckLocation;
-    setRouteOrigin((prev) => prev ?? { lat, lng });
+
     if (!leafletMapRef.current || !truckMarkerRef.current) return;
+
+    // Chỉ di chuyển marker xe hiện tại, không init lại map.
     truckMarkerRef.current.setLatLng([lat, lng]);
     trimPassedRoute(lat, lng);
-    // Rotate icon if heading available
+
     if (heading != null) {
       const el = truckMarkerRef.current.getElement();
       if (el) {
@@ -371,75 +394,71 @@ const TripDetail: React.FC = () => {
 
   /* ─── map init ─────────────────────────────────────────────────────────── */
   /* ── map init (Cập nhật sử dụng OSRM API để vẽ đường thực tế) ── */
-  useEffect(() => {
-    const cleanup = () => {
-      if (!leafletMapRef.current) return;
-      try {
-        if (routeLayerRef.current) {
-          leafletMapRef.current.removeLayer(routeLayerRef.current);
-          routeLayerRef.current = null;
-          routePointsRef.current = [];
-        }
-      } catch { }
-      try {
-        if (truckMarkerRef.current) {
-          leafletMapRef.current.removeLayer(truckMarkerRef.current);
-          truckMarkerRef.current = null;
-        }
-      } catch { }
-      stopMarkersRef.current.forEach((marker) => {
-        try { leafletMapRef.current.removeLayer(marker); } catch { }
-      });
-      stopMarkersRef.current = [];
-    };
+  useEffect(() => {
+    let cancelled = false;
+    const cleanup = () => {
+      if (!leafletMapRef.current) return;
+      try {
+        if (routeLayerRef.current) {
+          leafletMapRef.current.removeLayer(routeLayerRef.current);
+          routeLayerRef.current = null;
+          routePointsRef.current = [];
+        }
+      } catch { }
+      stopMarkersRef.current.forEach((marker) => {
+        try { leafletMapRef.current.removeLayer(marker); } catch { }
+      });
+      stopMarkersRef.current = [];
+    };
 
-    if (!trip) return undefined;
+    if (!trip) return undefined;
 
-    const initMap = async () => {
-      if (!mapContainerRef.current) return;
-      loadLeafletCss();
+    const initMap = async () => {
+      if (!mapContainerRef.current) return;
+      loadLeafletCss();
 
-      const L = await import('leaflet');
+      const L = await import('leaflet');
+      if (cancelled) return;
 
-      // 1. Sắp xếp danh sách điểm dừng theo đúng thứ tự sequence
-      const sortedStops = trip.tripStops?.slice().sort((a, b) => a.sequence - b.sequence) ?? [];
-      const truckPoint: [number, number] = routeOrigin
-        ? [routeOrigin.lat, routeOrigin.lng]
-        : [trip.startLat, trip.startLng];
+      // 1. Sắp xếp danh sách điểm dừng theo đúng thứ tự sequence
+      const sortedStops = trip.tripStops?.slice().sort((a, b) => a.sequence - b.sequence) ?? [];
+      const truckPoint: [number, number] = initialTruckPoint
+        ? [initialTruckPoint.lat, initialTruckPoint.lng]
+        : [trip.startLat, trip.startLng];
 
-      // 2. Router bắt đầu từ vị trí xe và đi qua toàn bộ stop theo sequence.
-      const routeStops = sortedStops;
-      const routeWaypoints: [number, number][] = [
-        truckPoint,
-        ...routeStops.map((stop) => [stop.lat, stop.lng] as [number, number]),
-      ];
-      const displayPoints: [number, number][] = [
-        truckPoint,
-        ...sortedStops.map((stop) => [stop.lat, stop.lng] as [number, number]),
-      ];
+      // 2. Router bắt đầu từ vị trí xe và đi qua toàn bộ stop theo sequence.
+      const routeStops = sortedStops;
+      const routeWaypoints: [number, number][] = [
+        truckPoint,
+        ...routeStops.map((stop) => [stop.lat, stop.lng] as [number, number]),
+      ];
+      const displayPoints: [number, number][] = [
+        truckPoint,
+        ...sortedStops.map((stop) => [stop.lat, stop.lng] as [number, number]),
+      ];
 
-      const center = truckPoint;
+      const center = truckPoint;
 
-      // 3. Khởi tạo bản đồ Leaflet nếu chưa có
-      if (!leafletMapRef.current) {
-        const map = L.map(mapContainerRef.current, {
-          center,
-          zoom: 14,
-          zoomControl: false,
-        });
-        L.control.zoom({ position: 'bottomright' }).addTo(map);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          maxZoom: 19,
-          attribution: '&copy; OpenStreetMap contributors',
-        }).addTo(map);
-        leafletMapRef.current = map;
-      }
+      // 3. Khởi tạo bản đồ Leaflet nếu chưa có
+      if (!leafletMapRef.current) {
+        const map = L.map(mapContainerRef.current, {
+          center,
+          zoom: 14,
+          zoomControl: false,
+        });
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: '&copy; OpenStreetMap contributors',
+        }).addTo(map);
+        leafletMapRef.current = map;
+      }
 
-      const map = leafletMapRef.current;
-      cleanup();
+      const map = leafletMapRef.current;
+      cleanup();
 
-      // 4. Gọi API OSRM để lấy tuyến đường thực tế đi qua các điểm tuần tự
-      if (routeWaypoints.length > 1) {
+      // 4. Gọi API OSRM để lấy tuyến đường thực tế đi qua các điểm tuần tự
+      if (routeWaypoints.length > 1) {
         // Định dạng của OSRM là: lng,lat;lng,lat;...
         const coordinatesQuery = routeWaypoints.map(pt => `${pt[1]},${pt[0]}`).join(';');
         const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordinatesQuery}?overview=full&geometries=geojson`;
@@ -447,7 +466,7 @@ const TripDetail: React.FC = () => {
         try {
           const response = await fetch(osrmUrl);
           const data = await response.json();
-          
+
           if (data.code === 'Ok' && data.routes?.[0]?.geometry?.coordinates) {
             // OSRM trả về dạng [lng, lat], cần đảo ngược lại thành [lat, lng] cho Leaflet
             const osrmRoutePoints: [number, number][] = data.routes[0].geometry.coordinates.map(
@@ -489,50 +508,63 @@ const TripDetail: React.FC = () => {
           }).addTo(map);
           map.fitBounds(L.latLngBounds(displayPoints), { padding: [50, 50] });
         }
-      } else {
+      } else {
         if (displayPoints.length > 1) {
           map.fitBounds(L.latLngBounds(displayPoints), { padding: [50, 50] });
         } else {
           map.setView(center, 14);
         }
       }
+      if (cancelled) return;
 
-      /* ── Giữ nguyên đoạn vẽ các Marker (Xuất phát & Điểm dừng) dưới đây ── */
-      // Điểm xuất phát (truck) marker
-      const truckIcon = L.divIcon({
-        html: `<div style="width:40px;height:40px;background:linear-gradient(135deg, #6366f1, #8b5cf6);border:3px solid white;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow: 0 4px 14px rgba(99,102,241,0.45);"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 13.52 9H12v9"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg></div>`,
-        className: '',
-        iconSize: [40, 40],
-        iconAnchor: [20, 20],
-      });
+      /* ── Giữ nguyên đoạn vẽ các Marker (Xuất phát & Điểm dừng) dưới đây ── */
+      // Điểm xuất phát (truck) marker
+      const truckIcon = L.divIcon({
+        html: `<div style="width:40px;height:40px;background:linear-gradient(135deg, #6366f1, #8b5cf6);border:3px solid white;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow: 0 4px 14px rgba(99,102,241,0.45);"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 13.52 9H12v9"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg></div>`,
+        className: '',
+        iconSize: [40, 40],
+        iconAnchor: [20, 20],
+      });
 
-      truckMarkerRef.current = L.marker(truckPoint, { icon: truckIcon })
-        .addTo(map)
-        .bindPopup(`<div style="font-family:system-ui;padding:4px 0;"><p style="font-weight:800;font-size:13px;margin:0 0 4px;">📍 Vị trí xe hiện tại</p><p style="font-size:12px;color:#6b7280;margin:0;">Xe: ${trip.vehicleNumber}</p>${truckLocation?.updatedAt ? `<p style="font-size:12px;color:#6b7280;margin:4px 0 0;">Cập nhật: ${formatDate(truckLocation.updatedAt)}</p>` : ''}</div>`);
+      if (truckMarkerRef.current) {
+        truckMarkerRef.current.setLatLng(truckPoint);
+      } else {
+        truckMarkerRef.current = L.marker(truckPoint, { icon: truckIcon })
+          .addTo(map)
+          .bindPopup(
+            `<div style="font-family:system-ui;padding:4px 0;">
+        <p style="font-weight:800;font-size:13px;margin:0 0 4px;">📍 Vị trí xe hiện tại</p>
+        <p style="font-size:12px;color:#6b7280;margin:0;">Xe: ${trip.vehicleNumber}</p>
+        ${truckLocation?.updatedAt
+              ? `<p style="font-size:12px;color:#6b7280;margin:4px 0 0;">Cập nhật: ${formatDate(truckLocation.updatedAt)}</p>`
+              : ''
+            }
+      </div>`
+          );
+      }
+      // Các điểm dừng trên hành trình
+      sortedStops.forEach((stop) => {
+        const isPickup = isPickupStop(stop);
+        const picked = isStopPicked(stop);
+        const bgColor = picked ? '#22c55e' : isPickup ? '#0ea5e9' : '#f59e0b';
+        const shadow = picked
+          ? 'rgba(34,197,94,0.45)'
+          : isPickup
+            ? 'rgba(14,165,233,0.45)'
+            : 'rgba(245,158,11,0.45)';
 
-      // Các điểm dừng trên hành trình
-      sortedStops.forEach((stop) => {
-        const isPickup = isPickupStop(stop);
-        const picked = isStopPicked(stop);
-        const bgColor = picked ? '#22c55e' : isPickup ? '#0ea5e9' : '#f59e0b';
-        const shadow = picked
-          ? 'rgba(34,197,94,0.45)'
-          : isPickup
-            ? 'rgba(14,165,233,0.45)'
-            : 'rgba(245,158,11,0.45)';
+        const stopIcon = L.divIcon({
+          html: `<div style="width:36px;height:36px;background:${bgColor};border:3px solid white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:900;color:white;box-shadow: 0 4px 12px ${shadow};">${stop.sequence}</div>`,
+          className: '',
+          iconSize: [36, 36],
+          iconAnchor: [18, 18],
+        });
 
-        const stopIcon = L.divIcon({
-          html: `<div style="width:36px;height:36px;background:${bgColor};border:3px solid white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:900;color:white;box-shadow: 0 4px 12px ${shadow};">${stop.sequence}</div>`,
-          className: '',
-          iconSize: [36, 36],
-          iconAnchor: [18, 18],
-        });
+        const shopName = stop.farmer?.shopName || stop.farmer?.fullName || `Điểm ${stop.sequence}`;
+        const orderCount = stop.orderResponses?.length ?? 0;
+        const typeLabel = isPickup ? 'Lấy hàng' : 'Giao hàng';
 
-        const shopName = stop.farmer?.shopName || stop.farmer?.fullName || `Điểm ${stop.sequence}`;
-        const orderCount = stop.orderResponses?.length ?? 0;
-        const typeLabel = isPickup ? 'Lấy hàng' : 'Giao hàng';
-
-        const popupContent = `
+        const popupContent = `
           <div style="font-family: system-ui; padding: 4px 0; min-width: 200px;">
             <p style="font-weight:800;font-size:13px;margin:0;">${shopName}</p>
             <p style="font-size:11px;color:#6b7280;margin:0 0 4px;">${typeLabel} • ${orderCount} đơn hàng</p>
@@ -549,14 +581,17 @@ const TripDetail: React.FC = () => {
           }
         });
 
-        stopMarkersRef.current.push(marker);
-      });
-    };
+        stopMarkersRef.current.push(marker);
+      });
+    };
 
-    initMap();
+    initMap();
 
-    return () => { cleanup(); };
-  }, [trip, routeOrigin]);
+    return () => {
+      cancelled = true;
+      cleanup();
+    };
+  }, [trip, initialTruckPoint, isTripOwner, currentUserId]);
 
   /* ─── derived ──────────────────────────────────────────────────────────── */
   const allStops = useMemo(() => {
@@ -611,9 +646,9 @@ const TripDetail: React.FC = () => {
       body: JSON.stringify(payload),
     });
   };
-
   const startFakeGps = async () => {
     if (!trip) return;
+
     if (!stompClientRef.current?.connected) {
       window.alert('WebSocket chưa kết nối, vui lòng chờ vài giây rồi thử lại.');
       return;
@@ -623,34 +658,58 @@ const TripDetail: React.FC = () => {
 
     const startPoint: RoutePoint = truckLocation
       ? { lat: truckLocation.lat, lng: truckLocation.lng }
-      : { lat: trip.startLat, lng: trip.startLng };
+      : initialTruckPoint
+        ? { lat: initialTruckPoint.lat, lng: initialTruckPoint.lng }
+        : { lat: trip.startLat, lng: trip.startLng };
+
+    if (routePointsRef.current.length < 2) {
+      window.alert('Chưa có tuyến đường trên bản đồ để chạy fake GPS.');
+      return;
+    }
+
+    // Tìm điểm gần xe nhất trên route hiện tại
+    let nearestIndex = 0;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+
+    routePointsRef.current.forEach(([pointLat, pointLng], idx) => {
+      const distance = (pointLat - startPoint.lat) ** 2 + (pointLng - startPoint.lng) ** 2;
+
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestIndex = idx;
+      }
+    });
+
+    // Chạy tiếp theo tuyến đường còn lại, không quay lại stop đầu
+    const remainingRoutePoints = routePointsRef.current
+      .slice(nearestIndex + 1)
+      .map(([lat, lng]) => ({ lat, lng }));
+
     const points: RoutePoint[] = [
       startPoint,
-      ...stopList.map((stop) => ({ lat: stop.lat, lng: stop.lng })),
+      ...remainingRoutePoints,
     ];
 
-    let path: Array<RoutePoint & { heading?: number }> = [];
-    try {
-      path = await fetchOsrmRoutePath(points);
-    } catch (err) {
-      console.error('Fake GPS OSRM route failed', err);
-      window.alert('Không lấy được đường đi từ router OSRM. Vui lòng thử lại.');
+    if (points.length < 2) {
+      window.alert('Xe đã ở điểm cuối hoặc không còn điểm tiếp theo để chạy GPS.');
       return;
     }
-    if (path.length < 2) {
-      window.alert('Chưa có đủ điểm trên router để chạy fake GPS.');
-      return;
-    }
+
+    const path = addHeadingToPath(points);
 
     setFakeGpsRunning(true);
     setFakeGpsStep(0);
+
     let idx = 0;
+
     fakeGpsIntervalRef.current = setInterval(() => {
       const point = path[idx];
+
       if (!point) {
         stopFakeGps();
         return;
       }
+
       publishTripLocation(point);
       setFakeGpsStep(idx + 1);
       idx += 1;
@@ -663,11 +722,11 @@ const TripDetail: React.FC = () => {
       const response = await tripService.updateTripStopToPicked(stop.id);
       const updatedStop = response.result
         ? {
-            ...response.result,
-            isPicked: true,
-            isPickup: true,
-            actualArrivalTime: response.result.actualArrivalTime ?? new Date().toISOString(),
-          }
+          ...response.result,
+          isPicked: true,
+          isPickup: true,
+          actualArrivalTime: response.result.actualArrivalTime ?? new Date().toISOString(),
+        }
         : null;
       if (!updatedStop) return;
       setTrip((prev) => {
@@ -851,19 +910,20 @@ const TripDetail: React.FC = () => {
                   <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-bold text-gray-600">
                     {stopList.length} điểm • {totalOrders} đơn
                   </span>
-                  <button
-                    type="button"
-                    onClick={fakeGpsRunning ? stopFakeGps : startFakeGps}
-                    className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold transition ${
-                      fakeGpsRunning
-                        ? 'bg-red-50 text-red-700 hover:bg-red-100'
-                        : 'bg-indigo-600 text-white hover:bg-indigo-700'
-                    }`}
-                    title={fakeGpsRunning ? 'Dừng fake GPS' : 'Chạy fake GPS'}
-                  >
-                    {fakeGpsRunning ? <Square className="size-3.5" /> : <Play className="size-3.5" />}
-                    {fakeGpsRunning ? `Dừng GPS (${fakeGpsStep})` : 'Fake GPS'}
-                  </button>
+                  {isTripOwner && (
+                    <button
+                      type="button"
+                      onClick={fakeGpsRunning ? stopFakeGps : startFakeGps}
+                      className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold transition ${fakeGpsRunning
+                          ? 'bg-red-50 text-red-700 hover:bg-red-100'
+                          : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                        }`}
+                      title={fakeGpsRunning ? 'Dừng fake GPS' : 'Chạy fake GPS'}
+                    >
+                      {fakeGpsRunning ? <Square className="size-3.5" /> : <Play className="size-3.5" />}
+                      {fakeGpsRunning ? `Dừng GPS (${fakeGpsStep})` : 'Fake GPS'}
+                    </button>
+                  )}
                 </div>
               </div>
               <div
@@ -926,59 +986,59 @@ const TripDetail: React.FC = () => {
                           type="button"
                           onClick={() => focusStopOnMap(stop)}
                           className={`group flex w-full items-start gap-3 px-5 py-3.5 text-left transition-all ${isActive
-                              ? 'bg-indigo-50/60'
-                              : 'bg-white hover:bg-gray-50'
+                            ? 'bg-indigo-50/60'
+                            : 'bg-white hover:bg-gray-50'
                             }`}
                         >
-                        {/* timeline dot */}
-                        <div className="relative mt-0.5 flex flex-col items-center">
-                          <div
-                            className={`flex size-8 items-center justify-center rounded-full text-xs font-black text-white shadow-md ${picked ? 'bg-emerald-500' : isPickup ? 'bg-sky-500' : 'bg-amber-500'
-                              } ${isActive ? 'ring-2 ring-indigo-400 ring-offset-2' : ''}`}
-                          >
-                            {stop.sequence}
-                          </div>
-                          {idx < stopList.length - 1 && (
-                            <div className="mt-1 h-4 w-0.5 bg-gray-200" />
-                          )}
-                        </div>
-
-                        {/* content */}
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center justify-between gap-2">
-                            <p
-                              className={`truncate text-sm font-bold ${isActive ? 'text-indigo-700' : 'text-gray-900'
-                                }`}
+                          {/* timeline dot */}
+                          <div className="relative mt-0.5 flex flex-col items-center">
+                            <div
+                              className={`flex size-8 items-center justify-center rounded-full text-xs font-black text-white shadow-md ${picked ? 'bg-emerald-500' : isPickup ? 'bg-sky-500' : 'bg-amber-500'
+                                } ${isActive ? 'ring-2 ring-indigo-400 ring-offset-2' : ''}`}
                             >
-                              {shopName}
-                            </p>
-                            <ChevronRight
-                              className={`size-4 shrink-0 transition-transform ${isActive
+                              {stop.sequence}
+                            </div>
+                            {idx < stopList.length - 1 && (
+                              <div className="mt-1 h-4 w-0.5 bg-gray-200" />
+                            )}
+                          </div>
+
+                          {/* content */}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <p
+                                className={`truncate text-sm font-bold ${isActive ? 'text-indigo-700' : 'text-gray-900'
+                                  }`}
+                              >
+                                {shopName}
+                              </p>
+                              <ChevronRight
+                                className={`size-4 shrink-0 transition-transform ${isActive
                                   ? 'rotate-90 text-indigo-500'
                                   : 'text-gray-300 group-hover:text-gray-500'
-                                }`}
-                            />
-                          </div>
-                          <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                            <span
-                              className={`rounded-md px-1.5 py-0.5 font-semibold ${picked
+                                  }`}
+                              />
+                            </div>
+                            <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                              <span
+                                className={`rounded-md px-1.5 py-0.5 font-semibold ${picked
                                   ? 'bg-emerald-50 text-emerald-600'
                                   : isPickup
                                     ? 'bg-sky-50 text-sky-600'
-                                  : 'bg-amber-50 text-amber-600'
-                                }`}
-                            >
-                              {isPickup ? 'Lấy hàng' : 'Giao hàng'}
-                            </span>
-                            <span>• {stop.orderResponses?.length ?? 0} đơn</span>
-                            {isStopPicked(stop) && (
-                              <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 font-semibold text-emerald-600">
-                                <CheckCircle2 className="size-3" />
-                                Đã picked
+                                    : 'bg-amber-50 text-amber-600'
+                                  }`}
+                              >
+                                {isPickup ? 'Lấy hàng' : 'Giao hàng'}
                               </span>
-                            )}
+                              <span>• {stop.orderResponses?.length ?? 0} đơn</span>
+                              {isStopPicked(stop) && (
+                                <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 font-semibold text-emerald-600">
+                                  <CheckCircle2 className="size-3" />
+                                  Đã picked
+                                </span>
+                              )}
+                            </div>
                           </div>
-                        </div>
                         </button>
                         {/* Only show Pickup button for trip owner */}
                         {isTripOwner && stop.id === pickableStopId && (
@@ -994,7 +1054,7 @@ const TripDetail: React.FC = () => {
                               ) : (
                                 <CheckCircle2 className="size-3.5" />
                               )}
-                              Pickup
+                              Đã lấy hàng
                             </button>
                           </div>
                         )}
@@ -1031,9 +1091,9 @@ const TripDetail: React.FC = () => {
                       <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
                         <span
                           className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-semibold ${isStopPicked(selectedStop)
-                              ? 'bg-emerald-50 text-emerald-600'
-                              : isPickupStop(selectedStop)
-                                ? 'bg-sky-50 text-sky-600'
+                            ? 'bg-emerald-50 text-emerald-600'
+                            : isPickupStop(selectedStop)
+                              ? 'bg-sky-50 text-sky-600'
                               : 'bg-amber-50 text-amber-600'
                             }`}
                         >
@@ -1071,9 +1131,9 @@ const TripDetail: React.FC = () => {
                     </div>
                   )}
                   <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <Clock className="size-3.5 text-gray-400" />
+                    <Clock className="size-3.5 text-gray-400" />
                     <p><span className="font-bold text-gray-700">Phí cước:</span> {Math.round(selectedStop.priceForStop).toLocaleString('vi-VN')}đ</p>
-                    </div>
+                  </div>
                 </div>
 
                 {/* orders at this stop */}
@@ -1099,10 +1159,10 @@ const TripDetail: React.FC = () => {
                                 Đơn #{order.id}
                               </span>
                             </div>
-            
+
                           </div>
 
-                          
+
 
                           {/* order items */}
                           <div className="space-y-2">
@@ -1129,7 +1189,7 @@ const TripDetail: React.FC = () => {
                                   <p className="text-xs text-gray-500">
                                     {item.quantity} {item.unit || 'kg'}</p>
                                 </div>
-                              
+
                               </div>
                             ))}
                           </div>

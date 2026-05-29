@@ -48,35 +48,35 @@ const inputCls = 'w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 t
 const CreateTrip: React.FC = () => {
   const navigate = useNavigate();
 
-  const [warehouses, setWarehouses]   = useState<WarehouseResponse[]>([]);
-  const [vehicles, setVehicles]       = useState<VehicleResponse[]>([]);
-  const [orders, setOrders]           = useState<OrderResponse[]>([]);
-  const [loading, setLoading]         = useState(true);
-  const [creating, setCreating]       = useState(false);
+  const [warehouses, setWarehouses] = useState<WarehouseResponse[]>([]);
+  const [vehicles, setVehicles] = useState<VehicleResponse[]>([]);
+  const [orders, setOrders] = useState<OrderResponse[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
   const [orderModalOpen, setOrderModalOpen] = useState(false);
   const [selectedOrderIds, setSelectedOrderIds] = useState<number[]>([]);
-  const [error, setError]             = useState<string | null>(null);
-  const [success, setSuccess]         = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [locationLoading, setLocationLoading] = useState(false);
   const [selectedAddress, setSelectedAddress] = useState('Chưa chọn địa điểm');
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
-  const leafletMapRef   = useRef<any>(null);
-  const markerRef       = useRef<any>(null);
+  const leafletMapRef = useRef<any>(null);
+  const markerRef = useRef<any>(null);
 
   const [form, setForm] = useState({
-    warehouseId:        '',
-    vehicleId:          '',
-    startLat:           '',
-    startLng:           '',
-    departureTime:      '',
-    isShareable:        false,
+    warehouseId: '',
+    vehicleId: '',
+    startLat: '',
+    startLng: '',
+    departureTime: '',
+    isShareable: false,
     availableCapacityKg: '',
     // pricing — only when isShareable
-    basePrice:          '',
-    distanceRate:       '',
-    weightRate:         '',
-    orderIds:           [] as number[],
+    basePrice: '',
+    distanceRate: '',
+    weightRate: '',
+    orderIds: [] as number[],
   });
 
   // ── Map helpers ─────────────────────────────────────────────────────────────
@@ -86,7 +86,11 @@ const CreateTrip: React.FC = () => {
     l.rel = 'stylesheet'; l.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
     document.head.appendChild(l);
   };
-
+  const getMinDateTimeLocal = () => {
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    return now.toISOString().slice(0, 16);
+  };
   const reverseGeocode = async (lat: number, lng: number) => {
     try {
       const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`);
@@ -147,7 +151,7 @@ const CreateTrip: React.FC = () => {
         setVehicles(vRes.result || []);
         setOrders(oRes.result?.content || []);
       } catch { setError('Không thể tải dữ liệu. Vui lòng thử lại.'); }
-      finally   { setLoading(false); }
+      finally { setLoading(false); }
     })();
   }, []);
 
@@ -167,8 +171,10 @@ const CreateTrip: React.FC = () => {
   }, [selectedVehicle, selectedOrdersWeight]);
 
   useEffect(() => {
-    if (!form.availableCapacityKg || form.availableCapacityKg === '0')
-      setForm(prev => ({ ...prev, availableCapacityKg: String(computedAvailableKg) }));
+    setForm(prev => ({
+      ...prev,
+      availableCapacityKg: String(computedAvailableKg),
+    }));
   }, [computedAvailableKg]);
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
@@ -184,22 +190,22 @@ const CreateTrip: React.FC = () => {
     setCreating(true); setError(null);
     try {
       await tripService.createTrip({
-        warehouseId:         Number(form.warehouseId),
-        vehicleId:           Number(form.vehicleId),
-        startLat:            Number(form.startLat),
-        startLng:            Number(form.startLng),
-        departureTime:       form.departureTime,
-        isShareable:         form.isShareable,
+        warehouseId: Number(form.warehouseId),
+        vehicleId: Number(form.vehicleId),
+        startLat: Number(form.startLat),
+        startLng: Number(form.startLng),
+        departureTime: form.departureTime,
+        isShareable: form.isShareable,
         availableCapacityKg: Number(form.availableCapacityKg || computedAvailableKg),
-        basePrice:           form.isShareable ? Number(form.basePrice)    : 0,
-        distanceRate:        form.isShareable ? Number(form.distanceRate) : 0,
-        weightRate:          form.isShareable ? Number(form.weightRate)   : 0,
-        orderIds:            selectedOrderIds,
+        basePrice: form.isShareable ? Number(form.basePrice) : 0,
+        distanceRate: form.isShareable ? Number(form.distanceRate) : 0,
+        weightRate: form.isShareable ? Number(form.weightRate) : 0,
+        orderIds: selectedOrderIds,
       });
       setSuccess('Tạo chuyến đi thành công.');
       setTimeout(() => navigate('/farmer/trips'), 1500);
     } catch { setError('Không thể tạo chuyến đi. Vui lòng thử lại.'); }
-    finally   { setCreating(false); }
+    finally { setCreating(false); }
   };
 
   if (loading) {
@@ -225,7 +231,7 @@ const CreateTrip: React.FC = () => {
         </div>
       </div>
 
-      {error   && <div className="rounded-3xl border border-red-100 bg-red-50 p-4 text-red-700 flex items-start gap-3"><AlertCircle className="size-5 shrink-0" />{error}</div>}
+      {error && <div className="rounded-3xl border border-red-100 bg-red-50 p-4 text-red-700 flex items-start gap-3"><AlertCircle className="size-5 shrink-0" />{error}</div>}
       {success && <div className="rounded-3xl border border-emerald-100 bg-emerald-50 p-4 text-emerald-700 flex items-start gap-3"><CheckSquare className="size-5 shrink-0" />{success}</div>}
 
       <div className="grid gap-8 xl:grid-cols-[1.3fr_0.7fr]">
@@ -265,10 +271,14 @@ const CreateTrip: React.FC = () => {
                 </div>
               )}
 
-              {/* Departure time */}
               <Field label="Thời gian khởi hành">
-                <input type="datetime-local" value={form.departureTime}
-                  onChange={e => setForm({ ...form, departureTime: e.target.value })} className={inputCls} />
+                <input
+                  type="datetime-local"
+                  min={getMinDateTimeLocal()}
+                  value={form.departureTime}
+                  onChange={e => setForm({ ...form, departureTime: e.target.value })}
+                  className={inputCls}
+                />
               </Field>
 
               {/* Shareable toggle */}
