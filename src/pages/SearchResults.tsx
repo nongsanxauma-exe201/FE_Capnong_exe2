@@ -28,20 +28,20 @@ const SearchResults: React.FC<SearchResultsProps> = ({ onSelectProduct }) => {
   const navigate = useNavigate();
   const [products, setProducts] = useState<ProductResponse[]>([]);
   const [mysteryBoxes, setMysteryBoxes] = useState<MysteryBox[]>([]);
+  const [categories, setCategories] = useState<CategoryResponse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [sortBy, setSortBy] = useState<SortOption>('popular');
   const [priceFilter, setPriceFilter] = useState<PriceFilter>('all');
   const [minRating, setMinRating] = useState<number>(0);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
-  const [categories, setCategories] = useState<CategoryResponse[]>([]);
+  const [showFilters, setShowFilters] = useState(false);
+  const [productRatings, setProductRatings] = useState<Record<number, { average: number; count: number }>>({});
+  const itemsPerPage = 12;
 
   const handleCategoryChange = (catId: number) => {
     setSelectedCategoryId(prev => prev === catId ? null : catId);
   };
-  const [showFilters, setShowFilters] = useState(false);
-  const [productRatings, setProductRatings] = useState<Record<number, { average: number; count: number }>>({});
-  const itemsPerPage = 12;
 
   // Get search query from URL
   const queryParams = new URLSearchParams(location.search);
@@ -51,58 +51,57 @@ const SearchResults: React.FC<SearchResultsProps> = ({ onSelectProduct }) => {
     const fetchData = async () => {
       try {
         setIsLoading(true);
+
+        // Dùng getForBuyer() (từ develop) + categoriesRes (của chúng ta)
         const [productsRes, boxesRes, categoriesRes] = await Promise.all([
-          productService.getAll().catch(() => ({ result: [] })),
-          mysteryBoxService.getAll().catch(() => ({ result: [] })),
-          categoryService.getAll().catch(() => ({ result: [] })),
+          productService.getForBuyer().catch(() => ({ result: [] as ProductResponse[] })),
+          mysteryBoxService.getForBuyer().catch(() => ({ result: [] as MysteryBox[] })),
+          categoryService.getAll().catch(() => ({ result: [] as CategoryResponse[] })),
         ]);
 
-        if (productsRes?.result && Array.isArray(productsRes.result)) {
-          const availableProducts = productsRes.result.filter(p => p && (p.status === 'AVAILABLE' || !p.status) && p.id && !isNaN(p.id));
-          setProducts(availableProducts);
+        const buyerProducts = Array.isArray(productsRes.result)
+          ? productsRes.result.filter((p) => p && p.id && !isNaN(Number(p.id)))
+          : [];
+        setProducts(buyerProducts);
 
-          // Fetch ratings for each individual product
-          // Each product's rating is calculated from reviews specifically for that product
-          const ratingsMap: Record<number, { average: number; count: number }> = {};
+        const buyerBoxes = Array.isArray(boxesRes.result)
+          ? boxesRes.result.filter((b) => b && b.id && b.isActive !== false && b.isActive !== 0)
+          : [];
+        setMysteryBoxes(buyerBoxes);
 
-          await Promise.all(
-            availableProducts.map(async (product) => {
-              try {
-                // Try to get reviews by productId first
-                let reviews: any[] = [];
-                try {
-                  const reviewsRes = await reviewService.getByProductId(product.id);
-                  if (reviewsRes?.result && Array.isArray(reviewsRes.result)) {
-                    reviews = reviewsRes.result;
-                  }
-                } catch (productErr) {
-                  // Fallback: Get shop reviews and filter by productId
-                  if (product.shopOwnerId) {
-                    const shopReviewsRes = await reviewService.getByShopId(product.shopOwnerId);
-                    if (shopReviewsRes?.result && Array.isArray(shopReviewsRes.result)) {
-                      reviews = shopReviewsRes.result.filter((r: any) => r.productId === product.id);
-                    }
-                  }
-                }
-
-                if (reviews.length > 0) {
-                  const average = reviews.reduce((sum, r) => sum + r.ratingStar, 0) / reviews.length;
-                  ratingsMap[product.id] = { average, count: reviews.length };
-                }
-              } catch (err) {
-                console.error(`Failed to fetch reviews for product ${product.id}:`, err);
-              }
-            })
-          );
-
-          setProductRatings(ratingsMap);
-        }
-        if (boxesRes?.result && Array.isArray(boxesRes.result)) {
-          setMysteryBoxes(boxesRes.result.filter((b: MysteryBox) => b && b.isActive !== false && b.isActive !== 0));
-        }
-        if (categoriesRes?.result && Array.isArray(categoriesRes.result)) {
+        if (Array.isArray(categoriesRes.result)) {
           setCategories(categoriesRes.result);
         }
+
+        // Fetch ratings per-product với fallback về shop (từ develop)
+        const ratingsMap: Record<number, { average: number; count: number }> = {};
+        await Promise.all(
+          buyerProducts.map(async (product) => {
+            try {
+              let reviews: ReviewResponse[] = [];
+              try {
+                const reviewsRes = await reviewService.getByProductId(product.id);
+                if (reviewsRes?.result && Array.isArray(reviewsRes.result)) {
+                  reviews = reviewsRes.result;
+                }
+              } catch {
+                if (product.shopOwnerId) {
+                  const shopReviewsRes = await reviewService.getByShopId(product.shopOwnerId);
+                  if (shopReviewsRes?.result && Array.isArray(shopReviewsRes.result)) {
+                    reviews = shopReviewsRes.result.filter((r: any) => r.productId === product.id);
+                  }
+                }
+              }
+              if (reviews.length > 0) {
+                const average = reviews.reduce((sum, r) => sum + Number(r.ratingStar || 0), 0) / reviews.length;
+                ratingsMap[product.id] = { average, count: reviews.length };
+              }
+            } catch (err) {
+              console.error(`Failed to fetch reviews for product ${product.id}:`, err);
+            }
+          })
+        );
+        setProductRatings(ratingsMap);
       } catch (err) {
         console.error('Failed to fetch data:', err);
       } finally {
@@ -117,24 +116,23 @@ const SearchResults: React.FC<SearchResultsProps> = ({ onSelectProduct }) => {
   const filteredResults = useMemo(() => {
     const q = normalizeSearch(searchQuery);
 
-    // Filter by search query
     let filteredProducts = searchQuery
       ? products.filter(p =>
-        p && p.productName && (
-          normalizeSearch(p.productName).includes(q) ||
-          (p.description && normalizeSearch(p.description).includes(q)) ||
-          (p.shopName && normalizeSearch(p.shopName).includes(q))
+          p && p.productName && (
+            normalizeSearch(p.productName).includes(q) ||
+            (p.description && normalizeSearch(p.description).includes(q)) ||
+            (p.shopName && normalizeSearch(p.shopName).includes(q))
+          )
         )
-      )
       : products;
 
     let filteredBoxes = searchQuery
       ? mysteryBoxes.filter(b =>
-        b && b.boxType && (
-          normalizeSearch(b.boxType).includes(q) ||
-          (b.description && normalizeSearch(b.description).includes(q))
+          b && b.boxType && (
+            normalizeSearch(b.boxType).includes(q) ||
+            (b.description && normalizeSearch(b.description).includes(q))
+          )
         )
-      )
       : mysteryBoxes;
 
     // Filter by Category
@@ -152,7 +150,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({ onSelectProduct }) => {
         if (priceFilter === 'over-200k') return price > 200000;
         return true;
       });
-
       filteredBoxes = filteredBoxes.filter(b => {
         const price = b.price || 0;
         if (priceFilter === 'under-50k') return price < 50000;
@@ -162,7 +159,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({ onSelectProduct }) => {
       });
     }
 
-    // Filter by rating
+    // Filter by rating (thực sự lọc theo productRatings)
     if (minRating > 0) {
       filteredProducts = filteredProducts.filter(p => {
         const r = productRatings[p.id];
@@ -184,30 +181,21 @@ const SearchResults: React.FC<SearchResultsProps> = ({ onSelectProduct }) => {
       ...filteredResults.boxes.map(b => ({ type: 'box' as const, data: b, price: b.price || 0, name: b.boxType || '' })),
     ];
 
-    // Sort based on selected option
     return combined.sort((a, b) => {
       switch (sortBy) {
-        case 'price-asc':
-          return a.price - b.price;
-        case 'price-desc':
-          return b.price - a.price;
-        case 'name-asc':
-          return a.name.localeCompare(b.name, 'vi');
-        case 'name-desc':
-          return b.name.localeCompare(a.name, 'vi');
-        case 'rating':
-          // Mock: keep original order (in production, sort by actual rating)
-          return 0;
-        case 'newest':
-          // Mock: keep original order (in production, sort by creation date)
-          return 0;
-        case 'popular':
-        default:
-          // Mock: keep original order (in production, sort by sold count)
-          return 0;
+        case 'price-asc': return a.price - b.price;
+        case 'price-desc': return b.price - a.price;
+        case 'name-asc': return a.name.localeCompare(b.name, 'vi');
+        case 'name-desc': return b.name.localeCompare(a.name, 'vi');
+        case 'rating': {
+          const getRating = (item: typeof combined[0]) =>
+            item.type === 'product' ? (productRatings[(item.data as ProductResponse).id]?.average || 0) : 0;
+          return getRating(b) - getRating(a);
+        }
+        default: return 0;
       }
     });
-  }, [filteredResults, sortBy]);
+  }, [filteredResults, sortBy, productRatings]);
 
   // Pagination
   const totalPages = Math.ceil(allResults.length / itemsPerPage);
@@ -216,9 +204,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({ onSelectProduct }) => {
     currentPage * itemsPerPage
   );
 
-  const clearSearch = () => {
-    navigate('/');
-  };
+  const clearSearch = () => { navigate('/'); };
 
   const clearFilters = () => {
     setPriceFilter('all');
@@ -243,7 +229,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({ onSelectProduct }) => {
           </button>
         </div>
 
-        {/* Category Filter */}
+        {/* Category Filter — từ API */}
         <div>
           <h4 className="font-bold text-gray-900 mb-3 text-sm uppercase tracking-wider">Danh mục sản phẩm</h4>
           <div className="flex flex-col gap-2">
@@ -268,49 +254,25 @@ const SearchResults: React.FC<SearchResultsProps> = ({ onSelectProduct }) => {
           <h4 className="font-bold text-gray-900 mb-3 text-sm uppercase tracking-wider">Lọc theo giá</h4>
           <div className="grid grid-cols-2 gap-x-2 gap-y-3">
             <label className="flex items-center gap-2 cursor-pointer group">
-              <input
-                type="radio"
-                name="price"
-                checked={priceFilter === 'all'}
-                onChange={() => setPriceFilter('all')}
-                className="w-3.5 h-3.5 text-primary focus:ring-primary border-gray-300"
-              />
+              <input type="radio" name="price" checked={priceFilter === 'all'} onChange={() => setPriceFilter('all')} className="w-3.5 h-3.5 text-primary focus:ring-primary border-gray-300" />
               <span className="text-[13px] text-gray-600 group-hover:text-primary transition-colors">Tất cả</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer group">
-              <input
-                type="radio"
-                name="price"
-                checked={priceFilter === 'under-50k'}
-                onChange={() => setPriceFilter('under-50k')}
-                className="w-3.5 h-3.5 text-primary focus:ring-primary border-gray-300"
-              />
+              <input type="radio" name="price" checked={priceFilter === 'under-50k'} onChange={() => setPriceFilter('under-50k')} className="w-3.5 h-3.5 text-primary focus:ring-primary border-gray-300" />
               <span className="text-[13px] text-gray-600 group-hover:text-primary transition-colors">Dưới 50k</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer group">
-              <input
-                type="radio"
-                name="price"
-                checked={priceFilter === '50k-200k'}
-                onChange={() => setPriceFilter('50k-200k')}
-                className="w-3.5 h-3.5 text-primary focus:ring-primary border-gray-300"
-              />
+              <input type="radio" name="price" checked={priceFilter === '50k-200k'} onChange={() => setPriceFilter('50k-200k')} className="w-3.5 h-3.5 text-primary focus:ring-primary border-gray-300" />
               <span className="text-[13px] text-gray-600 group-hover:text-primary transition-colors whitespace-nowrap">50k - 200k</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer group">
-              <input
-                type="radio"
-                name="price"
-                checked={priceFilter === 'over-200k'}
-                onChange={() => setPriceFilter('over-200k')}
-                className="w-3.5 h-3.5 text-primary focus:ring-primary border-gray-300"
-              />
+              <input type="radio" name="price" checked={priceFilter === 'over-200k'} onChange={() => setPriceFilter('over-200k')} className="w-3.5 h-3.5 text-primary focus:ring-primary border-gray-300" />
               <span className="text-[13px] text-gray-600 group-hover:text-primary transition-colors whitespace-nowrap">Trên 200k</span>
             </label>
           </div>
         </div>
 
-        {/* Rating Filter */}
+        {/* Rating Filter — radio buttons */}
         <div>
           <h4 className="font-bold text-gray-900 mb-3 text-sm uppercase tracking-wider">Đánh giá</h4>
           <div className="flex flex-col gap-2">
@@ -448,7 +410,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({ onSelectProduct }) => {
           <>
             {/* Results Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-12">
-              {paginatedResults.map((result, index) => {
+              {paginatedResults.map((result) => {
                 if (result.type === 'product') {
                   const product = result.data as ProductResponse;
                   const productRating = productRatings[product.id];
@@ -568,25 +530,19 @@ const SearchResults: React.FC<SearchResultsProps> = ({ onSelectProduct }) => {
 
                 <div className="flex gap-2">
                   {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
-                    let pageNum;
-                    if (totalPages <= 5) {
-                      pageNum = i + 1;
-                    } else if (currentPage <= 3) {
-                      pageNum = i + 1;
-                    } else if (currentPage >= totalPages - 2) {
-                      pageNum = totalPages - 4 + i;
-                    } else {
-                      pageNum = currentPage - 2 + i;
-                    }
+                    let pageNum: number;
+                    if (totalPages <= 5) pageNum = i + 1;
+                    else if (currentPage <= 3) pageNum = i + 1;
+                    else if (currentPage >= totalPages - 2) pageNum = totalPages - 4 + i;
+                    else pageNum = currentPage - 2 + i;
 
                     return (
                       <button
                         key={pageNum}
                         onClick={() => handlePageChange(pageNum)}
-                        className={`w-10 h-10 rounded-full font-bold text-sm transition-colors ${currentPage === pageNum
-                            ? 'bg-primary text-white'
-                            : 'hover:bg-gray-100 text-gray-700'
-                          }`}
+                        className={`w-10 h-10 rounded-full font-bold text-sm transition-colors ${
+                          currentPage === pageNum ? 'bg-primary text-white' : 'hover:bg-gray-100 text-gray-700'
+                        }`}
                       >
                         {pageNum}
                       </button>
