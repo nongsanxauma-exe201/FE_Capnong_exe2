@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { productService, ProductResponse, mysteryBoxService, MysteryBox, reviewService, ReviewResponse } from '../services';
+import { productService, ProductResponse, mysteryBoxService, MysteryBox, reviewService, ReviewResponse, categoryService, CategoryResponse } from '../services';
+import { normalizeSearch } from '../utils/string';
 import {
   Star,
   MapPin,
@@ -33,23 +34,10 @@ const SearchResults: React.FC<SearchResultsProps> = ({ onSelectProduct }) => {
   const [priceFilter, setPriceFilter] = useState<PriceFilter>('all');
   const [minRating, setMinRating] = useState<number>(0);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
-  const [selectedCategoryKey, setSelectedCategoryKey] = useState<string | null>(null);
+  const [categories, setCategories] = useState<CategoryResponse[]>([]);
 
-  const categoryOptions = [
-    { key: 'cu-gia-vi',          categoryId: 1, name: 'Củ gia vị' },
-    { key: 'cu-thuc-pham',       categoryId: 1, name: 'Củ thực phẩm' },
-    { key: 'trai-cay-nhiet-doi', categoryId: 2, name: 'Trái cây nhiệt đới' },
-    { key: 'trai-cay-quanh-nam', categoryId: 2, name: 'Trái cây quanh năm' },
-  ];
-
-  const handleCategoryChange = (key: string, catId: number) => {
-    if (selectedCategoryKey === key) {
-      setSelectedCategoryKey(null);
-      setSelectedCategoryId(null);
-    } else {
-      setSelectedCategoryKey(key);
-      setSelectedCategoryId(catId);
-    }
+  const handleCategoryChange = (catId: number) => {
+    setSelectedCategoryId(prev => prev === catId ? null : catId);
   };
   const [showFilters, setShowFilters] = useState(false);
   const [productRatings, setProductRatings] = useState<Record<number, { average: number; count: number }>>({});
@@ -63,9 +51,10 @@ const SearchResults: React.FC<SearchResultsProps> = ({ onSelectProduct }) => {
     const fetchData = async () => {
       try {
         setIsLoading(true);
-        const [productsRes, boxesRes] = await Promise.all([
+        const [productsRes, boxesRes, categoriesRes] = await Promise.all([
           productService.getAll().catch(() => ({ result: [] })),
           mysteryBoxService.getAll().catch(() => ({ result: [] })),
+          categoryService.getAll().catch(() => ({ result: [] })),
         ]);
 
         if (productsRes?.result && Array.isArray(productsRes.result)) {
@@ -111,6 +100,9 @@ const SearchResults: React.FC<SearchResultsProps> = ({ onSelectProduct }) => {
         if (boxesRes?.result && Array.isArray(boxesRes.result)) {
           setMysteryBoxes(boxesRes.result.filter((b: MysteryBox) => b && b.isActive !== false && b.isActive !== 0));
         }
+        if (categoriesRes?.result && Array.isArray(categoriesRes.result)) {
+          setCategories(categoriesRes.result);
+        }
       } catch (err) {
         console.error('Failed to fetch data:', err);
       } finally {
@@ -123,15 +115,15 @@ const SearchResults: React.FC<SearchResultsProps> = ({ onSelectProduct }) => {
 
   // Filter and sort all items
   const filteredResults = useMemo(() => {
-    const lowQuery = searchQuery.toLowerCase();
+    const q = normalizeSearch(searchQuery);
 
     // Filter by search query
     let filteredProducts = searchQuery
       ? products.filter(p =>
         p && p.productName && (
-          p.productName.toLowerCase().includes(lowQuery) ||
-          (p.description && p.description.toLowerCase().includes(lowQuery)) ||
-          (p.shopName && p.shopName.toLowerCase().includes(lowQuery))
+          normalizeSearch(p.productName).includes(q) ||
+          (p.description && normalizeSearch(p.description).includes(q)) ||
+          (p.shopName && normalizeSearch(p.shopName).includes(q))
         )
       )
       : products;
@@ -139,8 +131,8 @@ const SearchResults: React.FC<SearchResultsProps> = ({ onSelectProduct }) => {
     let filteredBoxes = searchQuery
       ? mysteryBoxes.filter(b =>
         b && b.boxType && (
-          b.boxType.toLowerCase().includes(lowQuery) ||
-          (b.description && b.description.toLowerCase().includes(lowQuery))
+          normalizeSearch(b.boxType).includes(q) ||
+          (b.description && normalizeSearch(b.description).includes(q))
         )
       )
       : mysteryBoxes;
@@ -170,9 +162,12 @@ const SearchResults: React.FC<SearchResultsProps> = ({ onSelectProduct }) => {
       });
     }
 
-    // Filter by rating (mock rating for now)
+    // Filter by rating
     if (minRating > 0) {
-      // Since we don't have real ratings, we'll keep all items
+      filteredProducts = filteredProducts.filter(p => {
+        const r = productRatings[p.id];
+        return r && r.average >= minRating;
+      });
     }
 
     return {
@@ -180,7 +175,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({ onSelectProduct }) => {
       boxes: filteredBoxes,
       total: filteredProducts.length + filteredBoxes.length,
     };
-  }, [products, mysteryBoxes, searchQuery, priceFilter, minRating, selectedCategoryId]);
+  }, [products, mysteryBoxes, searchQuery, priceFilter, minRating, selectedCategoryId, productRatings]);
 
   // Combine and sort all results
   const allResults = useMemo(() => {
@@ -229,7 +224,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({ onSelectProduct }) => {
     setPriceFilter('all');
     setMinRating(0);
     setSelectedCategoryId(null);
-    setSelectedCategoryKey(null);
     setSortBy('popular');
   };
 
@@ -253,15 +247,15 @@ const SearchResults: React.FC<SearchResultsProps> = ({ onSelectProduct }) => {
         <div>
           <h4 className="font-bold text-gray-900 mb-3 text-sm uppercase tracking-wider">Danh mục sản phẩm</h4>
           <div className="flex flex-col gap-2">
-            {categoryOptions.map((cat) => (
-              <label key={cat.key} className="flex items-center gap-2 cursor-pointer group">
+            {categories.map((cat) => (
+              <label key={cat.id} className="flex items-center gap-2 cursor-pointer group">
                 <input
                   type="checkbox"
-                  checked={selectedCategoryKey === cat.key}
-                  onChange={() => handleCategoryChange(cat.key, cat.categoryId)}
+                  checked={selectedCategoryId === cat.id}
+                  onChange={() => handleCategoryChange(cat.id)}
                   className="w-3.5 h-3.5 text-primary focus:ring-primary border-gray-300 rounded"
                 />
-                <span className={`text-[13px] transition-colors ${selectedCategoryKey === cat.key ? 'text-primary font-bold' : 'text-gray-600 group-hover:text-primary'}`}>
+                <span className={`text-[13px] transition-colors ${selectedCategoryId === cat.id ? 'text-primary font-bold' : 'text-gray-600 group-hover:text-primary'}`}>
                   {cat.name}
                 </span>
               </label>
@@ -318,22 +312,40 @@ const SearchResults: React.FC<SearchResultsProps> = ({ onSelectProduct }) => {
 
         {/* Rating Filter */}
         <div>
-          <h4 className="font-bold text-gray-900 mb-2 text-sm uppercase tracking-wider">Đánh giá</h4>
-          <div className="space-y-1">
-            {[4, 3, 2, 1].map((rating) => (
-              <button
-                key={rating}
-                onClick={() => setMinRating(minRating === rating ? 0 : rating)}
-                className={`flex items-center gap-2 py-1 text-sm transition-colors w-full ${minRating === rating ? 'text-primary font-bold' : 'text-gray-600 hover:text-primary'
-                  }`}
-              >
-                <div className="flex text-yellow-500">
-                  {Array.from({ length: 5 }, (_, i) => (
-                    <Star key={i} className={`size-3.5 ${i < rating ? 'fill-current' : ''}`} />
-                  ))}
+          <h4 className="font-bold text-gray-900 mb-3 text-sm uppercase tracking-wider">Đánh giá</h4>
+          <div className="flex flex-col gap-2">
+            <label className="flex items-center gap-2 cursor-pointer group">
+              <input
+                type="radio"
+                name="rating"
+                checked={minRating === 0}
+                onChange={() => setMinRating(0)}
+                className="w-3.5 h-3.5 text-primary focus:ring-primary border-gray-300"
+              />
+              <span className={`text-[13px] transition-colors ${minRating === 0 ? 'text-primary font-bold' : 'text-gray-600 group-hover:text-primary'}`}>
+                Tất cả
+              </span>
+            </label>
+            {[4, 3, 2].map((rating) => (
+              <label key={rating} className="flex items-center gap-2 cursor-pointer group">
+                <input
+                  type="radio"
+                  name="rating"
+                  checked={minRating === rating}
+                  onChange={() => setMinRating(rating)}
+                  className="w-3.5 h-3.5 text-primary focus:ring-primary border-gray-300"
+                />
+                <div className="flex items-center gap-1.5">
+                  <div className="flex text-yellow-500">
+                    {Array.from({ length: rating }, (_, i) => (
+                      <Star key={i} className="size-3 fill-current" />
+                    ))}
+                  </div>
+                  <span className={`text-[13px] transition-colors ${minRating === rating ? 'text-primary font-bold' : 'text-gray-600 group-hover:text-primary'}`}>
+                    trở lên
+                  </span>
                 </div>
-                <span className="text-[13px]">Trở lên</span>
-              </button>
+              </label>
             ))}
           </div>
         </div>

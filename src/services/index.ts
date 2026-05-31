@@ -10,6 +10,8 @@ export { shipperService } from './shipper.service';
 export { notificationService } from './notification.service';
 export { mysteryBoxService } from './mysteryBox.service';
 export { productService } from './product.service';
+export { categoryService } from './category.service';
+export type { CategoryResponse } from './category.service';
 export { orderService } from './order.service';
 export { walletService } from './wallet.service';
 export { blogService } from './blog.service';
