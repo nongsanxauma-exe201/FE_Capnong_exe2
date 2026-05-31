@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  ArrowLeft, 
-  Grid, 
-  List, 
+import {
+  ArrowLeft,
+  Grid,
+  List,
   Filter,
   Star,
   ShoppingCart,
@@ -30,11 +30,11 @@ interface ShopProductsProps {
   onOpenLogin?: () => void;
 }
 
-const ShopProducts: React.FC<ShopProductsProps> = ({ 
-  shopId, 
-  onBack, 
-  isAuthenticated = false, 
-  onOpenLogin = () => {} 
+const ShopProducts: React.FC<ShopProductsProps> = ({
+  shopId,
+  onBack,
+  isAuthenticated = false,
+  onOpenLogin = () => { }
 }) => {
   const navigate = useNavigate();
   const [products, setProducts] = useState<ProductResponse[]>([]);
@@ -60,15 +60,19 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
       console.log('[ShopProducts] Fetching data for shopId:', shopId);
       try {
         const [productsRes, shopRes, reviewsRes, boxesRes, combosRes] = await Promise.all([
-          productService.getByShopId(shopId),
+          productService.getForBuyer().catch(() => ({ result: [] })),
           userService.getUserById(shopId).catch(() => ({ result: null })),
           reviewService.getByShopId(shopId).catch(() => ({ result: [] })),
-          mysteryBoxService.getAll().catch(() => ({ result: [] })),
+          mysteryBoxService.getForBuyer().catch(() => ({ result: [] })),
           comboService.getByShop(shopId).catch(() => ({ result: [] }))
         ]);
 
         if (productsRes.result) {
-          setProducts(productsRes.result);
+          setProducts(
+            productsRes.result.filter((p: ProductResponse) =>
+              (p.shopOwnerId === shopId || p.shopId === shopId)
+            )
+          );
         }
         if (reviewsRes.result) {
           setReviews(reviewsRes.result);
@@ -78,11 +82,14 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
         }
         // Filter mystery boxes belonging to this shop and only active ones
         if (boxesRes.result) {
-          setMysteryBoxes(boxesRes.result.filter((b: MysteryBox) => b.shopOwnerId === shopId && b.isActive !== false && b.isActive !== 0));
+          setMysteryBoxes(
+            boxesRes.result.filter((b: MysteryBox) => b.shopOwnerId === shopId)
+          );
         }
         if (combosRes.result) {
           setCombos(combosRes.result);
-        }      } catch (error) {
+        }
+      } catch (error) {
         console.error('Failed to load shop data', error);
       } finally {
         setLoading(false);
@@ -142,8 +149,8 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
 
   // Filter and sort products
   const categories = Array.from(new Set(products.map(p => p.unit || 'Khác')));
-  
-  let filteredProducts = selectedCategory 
+
+  let filteredProducts = selectedCategory
     ? products.filter(p => (p.unit || 'Khác') === selectedCategory)
     : products;
 
@@ -156,22 +163,22 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
   }
 
   const activeProducts = products.filter(p => p.stockQuantity > 0).length;
-  
+
   // Calculate average rating
   const calculateAverageRating = () => {
     if (reviews.length === 0) return 0;
     const sum = reviews.reduce((acc, rev) => acc + rev.ratingStar, 0);
     return (sum / reviews.length).toFixed(1);
   };
-  
+
   const averageRating = calculateAverageRating();
-  
+
   // Get shop name from shopInfo first, then from first product, then fallback
-  const shopName = shopInfo?.shopName 
-    || shopInfo?.fullName 
+  const shopName = shopInfo?.shopName
+    || shopInfo?.fullName
     || (products.length > 0 ? products[0].shopName : null)
     || 'Cửa hàng';
-  
+
   console.log('[ShopProducts] Display shopName:', shopName, {
     fromShopInfo: shopInfo?.shopName || shopInfo?.fullName,
     fromProduct: products.length > 0 ? products[0].shopName : null,
@@ -194,7 +201,7 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
       {/* Header */}
       <div className="bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-          <button 
+          <button
             onClick={onBack}
             className="flex items-center gap-2 text-gray-600 hover:text-gray-900 font-bold text-sm transition-colors"
           >
@@ -203,19 +210,17 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
           </button>
           <h3 className="font-black text-gray-900 text-lg">{shopName}</h3>
           <div className="flex gap-2">
-            <button 
+            <button
               onClick={() => setViewMode('grid')}
-              className={`p-2 rounded-lg transition-colors ${
-                viewMode === 'grid' ? 'bg-primary/10 text-primary' : 'hover:bg-gray-100 text-gray-400'
-              }`}
+              className={`p-2 rounded-lg transition-colors ${viewMode === 'grid' ? 'bg-primary/10 text-primary' : 'hover:bg-gray-100 text-gray-400'
+                }`}
             >
               <Grid className="size-4" />
             </button>
-            <button 
+            <button
               onClick={() => setViewMode('list')}
-              className={`p-2 rounded-lg transition-colors ${
-                viewMode === 'list' ? 'bg-primary/10 text-primary' : 'hover:bg-gray-100 text-gray-400'
-              }`}
+              className={`p-2 rounded-lg transition-colors ${viewMode === 'list' ? 'bg-primary/10 text-primary' : 'hover:bg-gray-100 text-gray-400'
+                }`}
             >
               <List className="size-4" />
             </button>
@@ -229,7 +234,7 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
           <div className="flex flex-col md:flex-row gap-6 items-start">
             {/* Shop Avatar */}
             <div className="size-20 rounded-2xl overflow-hidden bg-gradient-to-br from-green-100 to-blue-100 flex-shrink-0 border-4 border-white shadow-lg">
-              <img 
+              <img
                 src={`https://ui-avatars.com/api/?name=${encodeURIComponent(shopName)}&background=63b34a&color=fff&size=200&bold=true`}
                 alt={shopName}
                 className="w-full h-full object-cover"
@@ -302,7 +307,7 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
 
               {/* Actions */}
               <div className="flex gap-2">
-                <button 
+                <button
                   onClick={handleChatNow}
                   className="px-4 py-2 bg-primary text-white font-bold text-xs rounded-xl hover:bg-primary-dark transition-colors flex items-center gap-2 shadow-lg shadow-primary/20"
                 >
@@ -342,11 +347,10 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
                 <h4 className="font-black text-gray-700 text-xs mb-3 uppercase">Đơn vị</h4>
                 <button
                   onClick={() => setSelectedCategory(null)}
-                  className={`w-full text-left px-3 py-2 rounded-lg font-bold text-xs transition-all ${
-                    selectedCategory === null
-                      ? 'bg-primary/10 text-primary border border-primary/20'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
+                  className={`w-full text-left px-3 py-2 rounded-lg font-bold text-xs transition-all ${selectedCategory === null
+                    ? 'bg-primary/10 text-primary border border-primary/20'
+                    : 'text-gray-600 hover:bg-gray-50'
+                    }`}
                 >
                   Tất cả ({products.length})
                 </button>
@@ -356,11 +360,10 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
                     <button
                       key={cat}
                       onClick={() => setSelectedCategory(cat)}
-                      className={`w-full text-left px-3 py-2 rounded-lg font-bold text-xs transition-all ${
-                        selectedCategory === cat
-                          ? 'bg-primary/10 text-primary border border-primary/20'
-                          : 'text-gray-600 hover:bg-gray-50'
-                      }`}
+                      className={`w-full text-left px-3 py-2 rounded-lg font-bold text-xs transition-all ${selectedCategory === cat
+                        ? 'bg-primary/10 text-primary border border-primary/20'
+                        : 'text-gray-600 hover:bg-gray-50'
+                        }`}
                     >
                       {cat} ({count})
                     </button>
@@ -378,7 +381,7 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
                 <p className="text-sm font-bold text-gray-600">
                   Hiển thị <span className="text-primary font-black">{filteredProducts.length}</span> sản phẩm
                 </p>
-                <select 
+                <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value)}
                   className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-600 cursor-pointer hover:border-gray-300 transition-colors"
@@ -392,23 +395,20 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
 
               {/* Products */}
               {filteredProducts.length > 0 ? (
-                <div className={`grid gap-5 ${
-                  viewMode === 'grid' 
-                    ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3' 
-                    : 'grid-cols-1'
-                }`}>
+                <div className={`grid gap-5 ${viewMode === 'grid'
+                  ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
+                  : 'grid-cols-1'
+                  }`}>
                   {filteredProducts.map(product => (
-                    <div 
-                      key={product.id} 
-                      className={`group ${
-                        viewMode === 'list' ? 'flex gap-4' : ''
-                      }`}
+                    <div
+                      key={product.id}
+                      className={`group ${viewMode === 'list' ? 'flex gap-4' : ''
+                        }`}
                     >
                       {/* Image */}
-                      <div className={`relative ${
-                        viewMode === 'list' ? 'w-32 h-32' : 'aspect-square'
-                      } rounded-xl overflow-hidden bg-gray-100 border border-gray-100 group-hover:border-primary/50 transition-all flex-shrink-0`}>
-                        <img 
+                      <div className={`relative ${viewMode === 'list' ? 'w-32 h-32' : 'aspect-square'
+                        } rounded-xl overflow-hidden bg-gray-100 border border-gray-100 group-hover:border-primary/50 transition-all flex-shrink-0`}>
+                        <img
                           src={product.imageUrl || `https://picsum.photos/seed/${product.id}/400/400`}
                           alt={product.productName}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
@@ -418,12 +418,11 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
                             <span className="text-white text-xs font-black">Hết hàng</span>
                           </div>
                         )}
-                        <button 
+                        <button
                           onClick={() => handleAddToCart(product.id)}
                           disabled={product.stockQuantity <= 0 || addingToCart === product.id}
-                          className={`absolute ${
-                            viewMode === 'list' ? 'bottom-2 right-2 size-8' : 'bottom-3 right-3 size-10'
-                          } bg-primary text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:scale-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed`}
+                          className={`absolute ${viewMode === 'list' ? 'bottom-2 right-2 size-8' : 'bottom-3 right-3 size-10'
+                            } bg-primary text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:scale-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed`}
                         >
                           {addingToCart === product.id ? (
                             <Loader2 className={`${viewMode === 'list' ? 'size-4' : 'size-5'} animate-spin`} />
@@ -439,7 +438,7 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
                           {product.productName}
                         </h4>
                         <p className="text-xs text-gray-500 font-medium mb-2">{product.unit}</p>
-                        
+
                         <div className="flex items-center gap-2 mb-2">
                           <span className="text-lg font-black text-primary">
                             {product.sellingPrice.toLocaleString('vi-VN')}đ
@@ -650,7 +649,7 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
                     <div className="size-10 rounded-full bg-primary/10 flex items-center justify-center font-black text-primary text-sm border border-primary/20 shrink-0">
                       {review.fullName ? review.fullName.charAt(0).toUpperCase() : 'U'}
                     </div>
-                    
+
                     <div className="flex-1">
                       <div className="flex items-start justify-between mb-2">
                         <div>
@@ -667,9 +666,9 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
                           Đơn #{review.orderDetailId}
                         </span>
                       </div>
-                      
+
                       <p className="text-gray-700 text-sm leading-relaxed mb-3">{review.comment}</p>
-                      
+
                       {/* Shop Reply */}
                       {review.replyFromShop && (
                         <div className="mt-3 p-4 bg-gray-50 rounded-xl border border-gray-100">
