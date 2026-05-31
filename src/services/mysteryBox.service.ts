@@ -90,6 +90,10 @@ class MysteryBoxService {
   async deleteMysteryBox(id: number): Promise<ApiResponse<void>> {
     return httpClient.delete<void>(`/mystery-boxes/${id}`);
   }
+  async getForBuyer(): Promise<ApiResponse<MysteryBox[]>> {
+    return httpClient.get<MysteryBox[]>('/mystery-boxes/buyer');
+  }
+ 
 }
 
 export const mysteryBoxService = new MysteryBoxService();

@@ -96,6 +96,11 @@ class ProductService {
     async rejectProduct(id: number, reason: string): Promise<ApiResponse<ProductResponse>> {
         return httpClient.patch<ProductResponse>(`/products/${id}/reject?reason=${encodeURIComponent(reason)}`);
     }
+     async getForBuyer(): Promise<ApiResponse<ProductResponse[]>> {
+        const res = await httpClient.get<ProductResponse[]>('/products/buyer');
+        if (res.result) res.result = res.result.map(normalizeProduct);
+        return res;
+    }
 }
 
 export const productService = new ProductService();

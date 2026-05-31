@@ -56,27 +56,28 @@ const BuyerHome: React.FC<BuyerHomeProps> = ({ onSelectProduct, isAuthenticated 
     const fetchProducts = async () => {
       try {
         setIsLoading(true);
-        const response = await productService.getAll();
-        if (response.result) {
-          const availableProducts = response.result.filter(p => p.status === 'AVAILABLE' || !p.status).filter(p => p.id && !isNaN(p.id));
-          setProducts(availableProducts);
+        const response = await productService.getForBuyer();
 
-          // Fetch ratings for each individual product
-          // Each product's rating is calculated from reviews specifically for that product
+        if (response.result) {
+          const buyerProducts = response.result.filter(
+            (p) => p?.id && !isNaN(Number(p.id))
+          );
+
+          setProducts(buyerProducts);
+
           const ratingsMap: Record<number, { average: number; count: number }> = {};
 
           await Promise.all(
-            availableProducts.map(async (product) => {
+            buyerProducts.map(async (product) => {
               try {
-                // Try to get reviews by productId first
                 let reviews: any[] = [];
+
                 try {
                   const reviewsRes = await reviewService.getByProductId(product.id);
                   if (reviewsRes?.result && Array.isArray(reviewsRes.result)) {
                     reviews = reviewsRes.result;
                   }
-                } catch (productErr) {
-                  // Fallback: Get shop reviews and filter by productId
+                } catch {
                   if (product.shopOwnerId) {
                     const shopReviewsRes = await reviewService.getByShopId(product.shopOwnerId);
                     if (shopReviewsRes?.result && Array.isArray(shopReviewsRes.result)) {
@@ -108,10 +109,10 @@ const BuyerHome: React.FC<BuyerHomeProps> = ({ onSelectProduct, isAuthenticated 
     const fetchBoxes = async () => {
       try {
         setIsLoadingBoxes(true);
-        const response = await mysteryBoxService.getAll();
+        const response = await mysteryBoxService.getForBuyer();
+
         if (response.result) {
-          // isActive undefined means backend doesn't return the field yet — treat as active
-          setMysteryBoxes(response.result.filter((b: MysteryBox) => b.isActive !== false && b.isActive !== 0));
+          setMysteryBoxes(response.result);
         }
       } catch (err) {
         console.error('Failed to fetch boxes:', err);

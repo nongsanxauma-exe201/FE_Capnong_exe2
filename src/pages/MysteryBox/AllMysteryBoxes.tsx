@@ -9,12 +9,24 @@ const AllMysteryBoxes: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    mysteryBoxService.getAll().then(res => {
+  const fetchBoxes = async () => {
+    try {
+      setLoading(true);
+      const res = await mysteryBoxService.getForBuyer();
+
       if (res.result) {
-        setBoxes(res.result.filter((b: MysteryBox) => b.isActive !== false && b.isActive !== 0));
+        setBoxes(res.result);
       }
-    }).finally(() => setLoading(false));
-  }, []);
+    } catch (err) {
+      console.error('Failed to fetch buyer mystery boxes:', err);
+      setBoxes([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  fetchBoxes();
+}, []);
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
