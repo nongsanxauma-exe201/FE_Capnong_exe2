@@ -36,7 +36,7 @@ jobs:
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
             cd ${{ secrets.VM_PROJECT_PATH }}
-            docker compose pull frontend
-            docker compose up -d frontend
-            docker image prune -f
-            docker compose ps
+            sudo docker compose pull frontend
+            sudo docker compose up -d frontend
+            sudo docker image prune -f
+            sudo docker compose ps
