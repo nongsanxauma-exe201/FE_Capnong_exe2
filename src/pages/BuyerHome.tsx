@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { productService, ProductResponse, mysteryBoxService, MysteryBox, reviewService } from '../services';
+import { normalizeSearch } from '../utils/string';
+import { productService, ProductResponse, mysteryBoxService, MysteryBox, reviewService, categoryService, CategoryResponse } from '../services';
 import {
   Star,
   MapPin,
@@ -35,19 +36,19 @@ const BuyerHome: React.FC<BuyerHomeProps> = ({ onSelectProduct, isAuthenticated 
   const [isLoadingBoxes, setIsLoadingBoxes] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [productRatings, setProductRatings] = useState<Record<number, { average: number; count: number }>>({});
+  const [categories, setCategories] = useState<CategoryResponse[]>([]);
+
+  const CATEGORY_ICON_MAP: Record<string, React.ElementType> = {
+    'Củ gia vị': LayoutGrid,
+    'Củ thực phẩm': Apple,
+    'Trái cây nhiệt đới': Grape,
+    'Trái cây quanh năm': Utensils,
+  };
 
   // Get search query from URL
   const queryParams = new URLSearchParams(location.search);
   const searchQuery = queryParams.get('search') || '';
   const isSearching = searchQuery.length > 0;
-
-  const categories = [
-    { name: 'Củ gia vị', icon: LayoutGrid },
-    { name: 'Trái cây nhiệt đới', icon: Grape },
-    { name: 'Trái cây quanh năm', icon: Utensils },
-    { name: 'Củ thực phẩm', icon: Apple },
-    { name: 'Khác', icon: Leaf },
-  ];
 
   useEffect(() => {
     // generateProduceStory('Cà chua bi hữu cơ').then(setFeaturedStory);
@@ -56,27 +57,28 @@ const BuyerHome: React.FC<BuyerHomeProps> = ({ onSelectProduct, isAuthenticated 
     const fetchProducts = async () => {
       try {
         setIsLoading(true);
-        const response = await productService.getAll();
-        if (response.result) {
-          const availableProducts = response.result.filter(p => p.status === 'AVAILABLE' || !p.status).filter(p => p.id && !isNaN(p.id));
-          setProducts(availableProducts);
+        const response = await productService.getForBuyer();
 
-          // Fetch ratings for each individual product
-          // Each product's rating is calculated from reviews specifically for that product
+        if (response.result) {
+          const buyerProducts = response.result.filter(
+            (p) => p?.id && !isNaN(Number(p.id))
+          );
+
+          setProducts(buyerProducts);
+
           const ratingsMap: Record<number, { average: number; count: number }> = {};
 
           await Promise.all(
-            availableProducts.map(async (product) => {
+            buyerProducts.map(async (product) => {
               try {
-                // Try to get reviews by productId first
                 let reviews: any[] = [];
+
                 try {
                   const reviewsRes = await reviewService.getByProductId(product.id);
                   if (reviewsRes?.result && Array.isArray(reviewsRes.result)) {
                     reviews = reviewsRes.result;
                   }
-                } catch (productErr) {
-                  // Fallback: Get shop reviews and filter by productId
+                } catch {
                   if (product.shopOwnerId) {
                     const shopReviewsRes = await reviewService.getByShopId(product.shopOwnerId);
                     if (shopReviewsRes?.result && Array.isArray(shopReviewsRes.result)) {
@@ -108,10 +110,10 @@ const BuyerHome: React.FC<BuyerHomeProps> = ({ onSelectProduct, isAuthenticated 
     const fetchBoxes = async () => {
       try {
         setIsLoadingBoxes(true);
-        const response = await mysteryBoxService.getAll();
+        const response = await mysteryBoxService.getForBuyer();
+
         if (response.result) {
-          // isActive undefined means backend doesn't return the field yet — treat as active
-          setMysteryBoxes(response.result.filter((b: MysteryBox) => b.isActive !== false && b.isActive !== 0));
+          setMysteryBoxes(response.result);
         }
       } catch (err) {
         console.error('Failed to fetch boxes:', err);
@@ -120,18 +122,28 @@ const BuyerHome: React.FC<BuyerHomeProps> = ({ onSelectProduct, isAuthenticated 
       }
     };
 
+    const fetchCategories = async () => {
+      try {
+        const res = await categoryService.getAll();
+        if (res.result) setCategories(res.result);
+      } catch (err) {
+        console.error('Failed to fetch categories:', err);
+      }
+    };
+
     fetchProducts();
     fetchBoxes();
+    fetchCategories();
   }, []);
 
   // Filter products based on search query
   const filteredProducts = useMemo(() => {
     if (!searchQuery) return products;
-    const lowQuery = searchQuery.toLowerCase();
+    const q = normalizeSearch(searchQuery);
     return products.filter(p =>
-      p.productName.toLowerCase().includes(lowQuery) ||
-      (p.description && p.description.toLowerCase().includes(lowQuery)) ||
-      (p.shopName && p.shopName.toLowerCase().includes(lowQuery))
+      normalizeSearch(p.productName).includes(q) ||
+      (p.description && normalizeSearch(p.description).includes(q)) ||
+      (p.shopName && normalizeSearch(p.shopName).includes(q))
     );
   }, [products, searchQuery]);
 
@@ -162,16 +174,21 @@ const BuyerHome: React.FC<BuyerHomeProps> = ({ onSelectProduct, isAuthenticated 
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4 mb-16">
-            {categories.map((cat, i) => (
-              <div key={i} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center gap-4 cursor-pointer hover:shadow-md hover:-translate-y-1 transition-all group">
-                <div className="size-16 bg-green-50/50 rounded-full flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-all">
-                  <cat.icon className="size-7" />
-                </div>
-                <span className="text-sm font-black text-gray-800 font-display">{cat.name}</span>
-              </div>
-            ))}
-          </div>
+          {categories.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mb-16">
+              {categories.map((cat) => {
+                const Icon = CATEGORY_ICON_MAP[cat.name] ?? Leaf;
+                return (
+                  <div key={cat.id} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center gap-4 cursor-pointer hover:shadow-md hover:-translate-y-1 transition-all group">
+                    <div className="size-16 bg-green-50/50 rounded-full flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-all">
+                      <Icon className="size-7" />
+                    </div>
+                    <span className="text-sm font-black text-gray-800 font-display">{cat.name}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {/* Blind Box Banner */}
           <div id="goi-mu" className="mb-16 scroll-mt-32">

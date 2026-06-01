@@ -10,15 +10,21 @@ export { shipperService } from './shipper.service';
 export { notificationService } from './notification.service';
 export { mysteryBoxService } from './mysteryBox.service';
 export { productService } from './product.service';
+export { categoryService } from './category.service';
+export type { CategoryResponse } from './category.service';
 export { orderService } from './order.service';
 export { walletService } from './wallet.service';
 export { blogService } from './blog.service';
+export { qualityService } from './quality.service';
 export { paymentService } from './payment.service';
+export { vehicleService } from './vehicle.service';
 export { comboService } from './combo.service';
 export { cartService } from './cart.service';
 export { reviewService } from './review.service';
 export { buildPlanService } from './buildPlan.service';
+export { tripService } from './trip.service';
 export { chatBotService } from './chatbot.service';
+export { staffService } from './staff.service';
 export { httpClient } from './http.client';
 
 // Export types
@@ -29,10 +35,13 @@ export type { ShipperRegisterRequest, ShipperRegisterResponse } from './shipper.
 export type { NotificationItem, AdminSendNotificationRequest } from './notification.service';
 export type { MysteryBox, MysteryBoxResponse, ProductMysteryResponse, MysteryBoxCreationRequest, MysteryBoxUpdateRequest, ProductMysteryRequest } from './mysteryBox.service';
 export type { ProductResponse, ProductCreationRequest } from './product.service';
-export type { OrderResponse, OrderCreationRequest } from './order.service';
+export type { OrderResponse, OrderItemResponse, OrderCreationRequest, TrackingResponse, TrackingImageResponse, StaffOrderReportResponse } from './order.service';
 export type { WalletResponse, WithdrawRequestResponse } from './wallet.service';
 export type { BlogResponse, BlogCreationRequest } from './blog.service';
 export type { PaymentResponse, CreatePaymentRequest } from './payment.service';
+export type { VehicleResponse, VehicleCreateRequest, VehicleUpdateRequest } from './vehicle.service';
+export type { TripResponse, TripStopResponse, TripStatus, TripJoinStatus, TripJoinRequestResponse, CreateTripJoinRequest, CreateTripRequest, WarehouseResponse } from './trip.service';
+export type { QualityCheckRequest, QualityCheckResponse, QualityCriteriaItem, QualityCriteriaPageResponse } from './quality.service';
 export type {
     BuildComboResponse,
     BuildComboCreationRequest,
@@ -52,6 +61,7 @@ export type {
     BuildPlanItemCreateRequest
 } from '../types';
 export type { ChatRequest, ChatbotApiResponse } from './chatbot.service';
+export type { AvailableShipperResponse } from './staff.service';
 
 // Export constants
 export { API_BASE_URL, TOKEN_KEY, USER_INFO_KEY } from './api.config';

@@ -83,13 +83,21 @@ class MysteryBoxService {
     return httpClient.put<MysteryBox>(`/mystery-boxes/${id}`, formData);
   }
 
-  async toggleActive(id: number): Promise<ApiResponse<MysteryBox>> {
-    return httpClient.patch<MysteryBox>(`/mystery-boxes/${id}/toggle-active`);
+  async activateBox(mysteryBoxId: number): Promise<ApiResponse<MysteryBox>> {
+    return httpClient.patch<MysteryBox>(`/mystery-boxes/active/${mysteryBoxId}`);
+  }
+
+  async deactivateBox(mysteryBoxId: number): Promise<ApiResponse<MysteryBox>> {
+    return httpClient.patch<MysteryBox>(`/mystery-boxes/deactivate/${mysteryBoxId}`);
   }
 
   async deleteMysteryBox(id: number): Promise<ApiResponse<void>> {
     return httpClient.delete<void>(`/mystery-boxes/${id}`);
   }
+  async getForBuyer(): Promise<ApiResponse<MysteryBox[]>> {
+    return httpClient.get<MysteryBox[]>('/mystery-boxes/buyer');
+  }
+ 
 }
 
 export const mysteryBoxService = new MysteryBoxService();

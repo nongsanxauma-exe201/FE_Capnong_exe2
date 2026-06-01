@@ -3,7 +3,8 @@ export enum AppRole {
   BUYER = 'BUYER',
   FARMER = 'FARMER',
   ADMIN = 'ADMIN',
-  SHIPPER = 'SHIPPER'
+  SHIPPER = 'SHIPPER',
+  STAFF = "STAFF"
 }
 
 export enum KYCStatus {
@@ -26,6 +27,7 @@ export interface User {
   bankAccount?: string;
   description?: string;
   achievement?: string;
+  shopActive?: boolean;
 }
 
 export interface Product {
@@ -175,11 +177,11 @@ export enum BlogCategory {
 }
 
 export interface PageResponse<T> {
-    content: T[];
-    page: number;
-    size: number;
-    totalElements: number;
-    totalPages: number;
-    first: boolean;
-    last: boolean;
-}
+  content: T[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+  first: boolean;
+  last: boolean;
+}

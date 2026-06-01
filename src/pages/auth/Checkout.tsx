@@ -196,6 +196,8 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
             const orderId = orderRes.result.id;
             const amount = orderRes.result.totalAmount;
 
+            window.dispatchEvent(new Event('cart-updated'));
+
             if (paymentMethod === 'PAYOS') {
                const paymentRes = await paymentService.createPaymentPayOS({
                   orderId, amount, method: 'PAYOS', paymentGateway: 'PAYOS'

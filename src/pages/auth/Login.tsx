@@ -60,6 +60,7 @@ const Login: React.FC<LoginProps> = ({ onGoToRegister, onForgotPassword }) => {
         if (user.kycStatus === KYCStatus.PENDING) navigate('/kyc');
         else navigate('/shipper');
       }
+      else if (user.role === AppRole.STAFF) navigate('/staff');
       else navigate('/');
     }
   }, [isAuthenticated, user, navigate]);

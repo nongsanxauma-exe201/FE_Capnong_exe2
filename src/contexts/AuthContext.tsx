@@ -29,7 +29,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     const backendRole = userData.role.name;
                     const accountRole = backendRole === 'SHOP_OWNER' ? AppRole.FARMER :
                         (backendRole === 'SHIPPER' ? AppRole.SHIPPER :
-                            (backendRole === 'ADMIN' ? AppRole.ADMIN : AppRole.BUYER));
+                            (backendRole === 'ADMIN' ? AppRole.ADMIN :
+                                (backendRole === 'STAFF' ? AppRole.STAFF : AppRole.BUYER)));
 
                     const mappedUser: User = {
                         id: userData.id.toString(),
@@ -43,7 +44,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                         shopName: userData.shopName,
                         bankAccount: userData.bankAccount,
                         description: userData.description,
-                        achievement: userData.achievement
+                        achievement: userData.achievement,
+                        shopActive: userData.shopActive ?? true,
                     };
                     setUser(mappedUser);
                 }

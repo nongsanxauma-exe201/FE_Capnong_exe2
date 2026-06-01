@@ -172,7 +172,7 @@ export default function MealPlan() {
       try {
         const [comboRes, productRes, shopRes] = await Promise.all([
           comboService.getAll(),
-          productService.getAll(),
+          productService.getForBuyer(),
           comboService.getShopsByComboCount()
         ]);
 
@@ -457,7 +457,7 @@ export default function MealPlan() {
       if (idx1 !== -1 && idx2 !== -1) {
         const meals1 = newPlan[idx1].meals;
         const meals2 = newPlan[idx2].meals;
-        
+
         newPlan[idx1] = { ...newPlan[idx1], meals: meals2 };
         newPlan[idx2] = { ...newPlan[idx2], meals: meals1 };
       }
@@ -897,7 +897,7 @@ export default function MealPlan() {
                                   if (!rawData) return;
                                   const data = JSON.parse(rawData);
                                   console.log("[Drop Meal] Parsed Data:", data);
-                                  
+
                                   if (data.type === 'DISH_EXT') {
                                     addDishToMeal(dayPlan.day, meal.id, data.dish);
                                   } else if (data.type === 'DISH_INT') {
@@ -1142,13 +1142,13 @@ export default function MealPlan() {
                         <div className="flex items-center gap-2">
                           {!isLocked && (
                             <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleSelectShop(shop.shopId);
-                                }}
-                                className="text-[10px] font-bold text-emerald-600 hover:text-emerald-700 bg-emerald-50 px-2 py-1 rounded transition-colors"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSelectShop(shop.shopId);
+                              }}
+                              className="text-[10px] font-bold text-emerald-600 hover:text-emerald-700 bg-emerald-50 px-2 py-1 rounded transition-colors"
                             >
-                                Chọn
+                              Chọn
                             </button>
                           )}
                           {isLocked && <CheckCircle2 size={16} className="text-emerald-500" />}

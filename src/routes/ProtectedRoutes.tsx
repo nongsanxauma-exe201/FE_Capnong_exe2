@@ -9,6 +9,7 @@ import Tracking from '../pages/auth/Tracking';
 import MyOrders from '../pages/auth/MyOrders';
 import MyReturns from '../pages/auth/MyReturns';
 import UserProfile from '../pages/auth/UserProfile';
+import Wallet from '../pages/auth/Wallet';
 // import MealPlan from '../pages/auth/MealPlan';
 import KYC from '../pages/auth/KYC';
 import { AppRole } from '../types';
@@ -53,6 +54,11 @@ const ProtectedRoutes = () => {
             <Route path="/profile" element={
                 <ProtectedRoute>
                     <UserProfile />
+                </ProtectedRoute>
+            } />
+            <Route path="/wallet" element={
+                <ProtectedRoute>
+                    <Wallet />
                 </ProtectedRoute>
             } />
             {/* <Route path="/meal-plan" element={
