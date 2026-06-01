@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { AppRole, User } from '../../types/index';
 import {
   LayoutDashboard,
@@ -23,9 +23,13 @@ import {
   ChefHat,
   MessageSquare,
   ClipboardCheck,
-  MapPin
+  MapPin,
+  Loader2
 } from 'lucide-react';
 import { useNotificationWebSocket } from '@/src/services/useNotificationWebSocket';
+import { useAuth } from '../../contexts/AuthContext';
+import { userService } from '../../services';
+import { globalShowAlert, globalShowConfirm } from '../../contexts/PopupContext';
 
 interface SidebarProps {
   role: AppRole;
@@ -36,6 +40,35 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ role, user, currentPath, onNavigate, onLogout }) => {
+  const { refreshUser } = useAuth();
+  const [isTogglingShop, setIsTogglingShop] = useState(false);
+  const shopActive = user?.shopActive !== false;
+
+  const handleShopToggle = async () => {
+    if (!user?.id || isTogglingShop) return;
+
+    const nextOpen = !shopActive;
+    const confirmMsg = nextOpen
+      ? 'Bạn có muốn mở cửa hàng và tiếp tục bán hàng?'
+      : 'Bạn có muốn tạm nghỉ bán?';
+    if (!await globalShowConfirm(confirmMsg)) return;
+
+    try {
+      setIsTogglingShop(true);
+      await userService.openCloseShop(Number(user.id), nextOpen);
+      await refreshUser();
+      globalShowAlert(
+        nextOpen ? 'Cửa hàng đã mở bán' : 'Cửa hàng đã nghỉ bán',
+        'Thành công',
+        'success'
+      );
+    } catch (err: any) {
+      globalShowAlert(err?.data?.message || 'Không thể thay đổi trạng thái cửa hàng', 'Lỗi', 'error');
+    } finally {
+      setIsTogglingShop(false);
+    }
+  };
+
   const farmerMenu = [
     { name: 'Tổng quan', icon: LayoutDashboard, id: 'overview' },
     { name: 'Sản phẩm', icon: Package, id: 'products' },
@@ -121,7 +154,9 @@ const Sidebar: React.FC<SidebarProps> = ({ role, user, currentPath, onNavigate, 
               src={user?.avatar || (role === AppRole.FARMER ? "https://picsum.photos/seed/farmer_ba/100/100" : (role === AppRole.STAFF ? "https://picsum.photos/seed/staff_avatar/100/100" : "https://picsum.photos/seed/admin_avatar/100/100"))}
               alt="User"
             />
-            <div className="absolute -bottom-0.5 -right-0.5 size-3 bg-primary rounded-full border-2 border-white flex items-center justify-center">
+            <div className={`absolute -bottom-0.5 -right-0.5 size-3 rounded-full border-2 border-white flex items-center justify-center ${
+              role === AppRole.FARMER && !shopActive ? 'bg-gray-400' : 'bg-primary'
+            }`}>
               <CheckCircle className="size-1.5 text-white fill-current" />
             </div>
           </div>
@@ -129,10 +164,42 @@ const Sidebar: React.FC<SidebarProps> = ({ role, user, currentPath, onNavigate, 
             <p className="text-[11px] font-black text-gray-900 truncate uppercase tracking-tight">
               {user?.name || (role === AppRole.FARMER ? 'Bác Ba Nông Dân' : (role === AppRole.STAFF ? 'Nhân Viên Hỗ Trợ' : 'Admin Tổng'))}
             </p>
-            <p className="text-[8px] text-primary uppercase tracking-widest font-black flex items-center gap-1">
-              <span className="size-1 bg-primary rounded-full animate-pulse" />
-              ONLINE
-            </p>
+            {role === AppRole.FARMER ? (
+              <button
+                type="button"
+                role="switch"
+                aria-checked={shopActive}
+                disabled={isTogglingShop}
+                onClick={handleShopToggle}
+                className="mt-0.5 flex items-center gap-2 disabled:opacity-60"
+                title={shopActive ? 'Nhấn để nghỉ bán' : 'Nhấn để mở bán'}
+              >
+                <span
+                  className={`relative inline-flex h-4 w-8 shrink-0 items-center rounded-full transition-colors duration-300 ${
+                    shopActive ? 'bg-primary' : 'bg-gray-300'
+                  }`}
+                >
+                  <span
+                    className={`inline-block size-3 transform rounded-full bg-white shadow transition-transform duration-300 ${
+                      shopActive ? 'translate-x-[18px]' : 'translate-x-0.5'
+                    }`}
+                  />
+                </span>
+                <span className={`text-[8px] uppercase tracking-widest font-black ${
+                  shopActive ? 'text-primary' : 'text-gray-400'
+                }`}>
+                  {isTogglingShop
+                    ? <Loader2 className="size-3 animate-spin" />
+                    : shopActive ? 'Đang bán' : 'Nghỉ bán'
+                  }
+                </span>
+              </button>
+            ) : (
+              <p className="text-[8px] text-primary uppercase tracking-widest font-black flex items-center gap-1">
+                <span className="size-1 bg-primary rounded-full animate-pulse" />
+                ONLINE
+              </p>
+            )}
           </div>
           <button
             onClick={onLogout}

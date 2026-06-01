@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Filter, Edit3, EyeOff, Eye, Trash2, CheckCircle, Clock, AlertCircle, Loader2, X, Sparkles } from 'lucide-react';
+import { Plus, Search, Filter, Edit3, CheckCircle, Clock, AlertCircle, Loader2, Sparkles } from 'lucide-react';
 import { productService, mysteryBoxService, authService, ProductResponse, MysteryBox } from '../../services';
 import Pagination, { PageInfo } from '../../components/ui/Pagination';
 import { globalShowAlert, globalShowConfirm } from '../../contexts/PopupContext';
@@ -12,10 +12,10 @@ const Products: React.FC<{ onNavigate: (id: string) => void }> = ({ onNavigate }
   const [activeTab, setActiveTab] = useState<'NONG_SAN' | 'BLIND_BOX'>('NONG_SAN');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<number | ''>('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [togglingProduct, setTogglingProduct] = useState<number | null>(null);
   const [togglingBox, setTogglingBox] = useState<number | null>(null);
   
   const [page, setPage] = useState(0);
@@ -49,42 +49,50 @@ const Products: React.FC<{ onNavigate: (id: string) => void }> = ({ onNavigate }
     fetchData();
   }, []); // Only fetch once initially or when forced
 
-  const handleDelete = async (id: number) => {
-    if (!await globalShowConfirm(`Bạn có chắc muốn xóa sản phẩm ID #${id}? Hành động này không thể hoàn tác.`)) return;
+  const handleToggleProductActive = async (product: ProductResponse) => {
+    const isAvailable = product.status === 'AVAILABLE';
+    const isInactive = product.status === 'INACTIVE';
+    const confirmMsg = isAvailable
+      ? `Bạn có chắc muốn tạm ẩn sản phẩm "${product.productName}"?`
+      : `Bạn có chắc muốn đưa sản phẩm "${product.productName}" trở lại đang bán?`;
+    if (!await globalShowConfirm(confirmMsg)) return;
 
     try {
-      setIsDeleting(true);
-      await productService.deleteProduct(id);
-      globalShowAlert('Đã xóa thành công!', 'Thành công', 'success');
+      setTogglingProduct(product.id);
+      if (isAvailable) {
+        await productService.deleteProduct(product.id);
+        globalShowAlert('Đã tạm ẩn sản phẩm', 'Thành công', 'success');
+      } else if (isInactive) {
+        await productService.activateProduct(product.id);
+        globalShowAlert('Sản phẩm đã được kích hoạt', 'Thành công', 'success');
+      }
       fetchData();
     } catch (err: any) {
-      globalShowAlert(err?.data?.message || 'Có lỗi khi xóa sản phẩm', 'Lỗi', 'error');
+      globalShowAlert(err?.data?.message || 'Không thể thay đổi trạng thái sản phẩm', 'Lỗi', 'error');
     } finally {
-      setIsDeleting(false);
-    }
-  };
-
-  const handleDeleteMysteryBox = async (id: number) => {
-    if (!await globalShowConfirm(`Bạn có chắc muốn xóa hộp mù ID #${id}?`)) return;
-    try {
-      setIsDeleting(true);
-      await mysteryBoxService.deleteMysteryBox(id);
-      globalShowAlert('Đã xóa thành công!', 'Thành công', 'success');
-      fetchData();
-    } catch (err: any) {
-      globalShowAlert(err?.data?.message || 'Có lỗi khi xóa hộp mù', 'Lỗi', 'error');
-    } finally {
-      setIsDeleting(false);
+      setTogglingProduct(null);
     }
   };
 
   const handleToggleBoxActive = async (box: MysteryBox) => {
+    const isActive = Boolean(box.isActive && box.isActive !== 0);
+    const confirmMsg = isActive
+      ? `Bạn có chắc muốn tạm ẩn hộp mù "${box.boxType}"?`
+      : `Bạn có chắc muốn mở bán hộp mù "${box.boxType}"?`;
+    if (!await globalShowConfirm(confirmMsg)) return;
+
     try {
       setTogglingBox(box.id);
-      await mysteryBoxService.toggleActive(box.id);
+      if (isActive) {
+        await mysteryBoxService.deactivateBox(box.id);
+        globalShowAlert('Đã tạm ẩn hộp mù', 'Thành công', 'success');
+      } else {
+        await mysteryBoxService.activateBox(box.id);
+        globalShowAlert('Hộp mù đã được kích hoạt', 'Thành công', 'success');
+      }
       fetchData();
     } catch (err: any) {
-      globalShowAlert(err?.data?.message || 'Không thể thay đổi trạng thái túi mù', 'Lỗi', 'error');
+      globalShowAlert(err?.data?.message || 'Không thể thay đổi trạng thái hộp mù', 'Lỗi', 'error');
     } finally {
       setTogglingBox(null);
     }
@@ -227,7 +235,7 @@ const Products: React.FC<{ onNavigate: (id: string) => void }> = ({ onNavigate }
                   <option value="IN_STOCK">Đang bán (Còn hàng)</option>
                   <option value="OUT_OF_STOCK">Hết hàng</option>
                   <option value="PENDING">Chờ duyệt</option>
-                  <option value="INACTIVE">Bị từ chối</option>
+                  <option value="INACTIVE">Tạm ẩn</option>
                 </>
               )}
               {activeTab === 'BLIND_BOX' && (
@@ -289,11 +297,11 @@ const Products: React.FC<{ onNavigate: (id: string) => void }> = ({ onNavigate }
                     <td className="px-6 py-5 text-center">
                       <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase ${
                         p.status === 'PENDING' ? 'bg-yellow-50 text-yellow-600' :
-                        p.status === 'INACTIVE' ? 'bg-gray-100 text-gray-400' :
+                        p.status === 'INACTIVE' ? 'bg-orange-50 text-orange-500' :
                         isOut ? 'bg-gray-100 text-gray-400' : 'bg-green-50 text-green-600'
                       }`}>
                         {p.status === 'PENDING' ? 'Chờ duyệt' :
-                         p.status === 'INACTIVE' ? 'Bị từ chối' :
+                         p.status === 'INACTIVE' ? 'Tạm ẩn' :
                          isOut ? 'Hết hàng' : 'Đang bán'}
                       </span>
                     </td>
@@ -302,18 +310,28 @@ const Products: React.FC<{ onNavigate: (id: string) => void }> = ({ onNavigate }
                         <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => onNavigate(`edit-product/${p.id}`)}
-                            disabled={isDeleting}
+                            disabled={togglingProduct === p.id}
                             title="Chỉnh sửa sản phẩm"
                             className="size-9 bg-gray-50 text-primary rounded-xl flex items-center justify-center hover:bg-primary/10 transition-colors disabled:opacity-50 cursor-pointer"
                           >
                             <Edit3 className="size-4" />
                           </button>
-                          <button disabled={isDeleting} className="size-9 bg-gray-50 text-gray-400 rounded-xl flex items-center justify-center hover:bg-gray-100 transition-colors disabled:opacity-50">
-                            <EyeOff className="size-4" />
-                          </button>
-                          <button onClick={() => handleDelete(p.id)} disabled={isDeleting} className="size-9 bg-gray-50 text-red-400 rounded-xl flex items-center justify-center hover:bg-red-50 transition-colors disabled:opacity-50">
-                            <Trash2 className="size-4" />
-                          </button>
+                          {(p.status === 'AVAILABLE' || p.status === 'INACTIVE') && (
+                            <button
+                              onClick={() => handleToggleProductActive(p)}
+                              disabled={togglingProduct === p.id}
+                              className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase transition-colors disabled:opacity-50 cursor-pointer min-w-[72px] flex items-center justify-center ${
+                                p.status === 'AVAILABLE'
+                                  ? 'bg-orange-50 text-orange-600 hover:bg-orange-100'
+                                  : 'bg-green-50 text-green-600 hover:bg-green-100'
+                              }`}
+                            >
+                              {togglingProduct === p.id
+                                ? <Loader2 className="size-4 animate-spin" />
+                                : p.status === 'AVAILABLE' ? 'Tạm ẩn' : 'Đang bán'
+                              }
+                            </button>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -322,7 +340,9 @@ const Products: React.FC<{ onNavigate: (id: string) => void }> = ({ onNavigate }
               })}
 
               {/* Mystery Box Rows */}
-              {activeTab === 'BLIND_BOX' && currentPageData.map((box) => (
+              {activeTab === 'BLIND_BOX' && currentPageData.map((box) => {
+                const isActive = Boolean(box.isActive && box.isActive !== 0);
+                return (
                 <tr key={box.id} className="hover:bg-gray-50/50 transition-colors">
                   <td className="px-6 py-5">
                     <div className="flex items-center gap-4">
@@ -340,34 +360,34 @@ const Products: React.FC<{ onNavigate: (id: string) => void }> = ({ onNavigate }
                   </td>
                   <td className="px-6 py-5 text-center text-sm font-black text-gray-800">{(box.price || 0).toLocaleString('vi-VN')}đ</td>
                   <td className="px-6 py-5 text-center">
-                    {box.isActive
+                    {isActive
                       ? <span className="px-2 py-1 rounded-lg text-[10px] font-black uppercase bg-green-50 text-green-600">Đang Mở</span>
                       : <span className="px-2 py-1 rounded-lg text-[10px] font-black uppercase bg-gray-100 text-gray-400">Đã Ẩn</span>
                     }
                   </td>
                   <td className="px-6 py-5">
                     <div className="flex items-center justify-end gap-2">
-                      <button onClick={() => onNavigate(`mystery-box-editor/${box.id}`)} disabled={isDeleting} className="size-9 bg-gray-50 text-primary rounded-xl flex items-center justify-center hover:bg-primary/10 transition-colors disabled:opacity-50 cursor-pointer">
+                      <button onClick={() => onNavigate(`mystery-box-editor/${box.id}`)} disabled={togglingBox === box.id} className="size-9 bg-gray-50 text-primary rounded-xl flex items-center justify-center hover:bg-primary/10 transition-colors disabled:opacity-50 cursor-pointer">
                         <Edit3 className="size-4" />
                       </button>
                       <button
                         onClick={() => handleToggleBoxActive(box)}
                         disabled={togglingBox === box.id}
-                        title={box.isActive ? 'Ẩn túi mù' : 'Hiện túi mù'}
-                        className={`size-9 rounded-xl flex items-center justify-center transition-colors disabled:opacity-50 cursor-pointer ${box.isActive ? 'bg-gray-50 text-gray-400 hover:bg-gray-100' : 'bg-green-50 text-green-500 hover:bg-green-100'}`}
+                        className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase transition-colors disabled:opacity-50 cursor-pointer min-w-[72px] flex items-center justify-center ${
+                          isActive
+                            ? 'bg-orange-50 text-orange-600 hover:bg-orange-100'
+                            : 'bg-green-50 text-green-600 hover:bg-green-100'
+                        }`}
                       >
                         {togglingBox === box.id
                           ? <Loader2 className="size-4 animate-spin" />
-                          : box.isActive ? <EyeOff className="size-4" /> : <Eye className="size-4" />
+                          : isActive ? 'Tạm ẩn' : 'Đang bán'
                         }
-                      </button>
-                      <button onClick={() => handleDeleteMysteryBox(box.id)} disabled={isDeleting} className="size-9 bg-gray-50 text-red-400 rounded-xl flex items-center justify-center hover:bg-red-50 transition-colors disabled:opacity-50">
-                        <Trash2 className="size-4" />
                       </button>
                     </div>
                   </td>
                 </tr>
-              ))}
+              );})}
               {activeTab === 'BLIND_BOX' && filteredBoxes.length === 0 && (
                 <tr><td colSpan={4} className="px-10 py-10 text-center text-gray-400 font-bold">Không tìm thấy Hộp mù nào.</td></tr>
               )}

@@ -83,6 +83,10 @@ class ProductService {
         return httpClient.delete<void>(`/products/${id}`);
     }
 
+    async activateProduct(id: number): Promise<ApiResponse<void>> {
+        return httpClient.put<void>(`/products/active/${id}`);
+    }
+
     async getPendingProducts(): Promise<ApiResponse<ProductResponse[]>> {
         const res = await httpClient.get<ProductResponse[]>('/products/pending');
         if (res.result) res.result = res.result.map(normalizeProduct);

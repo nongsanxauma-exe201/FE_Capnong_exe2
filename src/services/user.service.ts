@@ -82,6 +82,10 @@ class UserService {
     return httpClient.patch<void>(`/users/${userId}/deactivate`, {});
   }
 
+  async openCloseShop(shopId: number, open: boolean): Promise<ApiResponse<UserResponse>> {
+    return httpClient.patch<UserResponse>(`/users/${shopId}/open-close?open=${open}`, {});
+  }
+
   /**
    * Delete user (Admin only)
    */
