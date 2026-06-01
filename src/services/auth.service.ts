@@ -63,6 +63,7 @@ export interface UserResponse {
   createdAt?: string;
   createAt?: string;
   lockedAt?: string | null;
+  shopActive?: boolean;
 }
 
 export interface IntrospectRequest {
