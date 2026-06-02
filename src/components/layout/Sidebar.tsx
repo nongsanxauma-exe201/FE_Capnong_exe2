@@ -24,7 +24,8 @@ import {
   MessageSquare,
   ClipboardCheck,
   MapPin,
-  Loader2
+  Loader2,
+  Banknote
 } from 'lucide-react';
 import { useNotificationWebSocket } from '@/src/services/useNotificationWebSocket';
 import { useAuth } from '../../contexts/AuthContext';
@@ -95,6 +96,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, user, currentPath, onNavigate, 
     { name: 'Duyệt sản phẩm', icon: ClipboardCheck, id: 'admin-product-approval' },
     // { name: 'Tranh chấp', icon: Gavel, id: 'admin-disputes' }, // tạm ẩn
     { name: 'Quản lý Shipper', icon: Truck, id: 'admin-shippers' },
+    { name: 'COD cần đối soát', icon: Banknote, id: 'admin-cod-settlement' },
     { name: 'Quản lý người dùng', icon: Users, id: 'admin-bad-buyers' },
     { name: 'Ví sàn', icon: Wallet, id: 'admin-wallet' },
   ];

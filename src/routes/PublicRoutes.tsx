@@ -9,6 +9,8 @@ import NewsDetail from '../pages/News/NewsDetail';
 import PaymentSuccess from '../pages/auth/PaymentSuccess';
 import PaymentCancel from '../pages/auth/PaymentCancel';
 import MealPlan from '../pages/auth/MealPlan';
+import PrivacyPolicy from '../pages/legal/PrivacyPolicy';
+import TermsOfService from '../pages/legal/TermsOfService';
 import { useAuth } from '../contexts/AuthContext';
 import { AppRole } from '../types';
 
@@ -43,6 +45,8 @@ const PublicRoutes = () => {
             <Route path="/mystery-boxes" element={<AllMysteryBoxes />} />
             <Route path="/news" element={<News />} />
             <Route path="/news/:id" element={<NewsDetail />} />
+            <Route path="/chinh-sach-bao-mat" element={<PrivacyPolicy />} />
+            <Route path="/dieu-khoan-su-dung" element={<TermsOfService />} />
 
             <Route path="/payment/success" element={<PaymentSuccess />} />
             <Route path="/payment/cancel" element={<PaymentCancel />} />

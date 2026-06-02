@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
-import { notificationService, NotificationItem } from '../../services';
+import { notificationService, NotificationItem, orderService } from '../../services';
 import {
   shipperService,
   AvailableOrderResponse,
@@ -18,6 +18,7 @@ import {
 import FakeGPS from './Fakegps';
 import { authService } from '../../services/auth.service';
 import type { UserResponse } from '../../services/auth.service';
+import { getCodCollectAmount, isCodOrder } from '../../services/codSettlement.service';
 import { globalShowAlert } from '../../contexts/PopupContext';
 
 interface ShipperDashboardProps {
@@ -89,7 +90,30 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
     setLoadingMyOrders(true);
     try {
       const res = await shipperService.getMyOrders();
-      if (res.result) setMyOrders(res.result.filter((o: ShipperOrderResponse) => o.status === 'SHIPPING'));
+      const shippingOrders = (res.result ?? []).filter((o: ShipperOrderResponse) => o.status === 'SHIPPING');
+
+      const enriched = await Promise.all(
+        shippingOrders.map(async (order) => {
+          try {
+            const detail = await orderService.getOrderById(order.orderId);
+            if (detail.result) {
+              return {
+                ...order,
+                paymentMethod: detail.result.paymentMethod ?? order.paymentMethod,
+                totalAmount: detail.result.totalAmount ?? order.totalAmount,
+                codAmount: detail.result.codAmount ?? order.codAmount,
+                refundAmount: detail.result.refundAmount ?? order.refundAmount,
+                refundReason: detail.result.refundReason ?? order.refundReason,
+              };
+            }
+          } catch {
+            // Giữ dữ liệu shipper nếu không lấy được chi tiết đơn
+          }
+          return order;
+        })
+      );
+
+      setMyOrders(enriched);
     } catch { } finally { setLoadingMyOrders(false); }
   };
 
@@ -229,6 +253,41 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
     return diff < 1 ? 'Vừa xong' : diff < 60 ? `${diff} phút trước` : new Date(d).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
   };
 
+  const renderCodCollectLine = (order: ShipperOrderResponse) => {
+    if (!isCodOrder(order)) return null;
+
+    const collectAmount = getCodCollectAmount(order);
+    const refundAmount = order.refundAmount ?? 0;
+
+    return (
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 flex flex-col gap-1.5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="px-2 py-0.5 rounded-md bg-amber-500 text-white text-[9px] font-black uppercase shrink-0">
+              COD
+            </span>
+            <span className="text-xs font-black text-amber-800 truncate">
+              Cần thu từ khách: {fmtCur(collectAmount)}
+            </span>
+          </div>
+          {order.totalAmount != null && order.totalAmount !== collectAmount && (
+            <span className="text-[10px] font-bold text-amber-700 shrink-0">
+              Tổng đơn: {fmtCur(order.totalAmount)}
+            </span>
+          )}
+        </div>
+        {refundAmount > 0 && (
+          <p className="text-[11px] font-bold text-orange-700">
+            Đã trừ hoàn tiền: {fmtCur(refundAmount)}
+          </p>
+        )}
+        <p className="text-[10px] text-amber-700 font-medium leading-relaxed">
+          Bấm hoàn tất giao hàng đồng nghĩa với việc bạn đã thu đúng số tiền này từ khách.
+        </p>
+      </div>
+    );
+  };
+
   // ===================== RENDER: ĐƠN ĐANG GIAO =====================
   const renderMyOrders = () => {
     if (loadingMyOrders) return <div className="flex justify-center py-20"><Loader2 className="size-8 text-primary animate-spin" /></div>;
@@ -242,16 +301,28 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-16">
         {myOrders.map((order) => {
           const isTracking = trackingOrderId === order.orderId;
+          const codOrder = isCodOrder(order);
+          const codCollectAmount = codOrder ? getCodCollectAmount(order) : 0;
           return (
             <div key={order.orderId} className="bg-white rounded-[40px] border border-gray-100 shadow-sm p-8 flex flex-col gap-6">
-              <div className="flex items-center justify-between">
-                <div>
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Đơn #{order.orderId}</p>
                   <h3 className="text-lg font-black text-gray-900 mt-1">{order.recipientName}</h3>
                   <p className="text-xs text-gray-500 mt-1">{order.shippingAddress}</p>
                 </div>
-                <span className="text-xl font-black text-primary">{fmtCur(order.shippingFee)}</span>
+                <div className="text-right shrink-0">
+                  <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Phí ship</p>
+                  <p className="text-xl font-black text-primary">{fmtCur(order.shippingFee)}</p>
+                  {codOrder && (
+                    <>
+                      <p className="text-[9px] font-black text-amber-600 uppercase tracking-widest mt-2">Cần thu COD</p>
+                      <p className="text-lg font-black text-amber-600">{fmtCur(codCollectAmount)}</p>
+                    </>
+                  )}
+                </div>
               </div>
+              {renderCodCollectLine(order)}
               <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl ${isTracking && trackingStatus === 'active' ? 'bg-green-50 border border-green-100' :
                 isTracking && trackingStatus === 'starting' ? 'bg-yellow-50 border border-yellow-100' :
                   'bg-gray-50 border border-gray-100'
@@ -266,24 +337,25 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
                   <><Radio className="size-4 text-gray-400" /><span className="text-xs font-black text-gray-400">GPS chưa bật</span></>
                 )}
               </div>
-              <div className="flex gap-3">
+              <div className="flex gap-3 items-stretch">
                 {!isTracking ? (
                   <button onClick={() => startTracking(order.orderId)} disabled={trackingStatus !== 'off'}
-                    className="flex-1 py-3 bg-blue-500 text-white font-black rounded-2xl flex items-center justify-center gap-2 hover:bg-blue-600 transition-all disabled:opacity-40">
-                    <Navigation className="size-4" /> Bật GPS
+                    className="flex-1 min-w-0 h-12 px-3 bg-blue-500 text-white text-xs font-black rounded-2xl flex items-center justify-center gap-2 hover:bg-blue-600 transition-all disabled:opacity-40 whitespace-nowrap">
+                    <Navigation className="size-4 shrink-0" /> Bật GPS
                   </button>
                 ) : (
                   <button onClick={stopTracking}
-                    className="flex-1 py-3 bg-gray-200 text-gray-700 font-black rounded-2xl flex items-center justify-center gap-2 hover:bg-gray-300 transition-all">
-                    <StopCircle className="size-4" /> Dừng GPS
+                    className="flex-1 min-w-0 h-12 px-3 bg-gray-200 text-gray-700 text-xs font-black rounded-2xl flex items-center justify-center gap-2 hover:bg-gray-300 transition-all whitespace-nowrap">
+                    <StopCircle className="size-4 shrink-0" /> Dừng GPS
                   </button>
                 )}
                 <button onClick={() => handleCompleteOrder(order.orderId, 'DELIVERED')}
-                  className="flex-1 py-3 bg-primary text-white font-black rounded-2xl flex items-center justify-center gap-2 hover:bg-primary-dark transition-all shadow-lg shadow-primary/20">
-                  <CheckCircle2 className="size-4" /> Đã giao
+                  title={codOrder ? 'Xác nhận đã thu đúng tiền COD từ khách' : undefined}
+                  className="flex-1 min-w-0 h-12 px-3 bg-primary text-white text-xs font-black rounded-2xl flex items-center justify-center gap-2 hover:bg-primary-dark transition-all shadow-lg shadow-primary/20 whitespace-nowrap">
+                  <CheckCircle2 className="size-4 shrink-0" /> Đã giao
                 </button>
                 <button onClick={() => handleCompleteOrder(order.orderId, 'FAILED')}
-                  className="py-3 px-4 bg-red-50 text-red-500 font-black rounded-2xl hover:bg-red-500 hover:text-white transition-all border border-red-100">
+                  className="h-12 w-12 shrink-0 bg-red-50 text-red-500 font-black rounded-2xl hover:bg-red-500 hover:text-white transition-all border border-red-100 flex items-center justify-center">
                   <X className="size-4" />
                 </button>
               </div>
