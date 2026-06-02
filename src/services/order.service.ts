@@ -52,6 +52,44 @@ export interface OrderItemResponse {
     qualityResult?: QualityCheckResponse;
 }
 
+/** Dòng hàng là hộp mù (không chỉ dựa vào itemType vì BE đôi khi trả thiếu/sai). */
+export function isMysteryBoxOrderItem(item: OrderItemResponse): boolean {
+    if (item.orderMysteryBoxId != null) return true;
+    const type = String(item.itemType ?? '').toUpperCase();
+    if (type === 'MYSTERY_BOX') return true;
+    if (item.mysteryBoxType) return true;
+    if (item.mysteryBoxId != null && item.productId == null) return true;
+    return false;
+}
+
+/** ID dòng order_mystery_box — không dùng orderDetailId cho hộp mù. */
+export function getOrderMysteryBoxLineId(item: OrderItemResponse): number | undefined {
+    if (item.orderMysteryBoxId != null) return Number(item.orderMysteryBoxId);
+    const extra = item as OrderItemResponse & { id?: number; orderMysteryBoxID?: number };
+    if (extra.orderMysteryBoxID != null) return Number(extra.orderMysteryBoxID);
+    if (isMysteryBoxOrderItem(item) && extra.id != null && item.orderDetailId == null) {
+        return Number(extra.id);
+    }
+    return undefined;
+}
+
+export function normalizeOrderItem(item: OrderItemResponse): OrderItemResponse {
+    const mystery = isMysteryBoxOrderItem(item);
+    const orderMysteryBoxId = getOrderMysteryBoxLineId(item);
+    return {
+        ...item,
+        itemType: mystery ? 'MYSTERY_BOX' : (item.itemType ?? 'PRODUCT'),
+        orderMysteryBoxId: orderMysteryBoxId ?? item.orderMysteryBoxId,
+    };
+}
+
+export function normalizeOrderResponse(order: OrderResponse): OrderResponse {
+    return {
+        ...order,
+        items: (order.items ?? []).map(normalizeOrderItem),
+    };
+}
+
 export interface OrderResponse {
     id: number;
     shopOwner?: {
@@ -75,6 +113,11 @@ export interface OrderResponse {
     buyerId?: number;
     trackings?: TrackingResponse[];
     passedQualityCheck?: boolean | null;
+    refundAmount?: number | null;
+    refundReason?: string | null;
+    codAmount?: number | null;
+    codSettled?: boolean | null;
+    codSettledAt?: string | null;
 }
 
 /** Báo cáo đơn cho staff — khớp `StaffOrderReportResponse` (BE). */

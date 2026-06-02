@@ -62,6 +62,11 @@ export interface ShipperOrderResponse {
   createdAt: string;
   estimatedDeliveryDate: string | null;
   note: string | null;
+  paymentMethod?: string;
+  totalAmount?: number;
+  codAmount?: number | null;
+  refundAmount?: number | null;
+  refundReason?: string | null;
   // ✅ Tọa độ thật để FakeGPS dùng đúng điểm
   shopLatitude?: number | null;
   shopLongitude?: number | null;

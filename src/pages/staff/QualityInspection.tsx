@@ -15,6 +15,9 @@ import { ImageLightbox } from '../../components/ui';
 import {
   orderService,
   qualityService,
+  isMysteryBoxOrderItem,
+  getOrderMysteryBoxLineId,
+  normalizeOrderResponse,
   type QualityCheckRequest,
   type OrderResponse,
   type OrderItemResponse,
@@ -40,7 +43,10 @@ interface UIOrderDetailRow {
 }
 
 function detailRowKey(item: OrderItemResponse, orderId: number, lineIndex: number): string {
-  if (item.itemType === 'MYSTERY_BOX' && item.orderMysteryBoxId != null) return `mb-${item.orderMysteryBoxId}`;
+  if (isMysteryBoxOrderItem(item)) {
+    const mbId = getOrderMysteryBoxLineId(item);
+    if (mbId != null) return `mb-${mbId}`;
+  }
   if (item.orderDetailId != null) return String(item.orderDetailId);
   return `ord-${orderId}-line-${lineIndex}`;
 }
@@ -95,19 +101,39 @@ function getQualityCriteriaKeyFromName(qualityName: string): string | undefined 
   return undefined;
 }
 
-function getExistingDetailResult(item: OrderItemResponse): 'pass' | 'fail' | null {
-  if (!item.qualityResult) return null;
-  const overall = item.qualityResult.qualityResult;
+/** Badge danh sách — chỉ theo kết quả cuối BE/staff (APPROVED / REJECTED). */
+function qualityOverallToBadge(overall?: string | null): 'pass' | 'fail' | null {
   if (overall === 'APPROVED') return 'pass';
   if (overall === 'REJECTED') return 'fail';
-  const responses = item.qualityResult.qualityCheckingResponses;
-  if (responses && responses.length > 0) {
-    return responses.some((r) => !r.passed) ? 'fail' : 'pass';
+  return null;
+}
+
+function getExistingDetailResult(item: OrderItemResponse): 'pass' | 'fail' | null {
+  if (!item.qualityResult) return null;
+  return qualityOverallToBadge(item.qualityResult.qualityResult);
+}
+
+function buildDetailResultsFromOrders(orders: OrderResponse[]): Record<string, 'pass' | 'fail'> {
+  const map: Record<string, 'pass' | 'fail'> = {};
+  for (const ord of orders) {
+    (ord.items ?? []).forEach((item, idx) => {
+      const badge = getExistingDetailResult(item);
+      if (badge != null) {
+        map[detailRowKey(item, ord.id, idx)] = badge;
+      }
+    });
   }
-  return 'pass';
+  return map;
 }
 
 const ARRIVED_ORDERS_PAGE_SIZE = 10;
+
+type OrderListTab = 'pending' | 'checking';
+
+const ORDER_LIST_TAB_STATUS: Record<OrderListTab, string> = {
+  pending: 'ARRIVED_AT_WAREHOUSE',
+  checking: 'QUALITY_CHECKING',
+};
 
 const QualityInspection: React.FC = () => {
   const [view, setView] = useState<View>('order-list');
@@ -125,6 +151,7 @@ const QualityInspection: React.FC = () => {
   const [inspectionError, setInspectionError] = useState<string | null>(null);
   const [imageViewer, setImageViewer] = useState<{ images: string[]; currentIndex: number } | null>(null);
 
+  const [orderListTab, setOrderListTab] = useState<OrderListTab>('pending');
   const [arrivedOrders, setArrivedOrders] = useState<OrderResponse[]>([]);
   const [ordersPage, setOrdersPage] = useState(0);
   const [ordersPageTotalElements, setOrdersPageTotalElements] = useState(0);
@@ -139,35 +166,26 @@ const QualityInspection: React.FC = () => {
     else setStaffReport(null);
   }, []);
 
-  const loadOrdersPage = useCallback(async (page: number) => {
+  const loadOrdersPage = useCallback(async (page: number, tab: OrderListTab) => {
     setIsOrdersLoading(true);
     setLoadError(null);
     try {
-      // Load orders with ARRIVED_AT_WAREHOUSE status
-      const arrivedRes = await orderService.getOrdersForStaff(page, ARRIVED_ORDERS_PAGE_SIZE, 'ARRIVED_AT_WAREHOUSE');
-      const arrivedData = arrivedRes.result;
-
-      // Load orders with QUALITY_CHECKING status
-      const checkingRes = await orderService.getOrdersForStaff(page, ARRIVED_ORDERS_PAGE_SIZE, 'QUALITY_CHECKING');
-      const checkingData = checkingRes.result;
-
-      // Merge the results
-      const mergedContent = [
-        ...(arrivedData?.content || []),
-        ...(checkingData?.content || []),
-      ];
-
-      // Use the pagination info from the first response, or calculate total
-      const totalElements = (arrivedData?.totalElements || 0) + (checkingData?.totalElements || 0);
-      const totalPages = Math.max(arrivedData?.totalPages || 0, checkingData?.totalPages || 0);
-
-      setArrivedOrders(mergedContent);
-      setOrdersPageTotalElements(totalElements);
-      setOrdersTotalPages(totalPages);
+      const res = await orderService.getOrdersForStaff(
+        page,
+        ARRIVED_ORDERS_PAGE_SIZE,
+        ORDER_LIST_TAB_STATUS[tab]
+      );
+      const data = res.result;
+      const normalized = (data?.content ?? []).map(normalizeOrderResponse);
+      setArrivedOrders(normalized);
+      setDetailResults(buildDetailResultsFromOrders(normalized));
+      setOrdersPageTotalElements(data?.totalElements ?? 0);
+      setOrdersTotalPages(data?.totalPages ?? 0);
     } catch (e: unknown) {
       const err = e as { data?: { message?: string }; message?: string };
       setLoadError(err?.data?.message || err?.message || 'Không thể tải đơn hàng');
       setArrivedOrders([]);
+      setDetailResults({});
       setOrdersPageTotalElements(0);
       setOrdersTotalPages(0);
     } finally {
@@ -175,13 +193,37 @@ const QualityInspection: React.FC = () => {
     }
   }, []);
 
+  const refreshOrdersFromServer = useCallback(async () => {
+    try {
+      const res = await orderService.getOrdersForStaff(
+        ordersPage,
+        ARRIVED_ORDERS_PAGE_SIZE,
+        ORDER_LIST_TAB_STATUS[orderListTab]
+      );
+      const normalized = (res.result?.content ?? []).map(normalizeOrderResponse);
+      setArrivedOrders(normalized);
+      setDetailResults(buildDetailResultsFromOrders(normalized));
+    } catch {
+      // Giữ state hiện tại nếu refresh thất bại
+    }
+  }, [ordersPage, orderListTab]);
+
+  const handleOrderListTabChange = useCallback((tab: OrderListTab) => {
+    setOrderListTab(tab);
+    setOrdersPage(0);
+    setSelectedOrderId(null);
+    setSelectedDetailId(null);
+    setView('order-list');
+  }, []);
+
   useEffect(() => {
     void loadReport();
   }, [loadReport]);
 
   useEffect(() => {
-    void loadOrdersPage(ordersPage);
-  }, [ordersPage, loadOrdersPage]);
+    if (view !== 'order-list') return;
+    void loadOrdersPage(ordersPage, orderListTab);
+  }, [ordersPage, orderListTab, view, loadOrdersPage]);
 
   const handleRefresh = useCallback(async () => {
     setLoadError(null);
@@ -190,11 +232,11 @@ const QualityInspection: React.FC = () => {
     setView('order-list');
     await loadReport();
     if (ordersPage === 0) {
-      await loadOrdersPage(0);
+      await loadOrdersPage(0, orderListTab);
     } else {
       setOrdersPage(0);
     }
-  }, [loadReport, loadOrdersPage, ordersPage]);
+  }, [loadReport, loadOrdersPage, ordersPage, orderListTab]);
 
   const detailRowsPage = useMemo(() => buildDetailRows(arrivedOrders), [arrivedOrders]);
 
@@ -226,11 +268,13 @@ const QualityInspection: React.FC = () => {
         ...(prev as Record<string, 'APPROVED' | 'REJECTED' | null>),
         [detailId]: existing.qualityResult,
       }) as Record<string, 'APPROVED' | 'REJECTED' | null>);
-      const previousOverall = existing.qualityResult === 'APPROVED' ? 'pass' : 'fail';
-      setDetailResults((prev) => ({
-        ...prev,
-        [detailId]: previousOverall,
-      }));
+      const badge = qualityOverallToBadge(existing.qualityResult);
+      if (badge != null) {
+        setDetailResults((prev) => ({
+          ...prev,
+          [detailId]: badge,
+        }));
+      }
     }
 
     if (existing.note != null) {
@@ -357,14 +401,6 @@ const QualityInspection: React.FC = () => {
       return;
     }
 
-    const isMysteryBox = selectedRow.item.itemType === 'MYSTERY_BOX';
-    const reqId = isMysteryBox ? selectedRow.item.orderMysteryBoxId : selectedRow.item.orderDetailId;
-
-    if (!reqId || Number.isNaN(reqId)) {
-      setInspectionError('Không xác định được ID của dòng hàng.');
-      return;
-    }
-
     const rejectedWeight = detailRejectedWeights[detailId];
     if (currentQualityResult === 'REJECTED') {
       if (rejectedWeight === undefined || rejectedWeight === null || Number.isNaN(rejectedWeight) || rejectedWeight <= 0) {
@@ -378,13 +414,41 @@ const QualityInspection: React.FC = () => {
       }
     }
 
-    const request = {
-      ...(isMysteryBox ? { orderMysteryBoxId: reqId } : { orderDetailId: reqId }),
-      qualityResult: currentQualityResult,
-      qualityChecks: criteriaPayload,
-      note: inspectionNotes[detailId]?.trim() || undefined,
-      rejectedWeight: currentQualityResult === 'REJECTED' ? rejectedWeight : undefined,
-    } as QualityCheckRequest;
+    const item = selectedRow.item;
+    const isMysteryBox = isMysteryBoxOrderItem(item);
+
+    let requestBody: QualityCheckRequest;
+    if (isMysteryBox) {
+      const orderMysteryBoxId = getOrderMysteryBoxLineId(item);
+      if (!orderMysteryBoxId || Number.isNaN(orderMysteryBoxId)) {
+        setInspectionError(
+          'Không tìm thấy orderMysteryBoxId cho hộp mù. Kiểm tra API đơn hàng có trả đúng ID dòng hộp mù (không dùng orderDetailId).'
+        );
+        return;
+      }
+      requestBody = {
+        orderMysteryBoxId,
+        qualityResult: currentQualityResult,
+        qualityChecks: criteriaPayload,
+        note: inspectionNotes[detailId]?.trim() || undefined,
+        rejectedWeight: currentQualityResult === 'REJECTED' ? rejectedWeight : undefined,
+      };
+    } else {
+      const orderDetailId = item.orderDetailId;
+      if (!orderDetailId || Number.isNaN(orderDetailId)) {
+        setInspectionError('Không xác định được dòng sản phẩm trong đơn.');
+        return;
+      }
+      requestBody = {
+        orderDetailId,
+        qualityResult: currentQualityResult,
+        qualityChecks: criteriaPayload,
+        note: inspectionNotes[detailId]?.trim() || undefined,
+        rejectedWeight: currentQualityResult === 'REJECTED' ? rejectedWeight : undefined,
+      };
+    }
+
+    const request = requestBody;
     const fileMap: Record<string, File[]> = {};
 
     criteria.forEach((c, index) => {
@@ -397,10 +461,13 @@ const QualityInspection: React.FC = () => {
     setInspectionError(null);
     try {
       await qualityService.checkQuality(request, fileMap);
-      const overallResult = criteriaPayload.some((item) => !item.passed) ? 'fail' : 'pass';
-      setDetailResults((prev) => ({ ...prev, [detailId]: overallResult }));
+      setDetailResults((prev) => ({
+        ...prev,
+        [detailId]: currentQualityResult === 'APPROVED' ? 'pass' : 'fail',
+      }));
       setInspectionError(null);
       setView('detail-list');
+      await refreshOrdersFromServer();
     } catch (error: unknown) {
       const err = error as { data?: { message?: string }; message?: string };
       setInspectionError(err?.data?.message || err?.message || 'Gửi kiểm tra chất lượng thất bại.');
@@ -421,13 +488,14 @@ const QualityInspection: React.FC = () => {
   const failCount = (detailId: string) => criteria.filter((c) => getCriteria(detailId, c.key) === 'fail').length;
 
   const statFarmersWaiting = staffReport?.pendingFarmerApprovals ?? 0;
-  const statArrivedOrdersTotal = ordersPageTotalElements;
   const statOrdersNeedingCheck = staffReport?.qualityCheckingOrders ?? 0;
+  const statCheckingInProgress = staffReport?.quantityChecking ?? 0;
   const statApprovedToday = staffReport?.approvedTodayOrders ?? 0;
-  const statCard1Sub =
-    !isOrdersLoading && ordersPageTotalElements > 0
-      ? `${arrivedOrders.length} đơn trang này · ${detailRowsPage.length} dòng chi tiết (items) · Tổng ${statArrivedOrdersTotal} đơn · Trang ${ordersPage + 1}/${Math.max(1, ordersTotalPages)}`
-      : undefined;
+
+  const orderListTabs: { id: OrderListTab; label: string; reportCount?: number }[] = [
+    { id: 'pending', label: 'Chưa kiểm tra', reportCount: statOrdersNeedingCheck },
+    { id: 'checking', label: 'Đang kiểm tra', reportCount: statCheckingInProgress },
+  ];
 
   // ── ORDER LIST (mỗi dòng = 1 đơn hàng) ─────────────────────────────
   if (view === 'order-list') {
@@ -437,10 +505,6 @@ const QualityInspection: React.FC = () => {
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <h2 className="text-3xl font-black text-gray-900 tracking-tight">Kiểm Duyệt Chất Lượng</h2>
-              <p className="text-sm text-gray-400 font-medium mt-1">
-                Danh sách theo <span className="font-black text-gray-600">đơn hàng</span>. Chọn một đơn để xem các dòng{' '}
-                <span className="font-black text-gray-600">orderDetail / items</span> và kiểm duyệt từng dòng.
-              </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <button
@@ -452,12 +516,6 @@ const QualityInspection: React.FC = () => {
                 <RefreshCw className={`size-4 ${isOrdersLoading ? 'animate-spin' : ''}`} />
                 Làm mới
               </button>
-              <div className="flex items-center gap-3 px-6 py-3 bg-orange-50 border border-orange-100 rounded-2xl">
-                <div className="size-2 bg-orange-500 rounded-full animate-pulse" />
-                <span className="text-sm font-black text-orange-700">
-                  {isOrdersLoading ? '—' : `${arrivedOrders.length} đơn trên trang`}
-                </span>
-              </div>
             </div>
           </div>
           {loadError && (
@@ -470,21 +528,18 @@ const QualityInspection: React.FC = () => {
             {
               label: 'Nông dân (báo cáo)',
               value: statFarmersWaiting,
-              sub: statCard1Sub,
               color: 'bg-orange-50 border-orange-100',
               icon: <Users className="size-5 text-orange-500" />,
             },
             {
               label: 'Tổng đơn cần kiểm',
               value: statOrdersNeedingCheck,
-              sub: undefined,
               color: 'bg-blue-50 border-blue-100',
               icon: <Package className="size-5 text-blue-500" />,
             },
             {
               label: 'Đã hoàn thành hôm nay',
               value: statApprovedToday,
-              sub: undefined,
               color: 'bg-green-50 border-green-100',
               icon: <CheckCircle2 className="size-5 text-primary" />,
             },
@@ -494,9 +549,34 @@ const QualityInspection: React.FC = () => {
               <div>
                 <p className="text-2xl font-black text-gray-900">{isOrdersLoading ? '—' : stat.value}</p>
                 <p className="text-xs font-bold text-gray-500 mt-0.5">{stat.label}</p>
-                {stat.sub && <p className="text-[10px] font-bold text-gray-400 mt-1 leading-snug">{stat.sub}</p>}
               </div>
             </div>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap gap-2 p-1.5 bg-gray-100 rounded-2xl w-fit">
+          {orderListTabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => handleOrderListTabChange(tab.id)}
+              className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wide transition-all flex items-center gap-2 ${
+                orderListTab === tab.id
+                  ? 'bg-white text-primary shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {tab.label}
+              {tab.reportCount != null && tab.reportCount > 0 && (
+                <span
+                  className={`min-w-[1.25rem] px-1.5 py-0.5 rounded-md text-[10px] font-black text-center ${
+                    orderListTab === tab.id ? 'bg-primary/10 text-primary' : 'bg-gray-200 text-gray-600'
+                  }`}
+                >
+                  {tab.reportCount}
+                </span>
+              )}
+            </button>
           ))}
         </div>
 
@@ -517,12 +597,14 @@ const QualityInspection: React.FC = () => {
         <div className="flex flex-col gap-4">
           {isOrdersLoading && (
             <div className="bg-white rounded-[32px] border border-gray-100 shadow-sm p-12 text-center text-sm font-bold text-gray-400">
-              Đang tải đơn hàng đã tới kho…
+              {orderListTab === 'pending' ? 'Đang tải đơn chờ kiểm…' : 'Đang tải đơn đang kiểm…'}
             </div>
           )}
           {!isOrdersLoading && arrivedOrders.length === 0 && (
             <div className="bg-white rounded-[32px] border border-gray-100 shadow-sm p-12 text-center text-sm font-bold text-gray-500">
-              Không có đơn ở trạng thái đã tới kho.
+              {orderListTab === 'pending'
+                ? 'Không có đơn chờ kiểm duyệt.'
+                : 'Không có đơn đang kiểm tra.'}
             </div>
           )}
           {!isOrdersLoading &&
@@ -637,13 +719,9 @@ const QualityInspection: React.FC = () => {
             })}
         </div>
 
-        {!isOrdersLoading && ordersPageTotalElements > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-4 bg-white rounded-[24px] border border-gray-100 shadow-sm px-6 py-4">
-            <p className="text-xs font-bold text-gray-500">
-              Phân trang đơn: page={ordersPage}, size={ARRIVED_ORDERS_PAGE_SIZE} · Trang {ordersPage + 1}/
-              {Math.max(1, ordersTotalPages)} · {arrivedOrders.length}/{ordersPageTotalElements} đơn
-            </p>
-            <div className="flex items-center gap-2">
+        {!isOrdersLoading && ordersPageTotalElements > 0 && ordersTotalPages > 1 && (
+          <div className="flex flex-wrap items-center justify-center gap-4 bg-white rounded-[24px] border border-gray-100 shadow-sm px-6 py-4">
+            <div className="flex items-center gap-3">
               <button
                 type="button"
                 disabled={ordersPage <= 0 || isOrdersLoading}
@@ -657,6 +735,9 @@ const QualityInspection: React.FC = () => {
               >
                 <ChevronLeft className="size-4" /> Trước
               </button>
+              <span className="text-xs font-black text-gray-500 tabular-nums">
+                {ordersPage + 1} / {ordersTotalPages}
+              </span>
               <button
                 type="button"
                 disabled={ordersTotalPages <= 0 || ordersPage >= ordersTotalPages - 1 || isOrdersLoading}
@@ -734,6 +815,7 @@ const QualityInspection: React.FC = () => {
             const qty = item.quantity ?? 0;
             const image = item.imageUrl || 'https://picsum.photos/seed/qc/80/80';
             const productLabel = item.productName || item.mysteryBoxType || 'Sản phẩm';
+            const lineTypeLabel = isMysteryBoxOrderItem(item) ? 'Hộp mù' : 'Nông sản';
 
             return (
               <div
@@ -748,7 +830,7 @@ const QualityInspection: React.FC = () => {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-black text-gray-900 truncate">{productLabel}</p>
                   <p className="text-[11px] text-gray-500 font-bold">
-                    Chi tiết #{detailId} · SL {qty} · Tiêu chí {inspected}/{criteria.length}
+                    {lineTypeLabel} · SL {qty}{item.unit ? ` ${item.unit}` : ''} · Tiêu chí {inspected}/{criteria.length}
                   </p>
                 </div>
                 <div className="shrink-0 text-right">
@@ -777,7 +859,7 @@ const QualityInspection: React.FC = () => {
     );
   }
 
-  // ── INSPECTION (theo orderDetail) ─────────────────────────────────
+  // ── INSPECTION (từng dòng hàng trong đơn) ─────────────────────────
   if (view === 'inspection' && selectedRow) {
     const { detailId, orderId, item, farmerName } = selectedRow;
     const existingQualityResult = item.qualityResult?.qualityResult;
@@ -789,9 +871,10 @@ const QualityInspection: React.FC = () => {
     const result = detailResults[detailId];
     const qty = item.quantity ?? 0;
     const thumb = item.imageUrl || 'https://picsum.photos/seed/qc/80/80';
-    const category = item.category || item.itemType || '—';
     const productLabel = item.productName || item.mysteryBoxType || 'Sản phẩm';
+    const lineTypeLabel = isMysteryBoxOrderItem(item) ? 'Hộp mù' : 'Nông sản';
     const unitPrice = item.unitPrice != null ? `${Number(item.unitPrice).toLocaleString('vi-VN')} ₫` : '—';
+    const qtyLabel = item.unit ? `${qty} ${item.unit}` : String(qty);
 
     return (
       <div className="flex flex-col gap-6 p-8 animate-in fade-in duration-300 max-w-2xl mx-auto w-full">
@@ -809,26 +892,20 @@ const QualityInspection: React.FC = () => {
         </div>
 
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-          <h3 className="text-lg font-black text-gray-900">Order detail #{detailId}</h3>
-          <p className="text-xs text-gray-500 font-bold mt-0.5">Đơn #{orderId}</p>
+          <h3 className="text-lg font-black text-gray-900 truncate">{productLabel}</h3>
+          <p className="text-xs text-gray-500 font-bold mt-0.5">
+            Đơn #{orderId} · {lineTypeLabel}
+          </p>
           <div className="mt-4 flex gap-4">
             <img src={thumb} className="size-20 rounded-xl object-cover border border-gray-100 shrink-0" alt="" />
             <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm flex-1 min-w-0">
               <div className="flex justify-between gap-4 border-b border-gray-50 pb-2">
-                <dt className="text-gray-400 font-bold text-xs">Sản phẩm</dt>
-                <dd className="font-black text-gray-900 text-right truncate">{productLabel}</dd>
-              </div>
-              <div className="flex justify-between gap-4 border-b border-gray-50 pb-2">
-                <dt className="text-gray-400 font-bold text-xs">Loại dòng</dt>
-                <dd className="font-bold text-gray-800 text-right">{item.itemType}</dd>
-              </div>
-              <div className="flex justify-between gap-4 border-b border-gray-50 pb-2">
-                <dt className="text-gray-400 font-bold text-xs">Danh mục</dt>
-                <dd className="font-bold text-gray-800 text-right">{category}</dd>
+                <dt className="text-gray-400 font-bold text-xs">Loại</dt>
+                <dd className="font-bold text-gray-800 text-right">{lineTypeLabel}</dd>
               </div>
               <div className="flex justify-between gap-4 border-b border-gray-50 pb-2">
                 <dt className="text-gray-400 font-bold text-xs">Số lượng</dt>
-                <dd className="font-black text-gray-900 text-right">{qty}</dd>
+                <dd className="font-black text-gray-900 text-right">{qtyLabel}</dd>
               </div>
               <div className="flex justify-between gap-4 border-b border-gray-50 pb-2">
                 <dt className="text-gray-400 font-bold text-xs">Đơn giá</dt>
