@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { orderService } from '../../services';
-import { Truck, MapPin, Navigation, Phone, CheckCircle2, XCircle, FileText, AlertTriangle, ChevronDown, ChevronRight, X, CheckCircle, Package, Clock, RefreshCw, MessageSquare, Search, Star } from 'lucide-react';
+import { Truck, Navigation, Phone, CheckCircle2, XCircle, FileText, AlertTriangle, ChevronDown, ChevronRight, X, CheckCircle, Package, Clock, RefreshCw, MessageSquare, Search, Star } from 'lucide-react';
 import { ImageLightbox } from '../../components/ui';
 
 export interface TrackingImageResponse {
@@ -72,7 +72,6 @@ interface UIOrder {
   product: string;
   qty: string;
   eta: string;
-  distance: string;
   status: string;
   statusLabel: string;
   progress: number;
@@ -256,7 +255,6 @@ const IncomingOrders: React.FC = () => {
         product: firstItem?.productName || firstItem?.mysteryBoxType || 'Sản phẩm',
         qty: `${itemCount} sp`,
         eta: '',
-        distance: '---',
         status: order.status,
         statusLabel: getOrderStatusLabel(order.status),
         progress: order.status === 'SHIPPING_TO_WAREHOUSE' ? 60 : order.status === 'ARRIVED_AT_WAREHOUSE' ? 80 : 100,
@@ -428,12 +426,6 @@ const IncomingOrders: React.FC = () => {
                         <Truck className="size-3" /> {order.statusLabel}
                       </span>
                     </div>
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-1 text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                        <MapPin className="size-3" /> {order.distance}
-                      </div>
-                      <span className="text-sm font-black text-gray-700">{order.qty}</span>
-                    </div>
                   </div>
                   <div className="p-8 flex flex-col md:flex-row gap-8">
                     <div className="flex-1 flex flex-col gap-6">
@@ -502,7 +494,6 @@ const IncomingOrders: React.FC = () => {
                         <span className="size-1.5 bg-orange-500 rounded-full inline-block animate-pulse" /> {order.statusLabel}
                       </span>
                     </div>
-                    <span className="text-sm font-black text-gray-700">{order.qty}</span>
                   </div>
                   <div className="p-8 flex flex-col md:flex-row gap-8">
                     <div className="flex-1 flex flex-col gap-6">
@@ -606,7 +597,6 @@ const IncomingOrders: React.FC = () => {
                       <span className="text-sm font-black text-red-500">#{order.id}</span>
                       <span className="text-[11px] text-gray-400 font-bold">Đến kho lúc: {order.time}</span>
                     </div>
-                    <span className="text-sm font-black text-gray-700">{order.qty}</span>
                   </div>
                   <div className="p-8 flex flex-col md:flex-row gap-8">
                     <div className="flex-1 flex flex-col gap-6">

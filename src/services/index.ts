@@ -12,7 +12,7 @@ export { mysteryBoxService } from './mysteryBox.service';
 export { productService } from './product.service';
 export { categoryService } from './category.service';
 export type { CategoryResponse } from './category.service';
-export { orderService } from './order.service';
+export { orderService, isMysteryBoxOrderItem, getOrderMysteryBoxLineId, normalizeOrderItem, normalizeOrderResponse } from './order.service';
 export { walletService } from './wallet.service';
 export { blogService } from './blog.service';
 export { qualityService } from './quality.service';
@@ -25,6 +25,7 @@ export { buildPlanService } from './buildPlan.service';
 export { tripService } from './trip.service';
 export { chatBotService } from './chatbot.service';
 export { staffService } from './staff.service';
+export { codSettlementService, getCodCollectAmount, isCodPayment, isCodOrder } from './codSettlement.service';
 export { httpClient } from './http.client';
 
 // Export types
@@ -52,6 +53,7 @@ export type {
 } from './combo.service';
 export type { AddCartItemRequest, CartItemResponse, CartResponse } from './cart.service';
 export type { ReviewResponse, ReviewCreateRequest, ReviewReplyRequest } from './review.service';
+export type { CodPendingOrderResponse } from './codSettlement.service';
 export type { ApiResponse, RequestConfig } from './http.client';
 export type { UserUpdateRequest } from './user.service';
 export type {
