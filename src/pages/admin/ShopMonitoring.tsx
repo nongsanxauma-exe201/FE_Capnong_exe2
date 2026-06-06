@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, Clock, Search, Filter, History, Lock, Bell, ChevronRight, Star, ShieldAlert, Loader2, AlertCircle } from 'lucide-react';
+import { AlertTriangle, Clock, Search, Filter, History, Lock, Bell, ChevronRight, Star, ShieldAlert, Loader2, AlertCircle, X, Eye, Mail, Phone, MapPin, CreditCard, Store } from 'lucide-react';
 import { userService, UserResponse } from '../../services';
 import Pagination, { PageInfo } from '../../components/ui/Pagination';
 import { globalShowAlert, globalShowConfirm } from '../../contexts/PopupContext';
@@ -14,13 +14,14 @@ const ShopMonitoring: React.FC = () => {
    const [searchTerm, setSearchTerm] = useState('');
    const [page, setPage] = useState(0);
    const [pageInfo, setPageInfo] = useState<PageInfo | null>(null);
+   const [selectedShop, setSelectedShop] = useState<UserResponse | null>(null);
+   const [modalLoading, setModalLoading] = useState(false);
 
    useEffect(() => {
       const fetchShops = async () => {
          setLoading(true);
          try {
-            const res = await userService.getAllUsersPaged(page, PAGE_SIZE);
-            const allUsers = res.result?.content || [];
+            const res = await userService.getUsersByRolePaged(['SHOP_OWNER'], null, page, PAGE_SIZE);
             if (res.result) {
                setPageInfo({
                   page: res.result.page,
@@ -30,9 +31,8 @@ const ShopMonitoring: React.FC = () => {
                   first: res.result.first,
                   last: res.result.last,
                });
+               setShops(res.result.content || []);
             }
-            const shopOwners = allUsers.filter((u: UserResponse) => u.role?.name === 'SHOP_OWNER' || u.role?.name === 'FARMER');
-            setShops(shopOwners);
          } catch (err) {
             console.error('Failed to load shops', err);
             setError('Không thể tải danh sách cửa hàng.');
@@ -42,6 +42,24 @@ const ShopMonitoring: React.FC = () => {
       };
       fetchShops();
    }, [page]);
+
+   const handleViewProfile = async (userId: number) => {
+      setModalLoading(true);
+      setSelectedShop(null);
+      try {
+         const response = await userService.getUserById(userId);
+         setSelectedShop(response.result || null);
+      } catch (err) {
+         globalShowAlert('Không thể tải thông tin cửa hàng. Vui lòng thử lại.', 'Lỗi', 'error');
+      } finally {
+         setModalLoading(false);
+      }
+   };
+
+   const closeModal = () => {
+      setSelectedShop(null);
+      setModalLoading(false);
+   };
 
    const handleDeactivate = async (userId: number) => {
       if (!await globalShowConfirm('Xác nhận', 'Bạn có chắc muốn khóa tạm thời cửa hàng này?')) return;
@@ -145,12 +163,13 @@ const ShopMonitoring: React.FC = () => {
                         <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Email</th>
                         <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Trạng thái</th>
                         <th className="px-10 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Hành động</th>
+                        <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Chi tiết</th>
                      </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                      {filteredShops.length === 0 ? (
                         <tr>
-                           <td colSpan={5} className="px-10 py-10 text-center text-gray-400 font-bold">Không tìm thấy cửa hàng nào.</td>
+                           <td colSpan={6} className="px-10 py-10 text-center text-gray-400 font-bold">Không tìm thấy cửa hàng nào.</td>
                         </tr>
                      ) : filteredShops.map((shop, i) => (
                         <tr key={shop.id} className="hover:bg-gray-50/30 transition-colors">
@@ -198,6 +217,15 @@ const ShopMonitoring: React.FC = () => {
                                  )}
                               </div>
                            </td>
+                           <td className="px-6 py-6 text-center">
+                              <button
+                                 onClick={() => handleViewProfile(shop.id)}
+                                 className="size-9 bg-gray-50 rounded-xl flex items-center justify-center text-gray-400 hover:text-primary hover:bg-primary/5 transition-colors mx-auto"
+                                 title="Xem chi tiết"
+                              >
+                                 <Eye className="size-4" />
+                              </button>
+                           </td>
                         </tr>
                      ))}
                   </tbody>
@@ -211,8 +239,154 @@ const ShopMonitoring: React.FC = () => {
             </div>
             {pageInfo && <Pagination pageInfo={pageInfo} onPageChange={(p) => { setPage(p); }} className="px-10" />}
          </div>
-      </div>
-   );
+
+      {/* Shop Detail Modal */}
+      {(selectedShop || modalLoading) && (
+         <div className="fixed inset-0 z-50 flex items-center justify-center">
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={closeModal} />
+            <div className="relative bg-white rounded-[32px] shadow-2xl w-full max-w-lg mx-4 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+               {modalLoading ? (
+                  <div className="p-16 text-center">
+                     <div className="inline-block size-10 border-4 border-gray-200 border-t-primary rounded-full animate-spin mb-4" />
+                     <p className="text-sm font-bold text-gray-400">Đang tải thông tin...</p>
+                  </div>
+               ) : selectedShop && (
+                  <>
+                     <button
+                        onClick={closeModal}
+                        className="absolute top-6 right-6 size-10 bg-gray-100 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-200 hover:text-gray-900 transition-colors z-10"
+                     >
+                        <X className="size-5" />
+                     </button>
+
+                     {/* Header */}
+                     <div className="p-10 border-b border-gray-100">
+                        <div className="flex items-center gap-6">
+                           {selectedShop.logoUrl ? (
+                              <img src={selectedShop.logoUrl} className="size-20 rounded-3xl object-cover shadow-md bg-gray-50 flex-shrink-0" alt="Logo" />
+                           ) : (
+                              <div className="size-20 rounded-3xl bg-green-50 flex items-center justify-center text-green-600 flex-shrink-0">
+                                 <span className="material-symbols-outlined text-[40px]">storefront</span>
+                              </div>
+                           )}
+                           <div>
+                              <span className={`inline-block mb-2 text-[10px] font-black px-3 py-1 rounded-lg uppercase tracking-widest ${
+                                 selectedShop.status === 'ACTIVE' ? 'bg-green-50 text-green-600' :
+                                 selectedShop.status === 'INACTIVE' ? 'bg-red-50 text-red-500' :
+                                 'bg-orange-50 text-orange-600'
+                              }`}>
+                                 {selectedShop.status === 'ACTIVE' ? 'Hoạt động' :
+                                  selectedShop.status === 'INACTIVE' ? 'Tạm ngưng' : 'Chờ duyệt'}
+                              </span>
+                              <h3 className="text-2xl font-black text-gray-900 tracking-tight">{selectedShop.shopName || selectedShop.fullName || 'N/A'}</h3>
+                              <p className="text-gray-400 font-bold text-xs mt-1 uppercase tracking-widest">
+                                 {selectedShop.role?.name === 'FARMER' ? 'Nông dân' : 'Chủ cửa hàng'} · ID: #{selectedShop.id}
+                              </p>
+                           </div>
+                        </div>
+                     </div>
+
+                     {/* Body */}
+                     <div className="p-10 space-y-6 max-h-[55vh] overflow-y-auto">
+                        <div>
+                           <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                              <Mail className="size-3.5" /> Thông tin liên hệ
+                           </h4>
+                           <div className="grid grid-cols-2 gap-3">
+                              <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">CHỦ SHOP</p>
+                                 <p className="font-bold text-gray-900 mt-1 text-sm">{selectedShop.fullName || 'N/A'}</p>
+                              </div>
+                              <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">SỐ ĐIỆN THOẠI</p>
+                                 <p className="font-bold text-gray-900 mt-1 text-sm">{selectedShop.phoneNumber || 'N/A'}</p>
+                              </div>
+                           </div>
+                           <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 mt-3">
+                              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">EMAIL</p>
+                              <p className="font-bold text-gray-900 mt-1 text-sm truncate" title={selectedShop.email}>{selectedShop.email || 'N/A'}</p>
+                           </div>
+                           <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 mt-3">
+                              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">ĐỊA CHỈ</p>
+                              <p className="font-bold text-gray-900 mt-1 text-sm">{selectedShop.address || 'Chưa cung cấp'}</p>
+                           </div>
+                        </div>
+
+                        <div>
+                           <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                              <Store className="size-3.5" /> Thông tin cửa hàng
+                           </h4>
+                           <div className="grid grid-cols-2 gap-3">
+                              <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">ĐÁNH GIÁ TB</p>
+                                 <p className="font-bold text-gray-900 mt-1 text-sm flex items-center gap-1">
+                                    <Star className="size-3.5 text-yellow-500 fill-yellow-500" />
+                                    {selectedShop.ratingAverage?.toFixed(1) ?? 'Chưa có'}
+                                 </p>
+                              </div>
+                              <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">TÀI KHOẢN NGÂN HÀNG</p>
+                                 <p className="font-bold text-gray-900 mt-1 text-sm">{selectedShop.bankAccount || 'Chưa cung cấp'}</p>
+                              </div>
+                           </div>
+                           {selectedShop.description && (
+                              <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 mt-3">
+                                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">MÔ TẢ CỬA HÀNG</p>
+                                 <p className="font-medium text-gray-700 mt-1 text-sm leading-relaxed">{selectedShop.description}</p>
+                              </div>
+                           )}
+                        </div>
+
+                        {selectedShop.achievement && (
+                           <div>
+                              <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                 <span className="material-symbols-outlined text-[14px]">folder_open</span> Giấy tờ / Chứng nhận
+                              </h4>
+                              <a href={selectedShop.achievement} target="_blank" rel="noopener noreferrer" className="block">
+                                 <div className="h-36 w-full bg-gray-100 rounded-2xl border border-gray-200 overflow-hidden relative group">
+                                    <img src={selectedShop.achievement} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="Giấy tờ" />
+                                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                       <span className="text-white font-bold bg-black/50 px-3 py-1.5 rounded-full text-xs flex items-center gap-1.5">
+                                          <span className="material-symbols-outlined text-sm">open_in_new</span> Phóng to
+                                       </span>
+                                    </div>
+                                 </div>
+                              </a>
+                           </div>
+                        )}
+                     </div>
+
+                     {/* Footer */}
+                     <div className="p-8 border-t border-gray-100 bg-gray-50/50 flex justify-end gap-3">
+                        <button
+                           onClick={closeModal}
+                           className="px-6 py-3 bg-white border border-gray-200 text-gray-700 text-xs font-black rounded-2xl uppercase tracking-widest hover:bg-gray-50 transition-all"
+                        >
+                           Đóng lại
+                        </button>
+                        {selectedShop.status === 'ACTIVE' ? (
+                           <button
+                              onClick={() => { handleDeactivate(selectedShop.id); closeModal(); }}
+                              className="px-8 py-3 bg-red-500 text-white text-xs font-black rounded-2xl uppercase tracking-widest hover:bg-red-600 transition-all shadow-lg shadow-red-500/20"
+                           >
+                              Khóa tạm thời
+                           </button>
+                        ) : (
+                           <button
+                              onClick={() => { handleActivate(selectedShop.id); closeModal(); }}
+                              className="px-8 py-3 bg-blue-600 text-white text-xs font-black rounded-2xl uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20"
+                           >
+                              Mở khóa
+                           </button>
+                        )}
+                     </div>
+                  </>
+               )}
+            </div>
+         </div>
+      )}
+   </div>
+);
 };
 
 export default ShopMonitoring;

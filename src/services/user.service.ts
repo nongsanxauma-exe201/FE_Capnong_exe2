@@ -1,7 +1,7 @@
 import { httpClient, ApiResponse } from './http.client';
 import { UserResponse } from './auth.service';
 import { API_BASE_URL, TOKEN_KEY } from './api.config';
-import { PageResponse } from './product.service';
+import { PageResponse } from '../types';
 
 export interface UserUpdateRequest {
   fullName?: string;
@@ -19,6 +19,13 @@ class UserService {
 
   async getAllUsersPaged(page = 0, size = 10): Promise<ApiResponse<PageResponse<UserResponse>>> {
     return httpClient.get<PageResponse<UserResponse>>(`/users/paged?page=${page}&size=${size}`);
+  }
+
+  async getUsersByRolePaged(roles: string[], status: string | null, page = 0, size = 10): Promise<ApiResponse<PageResponse<UserResponse>>> {
+    const params = new URLSearchParams({ page: String(page), size: String(size) });
+    roles.forEach(r => params.append('roles', r));
+    if (status) params.append('status', status);
+    return httpClient.get<PageResponse<UserResponse>>(`/users/paged?${params.toString()}`);
   }
 
   /**
