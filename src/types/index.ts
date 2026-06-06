@@ -27,6 +27,7 @@ export interface User {
   bankAccount?: string;
   description?: string;
   achievement?: string;
+  shopActive?: boolean;
 }
 
 export interface Product {

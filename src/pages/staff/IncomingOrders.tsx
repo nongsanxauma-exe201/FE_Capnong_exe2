@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { orderService } from '../../services';
-import { Truck, MapPin, Navigation, Phone, CheckCircle2, XCircle, FileText, AlertTriangle, ChevronDown, ChevronRight, X, CheckCircle, Package, Clock, RefreshCw, MessageSquare, Search, Star } from 'lucide-react';
+import { Truck, Navigation, Phone, CheckCircle2, XCircle, FileText, AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, X, CheckCircle, Package, Clock, RefreshCw, MessageSquare, Search, Star } from 'lucide-react';
 import { ImageLightbox } from '../../components/ui';
 
 export interface TrackingImageResponse {
@@ -72,7 +72,6 @@ interface UIOrder {
   product: string;
   qty: string;
   eta: string;
-  distance: string;
   status: string;
   statusLabel: string;
   progress: number;
@@ -113,7 +112,6 @@ const getOrderStatusLabel = (status: string) => {
     QUALITY_CHECKING: 'Đang kiểm định',
     QUALITY_APPROVED: 'Đạt chất lượng',
     QUALITY_CHECKED: 'Đã kiểm tra',
-    QUALITY_REJECTED: 'Không đạt chất lượng',
     PENDING: 'Chờ xác nhận',
     AWAITING_CONFIRMATION: 'Chờ xác nhận',
     WAREHOUSE_ARRIVED: 'Đã tới kho',
@@ -139,8 +137,6 @@ const tabDefinitions = [
   { key: 'arrived', label: 'Đã tới kho' },
   { key: 'qualityChecking', label: 'Đang kiểm định' },
   { key: 'qualityChecked', label: 'Đã kiểm tra' },
-  { key: 'qualityApproved', label: 'Đạt chất lượng' },
-  { key: 'qualityRejected', label: 'Không đạt chất lượng' },
 ] as const;
 
 type TabKey = (typeof tabDefinitions)[number]['key'];
@@ -175,6 +171,7 @@ const IncomingOrders: React.FC = () => {
   const [page, setPage] = useState(0);
   const [size] = useState(10);
   const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
 
   const fetchOrders = async (status?: string) => {
     setIsLoading(true);
@@ -184,9 +181,11 @@ const IncomingOrders: React.FC = () => {
       if (response.result) {
         setOrders(response.result.content || []);
         setTotalPages(response.result.totalPages ?? 0);
+        setTotalElements(response.result.totalElements ?? 0);
       } else {
         setOrders([]);
         setTotalPages(0);
+        setTotalElements(0);
       }
     } catch (err: any) {
       console.error('Failed to fetch staff orders:', err);
@@ -256,7 +255,6 @@ const IncomingOrders: React.FC = () => {
         product: firstItem?.productName || firstItem?.mysteryBoxType || 'Sản phẩm',
         qty: `${itemCount} sp`,
         eta: '',
-        distance: '---',
         status: order.status,
         statusLabel: getOrderStatusLabel(order.status),
         progress: order.status === 'SHIPPING_TO_WAREHOUSE' ? 60 : order.status === 'ARRIVED_AT_WAREHOUSE' ? 80 : 100,
@@ -350,27 +348,12 @@ const IncomingOrders: React.FC = () => {
     return qualityOrders;
   }, [activeTab, qualityCheckingOrders, qualityCheckedOrders, qualityApprovedOrders, qualityOrders]);
 
-  const tabCounts = useMemo(() => ({
-    all: normalizedOrders.length,
-    shipping: incomingOrders.length,
-    arrived: arrivedOrders.length,
-    qualityChecking: qualityCheckingOrders.length,
-    qualityChecked: qualityCheckedOrders.length,
-    qualityApproved: qualityApprovedOrders.length,
-    qualityRejected: qualityRejectedOrders.length,
-  }), [
-    normalizedOrders,
-    incomingOrders,
-    arrivedOrders,
-    qualityCheckingOrders,
-    qualityCheckedOrders,
-    qualityApprovedOrders,
-    qualityRejectedOrders,
-  ]);
-
   const tabs = tabDefinitions.map((tab) => ({
     ...tab,
-    label: `${tab.label} (${tabCounts[tab.key]})`,
+    label:
+      tab.key === activeTab && !isLoading
+        ? `${tab.label} (${totalElements})`
+        : tab.label,
   }));
 
   const showIncoming = activeTab === 'all' || activeTab === 'shipping';
@@ -427,12 +410,6 @@ const IncomingOrders: React.FC = () => {
                       <span className="px-2 py-0.5 bg-blue-50 text-blue-500 text-[10px] font-black uppercase rounded-md flex items-center gap-1">
                         <Truck className="size-3" /> {order.statusLabel}
                       </span>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-1 text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                        <MapPin className="size-3" /> {order.distance}
-                      </div>
-                      <span className="text-sm font-black text-gray-700">{order.qty}</span>
                     </div>
                   </div>
                   <div className="p-8 flex flex-col md:flex-row gap-8">
@@ -502,7 +479,6 @@ const IncomingOrders: React.FC = () => {
                         <span className="size-1.5 bg-orange-500 rounded-full inline-block animate-pulse" /> {order.statusLabel}
                       </span>
                     </div>
-                    <span className="text-sm font-black text-gray-700">{order.qty}</span>
                   </div>
                   <div className="p-8 flex flex-col md:flex-row gap-8">
                     <div className="flex-1 flex flex-col gap-6">
@@ -606,7 +582,6 @@ const IncomingOrders: React.FC = () => {
                       <span className="text-sm font-black text-red-500">#{order.id}</span>
                       <span className="text-[11px] text-gray-400 font-bold">Đến kho lúc: {order.time}</span>
                     </div>
-                    <span className="text-sm font-black text-gray-700">{order.qty}</span>
                   </div>
                   <div className="p-8 flex flex-col md:flex-row gap-8">
                     <div className="flex-1 flex flex-col gap-6">
@@ -651,29 +626,66 @@ const IncomingOrders: React.FC = () => {
               ))}
         </div>
 
-        {/* Pagination controls */}
-        <div className="p-10 border-t border-gray-50 flex items-center justify-between">
-          <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">
-            {totalPages > 0 ? `Hiển thị ${page * size + 1}-${Math.min((page + 1) * size, (page + 1) * size)} trong số ${totalPages * size} đơn hàng` : 'Không có đơn hàng'}
-          </p>
-          <div className="flex items-center gap-2">
-            <button
-              className="size-10 border border-gray-100 rounded-2xl flex items-center justify-center text-gray-300 hover:bg-gray-50"
-              onClick={() => setPage(p => Math.max(p - 1, 0))}
-              disabled={page === 0}
-            >
-              <ChevronRight className="size-4 rotate-180" />
-            </button>
-            <span className="size-10 bg-primary text-white rounded-2xl flex items-center justify-center text-sm font-black">{page + 1}</span>
-            <button
-              className="size-10 border border-gray-100 rounded-2xl flex items-center justify-center text-gray-300 hover:bg-gray-50"
-              onClick={() => setPage(p => Math.min(p + 1, totalPages - 1))}
-              disabled={page >= totalPages - 1}
-            >
-              <ChevronRight className="size-4" />
-            </button>
+        {/* Pagination */}
+        {totalElements > 0 && (
+          <div className="px-6 md:px-10 py-6 border-t border-gray-100 bg-gray-50/60 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p className="text-sm text-gray-600 font-medium text-center sm:text-left">
+              Hiển thị{' '}
+              <span className="font-black text-gray-900 tabular-nums">
+                {page * size + 1}–{Math.min((page + 1) * size, totalElements)}
+              </span>{' '}
+              trong tổng{' '}
+              <span className="font-black text-gray-900 tabular-nums">{totalElements}</span> đơn hàng
+            </p>
+
+            {totalPages > 1 && (
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.max(p - 1, 0))}
+                  disabled={page === 0}
+                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-black border border-gray-200 bg-white text-gray-800 shadow-sm hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <ChevronLeft className="size-4" />
+                  Trước
+                </button>
+
+                <div className="flex items-center gap-1.5 px-1">
+                  {Array.from({ length: totalPages }, (_, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setPage(i)}
+                      aria-label={`Trang ${i + 1}`}
+                      aria-current={page === i ? 'page' : undefined}
+                      className={`min-w-10 h-10 px-2 rounded-xl text-sm font-black transition-all ${
+                        page === i
+                          ? 'bg-primary text-white shadow-md shadow-primary/25'
+                          : 'bg-white border border-gray-200 text-gray-700 hover:border-primary hover:text-primary'
+                      }`}
+                    >
+                      {i + 1}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.min(p + 1, totalPages - 1))}
+                  disabled={page >= totalPages - 1}
+                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-black border border-gray-200 bg-white text-gray-800 shadow-sm hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Sau
+                  <ChevronRight className="size-4" />
+                </button>
+
+                <span className="hidden md:inline text-xs font-bold text-gray-500 tabular-nums ml-1">
+                  Trang {page + 1}/{totalPages}
+                </span>
+              </div>
+            )}
           </div>
-        </div>
+        )}
       </div>
 
       {/* ── MODAL: XEM ẢNH KIỂM DUYỆT PHÓNG TO ── */}

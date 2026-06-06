@@ -44,7 +44,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                         shopName: userData.shopName,
                         bankAccount: userData.bankAccount,
                         description: userData.description,
-                        achievement: userData.achievement
+                        achievement: userData.achievement,
+                        shopActive: userData.shopActive ?? true,
                     };
                     setUser(mappedUser);
                 }
