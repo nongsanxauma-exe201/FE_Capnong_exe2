@@ -7,7 +7,7 @@ const PAGE_SIZE = 10;
 const URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 const KYCApproval: React.FC = () => {
   const [pendingUsers, setPendingUsers] = useState<UserResponse[]>([]);
-  const [approvedToday, setApprovedToday] = useState<UserResponse[]>([]);
+  const [approvedCount, setApprovedCount] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [approvingId, setApprovingId] = useState<number | null>(null);
@@ -20,26 +20,24 @@ const KYCApproval: React.FC = () => {
       setLoading(true);
       setError(null);
       try {
-        const response = await userService.getAllUsersPaged(page, PAGE_SIZE);
-        const all = response.result?.content || [];
-        if (response.result) {
+        const [pendingRes, approvedRes] = await Promise.all([
+          userService.getUsersByRolePaged(['SHOP_OWNER', 'SHIPPER'], 'PENDING', page, PAGE_SIZE),
+          userService.getUsersByRolePaged(['SHOP_OWNER', 'SHIPPER'], 'ACTIVE', 0, 1),
+        ]);
+        if (pendingRes.result) {
           setPageInfo({
-            page: response.result.page,
-            size: response.result.size,
-            totalElements: response.result.totalElements,
-            totalPages: response.result.totalPages,
-            first: response.result.first,
-            last: response.result.last,
+            page: pendingRes.result.page,
+            size: pendingRes.result.size,
+            totalElements: pendingRes.result.totalElements,
+            totalPages: pendingRes.result.totalPages,
+            first: pendingRes.result.first,
+            last: pendingRes.result.last,
           });
+          setPendingUsers(pendingRes.result.content || []);
         }
-        const pending = all.filter(
-          (u) => (u.role?.name === 'SHOP_OWNER' || u.role?.name === 'SHIPPER') && u.status === 'PENDING'
-        );
-        setPendingUsers(pending);
-        const approvedToday = all.filter(
-          (u) => (u.role?.name === 'SHOP_OWNER' || u.role?.name === 'SHIPPER') && u.status === 'ACTIVE'
-        );
-        setApprovedToday(approvedToday);
+        if (approvedRes.result) {
+          setApprovedCount(approvedRes.result.totalElements);
+        }
       } catch (err) {
         console.error('Failed to load users for KYC', err);
         setError('Không thể tải danh sách hồ sơ KYC. Vui lòng kiểm tra quyền Admin hoặc thử lại sau.');
@@ -110,7 +108,7 @@ const KYCApproval: React.FC = () => {
             <div>
               <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">ĐÃ DUYỆT </p>
               <h4 className="text-xl font-black text-gray-900">
-                {loading ? '...' : approvedToday.length}
+                {loading ? '...' : approvedCount}
               </h4>
             </div>
           </div>

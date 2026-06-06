@@ -8,7 +8,7 @@ import {
   Search,
   Filter,
   MoreHorizontal,
-  History,
+
   Lock,
   Unlock,
   Truck,
@@ -23,6 +23,7 @@ import {
   MapPin,
   CreditCard,
   FileText,
+  Eye,
 } from 'lucide-react';
 import { userService, UserResponse } from '../../services';
 
@@ -344,10 +345,10 @@ const ShipperManagement: React.FC = () => {
                       <div className="flex items-center justify-end gap-4">
                         <button
                           onClick={() => shipper.id && handleViewProfile(shipper.id)}
-                          className="size-10 bg-gray-50 rounded-xl flex items-center justify-center text-gray-400 hover:text-gray-900 transition-colors"
+                          className="size-9 bg-gray-50 rounded-xl flex items-center justify-center text-gray-400 hover:text-primary hover:bg-primary/5 transition-colors"
                           title="Xem hồ sơ"
                         >
-                          <History className="size-5" />
+                          <Eye className="size-4" />
                         </button>
                         {shipper.status === 'ACTIVE' ? (
                           <button
@@ -374,7 +375,6 @@ const ShipperManagement: React.FC = () => {
         </div>
 
         <div className="p-10 bg-white border-t border-gray-50 flex items-center justify-between">
-          <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">Hiển thị 10 trong tổng số 156 đối tác</p>
           <div className="flex items-center gap-3">
             <button className="size-10 border border-gray-100 rounded-2xl flex items-center justify-center text-gray-300 hover:bg-gray-50">
               <ChevronLeft className="size-6" />
@@ -548,7 +548,7 @@ const ShipperManagement: React.FC = () => {
                     >
                       Khóa tài khoản
                     </button>
-                  ) : selectedShipper.status !== 'ACTIVE' && selectedShipper.status !== 'PENDING' ? (
+                  ) : selectedShipper.status === 'INACTIVE' ? (
                     <button
                       onClick={() => {
                         if (selectedShipper.id) {

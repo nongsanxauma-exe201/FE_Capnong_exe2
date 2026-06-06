@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
-import { UserX, Search, Bell, ShieldAlert, Zap, AlertCircle, Lock, Unlock, History, MoreHorizontal, Filter, Download, ChevronRight, XCircle, Loader2 } from 'lucide-react';
+import { UserX, Search, Bell, ShieldAlert, Zap, AlertCircle, Lock, Unlock, History, MoreHorizontal, Filter, Download, ChevronRight, XCircle, Loader2, X, Eye, Mail, Phone, MapPin, Calendar } from 'lucide-react';
 import { userService, UserResponse } from '../../services';
 import Pagination, { PageInfo } from '../../components/ui/Pagination';
 import { globalShowAlert, globalShowConfirm } from '../../contexts/PopupContext';
@@ -14,13 +14,14 @@ const BadBuyers: React.FC = () => {
   const [processing, setProcessing] = useState<number | null>(null);
   const [page, setPage] = useState(0);
   const [pageInfo, setPageInfo] = useState<PageInfo | null>(null);
+  const [selectedBuyer, setSelectedBuyer] = useState<UserResponse | null>(null);
+  const [modalLoading, setModalLoading] = useState(false);
 
   useEffect(() => {
     const fetchBuyers = async () => {
       setLoading(true);
       try {
-        const res = await userService.getAllUsersPaged(page, PAGE_SIZE);
-        const allUsers = (res.result?.content || []).map((u: UserResponse) => ({ ...u, roleName: u.roleName || u.role?.name }));
+        const res = await userService.getUsersByRolePaged(['BUYER'], null, page, PAGE_SIZE);
         if (res.result) {
           setPageInfo({
             page: res.result.page,
@@ -30,9 +31,8 @@ const BadBuyers: React.FC = () => {
             first: res.result.first,
             last: res.result.last,
           });
+          setBuyers(res.result.content || []);
         }
-        const buyerList = allUsers.filter((u: UserResponse) => u.roleName === 'BUYER' || u.role?.name === 'BUYER');
-        setBuyers(buyerList);
       } catch (err) {
         console.error('Failed to load buyers', err);
         setError('Không thể tải danh sách người mua.');
@@ -54,6 +54,24 @@ const BadBuyers: React.FC = () => {
     } finally {
       setProcessing(null);
     }
+  };
+
+  const handleViewProfile = async (userId: number) => {
+    setModalLoading(true);
+    setSelectedBuyer(null);
+    try {
+      const response = await userService.getUserById(userId);
+      setSelectedBuyer(response.result || null);
+    } catch (err) {
+      globalShowAlert('Không thể tải thông tin người dùng. Vui lòng thử lại.', 'Lỗi', 'error');
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
+  const closeModal = () => {
+    setSelectedBuyer(null);
+    setModalLoading(false);
   };
 
   const handleUnblock = async (userId: number) => {
@@ -124,12 +142,13 @@ const BadBuyers: React.FC = () => {
                 <th className="px-10 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Người dùng</th>
                 <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Trạng thái</th>
                 <th className="px-10 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Thao tác</th>
+                <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Chi tiết</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {buyers.length === 0 ? (
                 <tr>
-                  <td colSpan={3} className="px-10 py-10 text-center text-gray-400 font-bold">Không có người mua nào.</td>
+                  <td colSpan={4} className="px-10 py-10 text-center text-gray-400 font-bold">Không có người mua nào.</td>
                 </tr>
               ) : buyers.map((user, i) => {
                 const isBlocked = user.lockedAt != null || user.status === 'INACTIVE';
@@ -160,6 +179,15 @@ const BadBuyers: React.FC = () => {
                           <button onClick={() => handleBlock(user.id)} disabled={processing === user.id} className="text-[10px] font-black text-red-500 uppercase tracking-widest hover:underline disabled:opacity-50">CHẶN</button>
                         )}
                       </div>
+                    </td>
+                    <td className="px-6 py-6 text-center">
+                      <button
+                        onClick={() => handleViewProfile(user.id)}
+                        className="size-9 bg-gray-50 rounded-xl flex items-center justify-center text-gray-400 hover:text-primary hover:bg-primary/5 transition-colors mx-auto"
+                        title="Xem chi tiết"
+                      >
+                        <Eye className="size-4" />
+                      </button>
                     </td>
                   </tr>
                 );
@@ -219,6 +247,128 @@ const BadBuyers: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Buyer Detail Modal */}
+      {(selectedBuyer || modalLoading) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={closeModal} />
+          <div className="relative bg-white rounded-[32px] shadow-2xl w-full max-w-lg mx-4 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {modalLoading ? (
+              <div className="p-16 text-center">
+                <div className="inline-block size-10 border-4 border-gray-200 border-t-primary rounded-full animate-spin mb-4" />
+                <p className="text-sm font-bold text-gray-400">Đang tải thông tin...</p>
+              </div>
+            ) : selectedBuyer && (
+              <>
+                <button
+                  onClick={closeModal}
+                  className="absolute top-6 right-6 size-10 bg-gray-100 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-200 hover:text-gray-900 transition-colors z-10"
+                >
+                  <X className="size-5" />
+                </button>
+
+                {/* Header */}
+                <div className="p-10 border-b border-gray-100">
+                  <div className="flex items-center gap-6">
+                    <div className="size-20 rounded-3xl bg-blue-50 flex items-center justify-center text-blue-600 flex-shrink-0">
+                      {(selectedBuyer.lockedAt != null || selectedBuyer.status === 'INACTIVE')
+                        ? <Lock className="size-9 text-red-500" />
+                        : <span className="material-symbols-outlined text-[40px]">person</span>
+                      }
+                    </div>
+                    <div>
+                      <span className={`inline-block mb-2 text-[10px] font-black px-3 py-1 rounded-lg uppercase tracking-widest ${
+                        selectedBuyer.status === 'ACTIVE' ? 'bg-green-50 text-green-600' :
+                        selectedBuyer.status === 'INACTIVE' ? 'bg-red-50 text-red-500' :
+                        'bg-orange-50 text-orange-600'
+                      }`}>
+                        {selectedBuyer.status === 'ACTIVE' ? 'Hoạt động' :
+                         selectedBuyer.status === 'INACTIVE' ? 'Đã khóa' : 'Chờ duyệt'}
+                      </span>
+                      <h3 className="text-2xl font-black text-gray-900 tracking-tight">{selectedBuyer.fullName || selectedBuyer.username || 'N/A'}</h3>
+                      <p className="text-gray-400 font-bold text-xs mt-1 uppercase tracking-widest">Người mua · ID: #{selectedBuyer.id}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Body */}
+                <div className="p-10 space-y-6 max-h-[55vh] overflow-y-auto">
+                  <div>
+                    <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                      <Mail className="size-3.5" /> Thông tin liên hệ
+                    </h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">EMAIL</p>
+                        <p className="font-bold text-gray-900 mt-1 text-sm truncate" title={selectedBuyer.email}>{selectedBuyer.email || 'N/A'}</p>
+                      </div>
+                      <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">SỐ ĐIỆN THOẠI</p>
+                        <p className="font-bold text-gray-900 mt-1 text-sm">{selectedBuyer.phoneNumber || 'N/A'}</p>
+                      </div>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 mt-3">
+                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">ĐỊA CHỈ</p>
+                      <p className="font-bold text-gray-900 mt-1 text-sm">{selectedBuyer.address || 'Chưa cung cấp'}</p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                      <Calendar className="size-3.5" /> Thông tin tài khoản
+                    </h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">NGÀY TẠO</p>
+                        <p className="font-bold text-gray-900 mt-1 text-sm">
+                          {selectedBuyer.createdAt || selectedBuyer.createAt
+                            ? new Date(selectedBuyer.createdAt || selectedBuyer.createAt!).toLocaleDateString('vi-VN')
+                            : 'N/A'}
+                        </p>
+                      </div>
+                      <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">VAI TRÒ</p>
+                        <p className="font-bold text-gray-900 mt-1 text-sm">{selectedBuyer.role?.description || selectedBuyer.role?.name || 'BUYER'}</p>
+                      </div>
+                    </div>
+                    {selectedBuyer.lockedAt && (
+                      <div className="bg-red-50 p-4 rounded-2xl border border-red-100 mt-3">
+                        <p className="text-[10px] font-black text-red-400 uppercase tracking-widest">THỜI GIAN BỊ KHÓA</p>
+                        <p className="font-bold text-red-700 mt-1 text-sm">{new Date(selectedBuyer.lockedAt).toLocaleString('vi-VN')}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="p-8 border-t border-gray-100 bg-gray-50/50 flex justify-end gap-3">
+                  <button
+                    onClick={closeModal}
+                    className="px-6 py-3 bg-white border border-gray-200 text-gray-700 text-xs font-black rounded-2xl uppercase tracking-widest hover:bg-gray-50 transition-all"
+                  >
+                    Đóng lại
+                  </button>
+                  {(selectedBuyer.lockedAt != null || selectedBuyer.status === 'INACTIVE') ? (
+                    <button
+                      onClick={() => { handleUnblock(selectedBuyer.id); closeModal(); }}
+                      className="px-8 py-3 bg-blue-600 text-white text-xs font-black rounded-2xl uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20"
+                    >
+                      Mở khóa
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => { handleBlock(selectedBuyer.id); closeModal(); }}
+                      className="px-8 py-3 bg-red-500 text-white text-xs font-black rounded-2xl uppercase tracking-widest hover:bg-red-600 transition-all shadow-lg shadow-red-500/20"
+                    >
+                      Khóa tài khoản
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
