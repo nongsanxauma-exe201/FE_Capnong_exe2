@@ -169,11 +169,18 @@ export interface BuildPlanResponse {
   days: PlanDayResponse[];
 }
 export enum BlogCategory {
-  SUC_KHOE = 'Sức khỏe',
-  CAM_NANG = 'Cẩm nang',
-  NHA_NONG = 'Nhà nông',
-  XU_HUONG = 'Xu hướng'
+  SUC_KHOE = 'SUC_KHOE',
+  CAM_NANG = 'CAM_NANG',
+  NHA_NONG = 'NHA_NONG',
+  XU_HUONG = 'XU_HUONG'
 }
+
+export const BlogCategoryLabel: Record<BlogCategory, string> = {
+  [BlogCategory.SUC_KHOE]: 'Sức khỏe',
+  [BlogCategory.CAM_NANG]: 'Cẩm nang',
+  [BlogCategory.NHA_NONG]: 'Nhà nông',
+  [BlogCategory.XU_HUONG]: 'Xu hướng',
+};
 
 export interface PageResponse<T> {
   content: T[];

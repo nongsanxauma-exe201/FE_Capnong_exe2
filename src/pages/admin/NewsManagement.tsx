@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Newspaper, Plus, Search, Filter, Edit3, Trash2, Eye, Calendar, User, Clock, CheckCircle2, ChevronLeft, ChevronRight, RefreshCcw, AlertCircle } from 'lucide-react';
 import { blogService, BlogResponse, BlogCreationRequest } from '../../services';
-import { BlogCategory, PageResponse } from '../../types';
+import { BlogCategory, BlogCategoryLabel, PageResponse } from '../../types';
 import MyCKEditor from '../../components/MyCKEditor';
 import Pagination, { PageInfo } from '../../components/ui/Pagination';
 import { globalShowAlert, globalShowConfirm } from '../../contexts/PopupContext';
@@ -256,10 +256,10 @@ const NewsManagement: React.FC = () => {
                            onChange={(e) => setCategory(e.target.value as BlogCategory)}
                            className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-[10px] font-black text-gray-600 outline-none uppercase tracking-widest"
                         >
-                           <option value={BlogCategory.SUC_KHOE}>{BlogCategory.SUC_KHOE}</option>
-                           <option value={BlogCategory.CAM_NANG}>{BlogCategory.CAM_NANG}</option>
-                           <option value={BlogCategory.NHA_NONG}>{BlogCategory.NHA_NONG}</option>
-                           <option value={BlogCategory.XU_HUONG}>{BlogCategory.XU_HUONG}</option>
+                           <option value={BlogCategory.SUC_KHOE}>{BlogCategoryLabel[BlogCategory.SUC_KHOE]}</option>
+                           <option value={BlogCategory.CAM_NANG}>{BlogCategoryLabel[BlogCategory.CAM_NANG]}</option>
+                           <option value={BlogCategory.NHA_NONG}>{BlogCategoryLabel[BlogCategory.NHA_NONG]}</option>
+                           <option value={BlogCategory.XU_HUONG}>{BlogCategoryLabel[BlogCategory.XU_HUONG]}</option>
                         </select>
                      </div>
                      <div className="flex flex-col gap-3">
@@ -327,7 +327,7 @@ const NewsManagement: React.FC = () => {
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-12">
                      <div className="max-w-4xl">
                         <div className="flex items-center gap-4 text-[10px] font-black text-white/80 uppercase tracking-widest mb-4">
-                           <span className="px-3 py-1 bg-primary text-white rounded-lg">{selectedBlog.category}</span>
+                           <span className="px-3 py-1 bg-primary text-white rounded-lg">{BlogCategoryLabel[selectedBlog.category as BlogCategory] ?? selectedBlog.category}</span>
                            <span>{new Date(selectedBlog.createAt).toLocaleDateString('vi-VN')}</span>
                            <span>Bởi: {selectedBlog.adminName}</span>
                         </div>
@@ -382,10 +382,10 @@ const NewsManagement: React.FC = () => {
                      className="px-6 py-3 bg-gray-50 border border-transparent rounded-2xl text-[10px] font-black text-gray-600 outline-none uppercase tracking-widest cursor-pointer"
                   >
                      <option>Tất cả danh mục</option>
-                     <option>{BlogCategory.SUC_KHOE}</option>
-                     <option>{BlogCategory.CAM_NANG}</option>
-                     <option>{BlogCategory.NHA_NONG}</option>
-                     <option>{BlogCategory.XU_HUONG}</option>
+                     <option value={BlogCategory.SUC_KHOE}>{BlogCategoryLabel[BlogCategory.SUC_KHOE]}</option>
+                     <option value={BlogCategory.CAM_NANG}>{BlogCategoryLabel[BlogCategory.CAM_NANG]}</option>
+                     <option value={BlogCategory.NHA_NONG}>{BlogCategoryLabel[BlogCategory.NHA_NONG]}</option>
+                     <option value={BlogCategory.XU_HUONG}>{BlogCategoryLabel[BlogCategory.XU_HUONG]}</option>
                   </select>
                </div>
                <div className="flex gap-4">
@@ -441,7 +441,7 @@ const NewsManagement: React.FC = () => {
                               </td>
                               <td className="px-6 py-6 text-center">
                                  <span className="inline-block px-3 py-1 bg-green-50 text-primary text-[10px] font-black rounded-lg uppercase tracking-tight whitespace-nowrap">
-                                    {art.category}
+                                    {BlogCategoryLabel[art.category as BlogCategory] ?? art.category}
                                  </span>
                               </td>
                               <td className="px-6 py-6 text-center">
