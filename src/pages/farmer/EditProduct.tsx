@@ -20,7 +20,6 @@ const EditProduct: React.FC<{ productId: number; onBack: () => void }> = ({ prod
   const [error, setError] = useState<string | null>(null);
   const [previews, setPreviews] = useState<string[]>([]);
   const [images, setImages] = useState<File[]>([]);
-
   useEffect(() => {
     productService.getById(productId).then(res => {
       if (res.result) {
@@ -65,6 +64,7 @@ const EditProduct: React.FC<{ productId: number; onBack: () => void }> = ({ prod
         description,
         unit,
         expiryDate: expiryDate ? expiryDate : undefined,
+        categoryId: categoryId || 1
       }, image || undefined);
       onBack();
     } catch (err: any) {
