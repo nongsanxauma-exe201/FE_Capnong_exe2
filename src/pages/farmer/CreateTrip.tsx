@@ -5,6 +5,7 @@ import {
   CheckSquare, X, ArrowLeft, DollarSign,
 } from 'lucide-react';
 import { tripService, vehicleService, OrderResponse, VehicleResponse, WarehouseResponse } from '../../services';
+import { createBaseTileLayer, loadLeafletCss } from '../../utils/vietmapLeaflet';
 
 // ─── Weight helpers ───────────────────────────────────────────────────────────
 const UNIT_KG: Record<string, number> = {
@@ -80,12 +81,6 @@ const CreateTrip: React.FC = () => {
   });
 
   // ── Map helpers ─────────────────────────────────────────────────────────────
-  const loadLeafletCss = () => {
-    if (document.querySelector('link[href*="leaflet.css"]')) return;
-    const l = document.createElement('link');
-    l.rel = 'stylesheet'; l.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-    document.head.appendChild(l);
-  };
   const getMinDateTimeLocal = () => {
     const now = new Date();
     now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
@@ -109,9 +104,12 @@ const CreateTrip: React.FC = () => {
       return;
     }
     const map = L.map(mapContainerRef.current, { center: [lat, lng], zoom: 15 });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19, attribution: '&copy; OpenStreetMap contributors',
-    }).addTo(map);
+    const baseTileLayer = await createBaseTileLayer(L);
+    baseTileLayer.addTo(map);
+    // OSM tile cũ:
+    // L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    //   maxZoom: 19, attribution: '&copy; OpenStreetMap contributors',
+    // }).addTo(map);
     const marker = L.marker([lat, lng], { draggable: true }).addTo(map);
     marker.on('dragend', () => {
       const p = marker.getLatLng();

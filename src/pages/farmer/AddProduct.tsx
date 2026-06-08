@@ -3,11 +3,26 @@ import { ArrowLeft, Save, Send, Camera, Info, Truck, HelpCircle, AlertTriangle }
 import SubmissionSuccess from './SubmissionSuccessProps';
 import { productService } from '../../services';
 
+/** Bỏ số 0 đầu (02123 → 2123), cho phép xóa trắng khi đang gõ */
+const normalizeWholeNumberInput = (value: string) => {
+  const digits = value.replace(/\D/g, '');
+  if (digits === '') return '';
+  return digits.replace(/^0+/, '') || '0';
+};
+
+const parseWholeNumber = (value: string) => (value === '' ? 0 : Number(value));
+
+const getTodayDateString = () => {
+  const now = new Date();
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+  return now.toISOString().slice(0, 10);
+};
+
 const AddProduct: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [productName, setProductName] = useState('');
-  const [price, setPrice] = useState<number>(0);
-  const [stock, setStock] = useState<number>(0);
+  const [price, setPrice] = useState('');
+  const [stock, setStock] = useState('');
   const [description, setDescription] = useState('');
   const [unit, setUnit] = useState('kg');
   const [categoryId, setCategoryId] = useState<number>(1);
@@ -27,8 +42,16 @@ const AddProduct: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   };
 
   const handleSubmit = async () => {
-    if (!productName || price <= 0 || stock <= 0) {
+    const sellingPrice = parseWholeNumber(price);
+    const stockQuantity = parseWholeNumber(stock);
+
+    if (!productName || sellingPrice <= 0 || stockQuantity <= 0) {
       setError('Vui lòng điền đầy đủ thông tin sản phẩm và giá hợp lệ.');
+      return;
+    }
+
+    if (expiryDate && expiryDate < getTodayDateString()) {
+      setError('Hạn sử dụng không được chọn ngày trong quá khứ.');
       return;
     }
 
@@ -37,8 +60,8 @@ const AddProduct: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     try {
       const response = await productService.createProduct({
         productName,
-        sellingPrice: price,
-        stockQuantity: stock,
+        sellingPrice,
+        stockQuantity,
         description,
         unit,
         categoryId,
@@ -59,6 +82,8 @@ const AddProduct: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   if (isSubmitted) {
     return <SubmissionSuccess onReturn={onBack} />;
   }
+
+  const minExpiryDate = getTodayDateString();
 
   return (
     <div className="flex flex-col gap-8 p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -169,10 +194,11 @@ const AddProduct: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                   <label className="text-sm font-bold text-gray-700">Giá bán (VNĐ/{unit})</label>
                   <div className="relative">
                     <input
-                      type="number"
+                      type="text"
+                      inputMode="numeric"
                       value={price}
-                      onChange={(e) => setPrice(Number(e.target.value))}
-                      placeholder="0"
+                      onChange={(e) => setPrice(normalizeWholeNumberInput(e.target.value))}
+                      placeholder="Nhập giá"
                       className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-primary/10 transition-all"
                     />
                     <span className="absolute right-6 top-1/2 -translate-y-1/2 font-bold text-gray-400">đ</span>
@@ -181,10 +207,11 @@ const AddProduct: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 <div className="flex flex-col gap-3">
                   <label className="text-sm font-bold text-gray-700">Số lượng tồn kho ({unit})</label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     value={stock}
-                    onChange={(e) => setStock(Number(e.target.value))}
-                    placeholder="0"
+                    onChange={(e) => setStock(normalizeWholeNumberInput(e.target.value))}
+                    placeholder="Nhập số lượng"
                     className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-primary/10 transition-all"
                   />
                 </div>
@@ -193,7 +220,17 @@ const AddProduct: React.FC<{ onBack: () => void }> = ({ onBack }) => {
               <div className="grid grid-cols-2 gap-8">
                 <div className="flex flex-col gap-4">
                   <label className="text-sm font-bold text-gray-700">Hạn sử dụng</label>
-                  <input type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold text-gray-600 outline-none" />
+                  <input
+                    type="date"
+                    value={expiryDate}
+                    min={minExpiryDate}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value && value < minExpiryDate) return;
+                      setExpiryDate(value);
+                    }}
+                    className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold text-gray-600 outline-none"
+                  />
                   <div className="p-4 bg-primary/5 rounded-2xl flex items-start gap-3 border border-primary/10">
                     <HelpCircle className="size-4 text-primary shrink-0 mt-0.5" />
                     <p className="text-[11px] text-gray-500 font-medium">Gợi ý: Nhóm <b>Củ</b> thường có thời gian bảo quản tốt nhất trong 3 – 5 ngày ở nhiệt độ 5°C.</p>

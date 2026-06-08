@@ -5,6 +5,7 @@ import {
   CheckCircle, AlertCircle, Star,
 } from 'lucide-react';
 import { tripService, TripResponse, OrderResponse, WarehouseResponse } from '../../services';
+import { createBaseTileLayer, loadLeafletCss } from '../../utils/vietmapLeaflet';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Step = 'location' | 'trips' | 'confirm';
@@ -138,19 +139,18 @@ const SendJoinRequest: React.FC = () => {
     let dead = false;
     (async () => {
       if (!mapRef.current || leafletRef.current) return;
-      if (!document.querySelector('link[href*="leaflet.css"]')) {
-        const l = document.createElement('link');
-        l.rel = 'stylesheet'; l.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-        document.head.appendChild(l);
-      }
+      loadLeafletCss();
       const L = await import('leaflet');
       if (dead || !mapRef.current) return;
       const lat = pickupLat ? +pickupLat : 10.8231;
       const lng = pickupLng ? +pickupLng : 106.6297;
       const map = L.map(mapRef.current, { center: [lat, lng], zoom: 13 });
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19, attribution: '&copy; OpenStreetMap contributors',
-      }).addTo(map);
+      const baseTileLayer = await createBaseTileLayer(L);
+      baseTileLayer.addTo(map);
+      // OSM tile cũ:
+      // L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      //   maxZoom: 19, attribution: '&copy; OpenStreetMap contributors',
+      // }).addTo(map);
       const marker = L.marker([lat, lng], { draggable: true }).addTo(map);
       marker.on('dragend', () => {
         const p = marker.getLatLng();
