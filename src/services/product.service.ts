@@ -1,6 +1,12 @@
 import { httpClient, ApiResponse } from './http.client';
 import { PageResponse } from '../types';
 
+export interface ProductImageResponse {
+    id: number;
+    imageUrl: string;
+    isPrimary: boolean;
+    displayOrder: number;
+}
 
 export interface ProductResponse {
     id: number;
@@ -16,7 +22,8 @@ export interface ProductResponse {
     shopId?: number;
     shopName?: string;
     categoryId?: number;
-    expiryDate?: string; // ISO date string: "YYYY-MM-DD"
+    expiryDate?: string;
+    images?: ProductImageResponse[];
 }
 
 function normalizeProduct(p: ProductResponse): ProductResponse {
@@ -29,9 +36,13 @@ export interface ProductCreationRequest {
     sellingPrice: number;
     stockQuantity: number;
     description: string;
-    imageUrl?: string;
     categoryId?: number;
-    expiryDate?: string; // "YYYY-MM-DD"
+    expiryDate?: string;
+}
+
+export interface ImageOrderItem {
+    id: number;
+    displayOrder: number;
 }
 
 class ProductService {
@@ -65,10 +76,12 @@ class ProductService {
         return res;
     }
 
-    async createProduct(data: ProductCreationRequest, image?: File): Promise<ApiResponse<ProductResponse>> {
+    async createProduct(data: ProductCreationRequest, images?: File[]): Promise<ApiResponse<ProductResponse>> {
         const formData = new FormData();
         formData.append('data', JSON.stringify(data));
-        if (image) formData.append('image', image);
+        if (images && images.length > 0) {
+            images.forEach(img => formData.append('images', img));
+        }
         return httpClient.post<ProductResponse>('/products', formData);
     }
 
@@ -100,10 +113,35 @@ class ProductService {
     async rejectProduct(id: number, reason: string): Promise<ApiResponse<ProductResponse>> {
         return httpClient.patch<ProductResponse>(`/products/${id}/reject?reason=${encodeURIComponent(reason)}`);
     }
-     async getForBuyer(): Promise<ApiResponse<ProductResponse[]>> {
+
+    async getForBuyer(): Promise<ApiResponse<ProductResponse[]>> {
         const res = await httpClient.get<ProductResponse[]>('/products/buyer');
         if (res.result) res.result = res.result.map(normalizeProduct);
         return res;
+    }
+
+    // ── Gallery APIs ────────────────────────────────────────────────────────
+
+    async getImages(productId: number): Promise<ApiResponse<ProductImageResponse[]>> {
+        return httpClient.get<ProductImageResponse[]>(`/products/${productId}/images`);
+    }
+
+    async addImages(productId: number, images: File[]): Promise<ApiResponse<ProductImageResponse[]>> {
+        const formData = new FormData();
+        images.forEach(img => formData.append('images', img));
+        return httpClient.post<ProductImageResponse[]>(`/products/${productId}/images`, formData);
+    }
+
+    async deleteImage(productId: number, imageId: number): Promise<ApiResponse<void>> {
+        return httpClient.delete<void>(`/products/${productId}/images/${imageId}`);
+    }
+
+    async setPrimaryImage(productId: number, imageId: number): Promise<ApiResponse<ProductImageResponse>> {
+        return httpClient.patch<ProductImageResponse>(`/products/${productId}/images/primary`, { imageId });
+    }
+
+    async reorderImages(productId: number, images: ImageOrderItem[]): Promise<ApiResponse<ProductImageResponse[]>> {
+        return httpClient.patch<ProductImageResponse[]>(`/products/${productId}/images/reorder`, { images });
     }
 }
 
