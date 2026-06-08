@@ -11,6 +11,7 @@ import { shipperService, ShipperLocationResponse } from '../../services/shipper.
 import { orderService, OrderResponse } from '../../services/order.service';
 import { authService } from '../../services/auth.service';
 import { API_BASE_URL, TOKEN_KEY } from '../../services/api.config';
+import { createBaseTileLayer, loadLeafletCss } from '../../utils/vietmapLeaflet';
 
 interface TrackingProps {
   onBack: () => void;
@@ -193,10 +194,11 @@ const Tracking: React.FC<TrackingProps> = ({ onBack, orderId: orderIdProp, order
     if (leafletMapRef.current)    return;
     mapInitializedRef.current = true;
 
-    import('leaflet').then((L) => {
+    import('leaflet').then(async (L) => {
       if (leafletMapRef.current)                return;
       if ((mapRef.current as any)?._leaflet_id) return;
 
+      loadLeafletCss();
       delete (L.Icon.Default.prototype as any)._getIconUrl;
       L.Icon.Default.mergeOptions({
         iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
@@ -205,9 +207,8 @@ const Tracking: React.FC<TrackingProps> = ({ onBack, orderId: orderIdProp, order
       });
 
       const map = L.map(mapRef.current!, { center: [lat, lng], zoom: 15 });
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19, attribution: '© OpenStreetMap',
-      }).addTo(map);
+      const baseTile = await createBaseTileLayer(L);
+      baseTile.addTo(map);
 
       const shipperIcon = L.divIcon({
         html: `<div style="width:44px;height:44px;background:#3B82F6;border:3px solid white;border-radius:12px;
@@ -530,7 +531,7 @@ const Tracking: React.FC<TrackingProps> = ({ onBack, orderId: orderIdProp, order
             updateMarker(lat, lng); // bên trong gọi updateShipperVisibility
 
             if (data.shopLatitude && data.shopLongitude && data.destLatitude && data.destLongitude) {
-              drawRoutes(lat, lng, data.shopLatitude, data.shopLongitude, data.destLatitude, data.destLongitude, true);
+              drawRoutes(lat, lng, data.shopLatitude, data.shopLongitude, data.destLatitude, data.destLongitude, Boolean(data.isFake));
             }
           } catch (e) { console.error('[WS]', e); }
         });

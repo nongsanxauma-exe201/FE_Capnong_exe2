@@ -24,6 +24,7 @@ import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 import { tripService, TripResponse, TripStopResponse, OrderResponse } from '../../services';
 import { API_BASE_URL, TOKEN_KEY } from '../../services/api.config';
+import { createBaseTileLayer, loadLeafletCss } from '../../utils/vietmapLeaflet';
 
 // ─── TripTracking types ───────────────────────────────────────────────────────
 interface TripTrackingResponse {
@@ -40,44 +41,48 @@ interface RoutePoint {
   lng: number;
 }
 
-/* ─── polyline decoder ───────────────────────────────────────────────────── */
-const decodePolyline = (encoded: string): [number, number][] => {
-  const coordinates: [number, number][] = [];
-  let index = 0;
-  let lat = 0;
-  let lng = 0;
+type LeafletLatLng = [number, number];
 
-  while (index < encoded.length) {
-    let result = 0;
-    let shift = 0;
-    let byte = 0;
+// VietMap tile config đã chuyển sang src/utils/vietmapLeaflet.ts
 
-    do {
-      byte = encoded.charCodeAt(index++) - 63;
-      result |= (byte & 0x1f) << shift;
-      shift += 5;
-    } while (byte >= 0x20);
-
-    const deltaLat = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
-    lat += deltaLat;
-
-    result = 0;
-    shift = 0;
-
-    do {
-      byte = encoded.charCodeAt(index++) - 63;
-      result |= (byte & 0x1f) << shift;
-      shift += 5;
-    } while (byte >= 0x20);
-
-    const deltaLng = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
-    lng += deltaLng;
-
-    coordinates.push([lat / 1e5, lng / 1e5]);
-  }
-
-  return coordinates;
-};
+/* ─── polyline decoder (chưa dùng — giữ lại cho encoded polyline sau này) ── */
+// const decodePolyline = (encoded: string): [number, number][] => {
+//   const coordinates: [number, number][] = [];
+//   let index = 0;
+//   let lat = 0;
+//   let lng = 0;
+//
+//   while (index < encoded.length) {
+//     let result = 0;
+//     let shift = 0;
+//     let byte = 0;
+//
+//     do {
+//       byte = encoded.charCodeAt(index++) - 63;
+//       result |= (byte & 0x1f) << shift;
+//       shift += 5;
+//     } while (byte >= 0x20);
+//
+//     const deltaLat = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
+//     lat += deltaLat;
+//
+//     result = 0;
+//     shift = 0;
+//
+//     do {
+//       byte = encoded.charCodeAt(index++) - 63;
+//       result |= (byte & 0x1f) << shift;
+//       shift += 5;
+//     } while (byte >= 0x20);
+//
+//     const deltaLng = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
+//     lng += deltaLng;
+//
+//     coordinates.push([lat / 1e5, lng / 1e5]);
+//   }
+//
+//   return coordinates;
+// };
 
 /* ─── helpers ────────────────────────────────────────────────────────────── */
 const statusColors: Record<string, { bg: string; text: string; dot: string }> = {
@@ -179,6 +184,10 @@ const fetchOsrmRoutePath = async (points: RoutePoint[]) => {
   return addHeadingToPath(routePoints);
 };
 
+const toLeafletLatLngs = (points: RoutePoint[]): LeafletLatLng[] => {
+  return points.map((point) => [point.lat, point.lng]);
+};
+
 const TripDetail: React.FC = () => {
   const navigate = useNavigate();
   const { tripId } = useParams();
@@ -198,6 +207,7 @@ const TripDetail: React.FC = () => {
   /* map refs */
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const leafletMapRef = useRef<any>(null);
+  const baseTileLayerRef = useRef<any>(null);
   const routeLayerRef = useRef<any>(null);
   const routePointsRef = useRef<[number, number][]>([]);
   const truckMarkerRef = useRef<any>(null);
@@ -227,14 +237,62 @@ const TripDetail: React.FC = () => {
     ]);
   };
 
-  /* ─── load leaflet css ─────────────────────────────────────────────────── */
-  const loadLeafletCss = () => {
-    if (document.querySelector('link[href*="leaflet.css"]')) return;
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-    link.crossOrigin = '';
-    document.head.appendChild(link);
+  const drawRouteWithOsrmFallback = async (
+    L: any,
+    map: any,
+    routeWaypoints: LeafletLatLng[],
+    displayPoints: LeafletLatLng[]
+  ) => {
+    if (routeWaypoints.length <= 1) {
+      if (displayPoints.length > 1) {
+        map.fitBounds(L.latLngBounds(displayPoints), { padding: [50, 50] });
+      } else if (displayPoints.length === 1) {
+        map.setView(displayPoints[0], 14);
+      }
+
+      return;
+    }
+
+    try {
+      const osrmPath = await fetchOsrmRoutePath(
+        routeWaypoints.map(([lat, lng]) => ({ lat, lng }))
+      );
+
+      const osrmRoutePoints = toLeafletLatLngs(osrmPath);
+
+      routePointsRef.current = osrmRoutePoints;
+
+      routeLayerRef.current = L.polyline(osrmRoutePoints, {
+        color: '#6366f1',
+        weight: 5,
+        opacity: 0.8,
+        lineCap: 'round',
+        lineJoin: 'round',
+      }).addTo(map);
+
+      if (truckLocation) {
+        trimPassedRoute(truckLocation.lat, truckLocation.lng);
+      }
+
+      map.fitBounds(L.latLngBounds([...osrmRoutePoints, ...displayPoints]), {
+        padding: [50, 50],
+      });
+    } catch (err) {
+      console.error('[Map] OSRM failed, fallback to straight line:', err);
+
+      routePointsRef.current = routeWaypoints;
+
+      routeLayerRef.current = L.polyline(routeWaypoints, {
+        color: '#6366f1',
+        weight: 5,
+        opacity: 0.8,
+        dashArray: '5, 10',
+      }).addTo(map);
+
+      map.fitBounds(L.latLngBounds(displayPoints), {
+        padding: [50, 50],
+      });
+    }
   };
 
   /* ─── Get current user from localStorage ───────────────────────────────── */
@@ -439,7 +497,7 @@ const TripDetail: React.FC = () => {
 
       const center = truckPoint;
 
-      // 3. Khởi tạo bản đồ Leaflet nếu chưa có
+      // 3. Khởi tạo bản đồ Leaflet + nền VietMap
       if (!leafletMapRef.current) {
         const map = L.map(mapContainerRef.current, {
           center,
@@ -447,74 +505,71 @@ const TripDetail: React.FC = () => {
           zoomControl: false,
         });
         L.control.zoom({ position: 'bottomright' }).addTo(map);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          maxZoom: 19,
-          attribution: '&copy; OpenStreetMap contributors',
-        }).addTo(map);
         leafletMapRef.current = map;
       }
 
       const map = leafletMapRef.current;
+      const baseTileLayer = await createBaseTileLayer(L);
+
+      if (baseTileLayerRef.current) {
+        try {
+          map.removeLayer(baseTileLayerRef.current);
+        } catch { /* ignore */ }
+      }
+
+      baseTileLayer.addTo(map);
+      baseTileLayerRef.current = baseTileLayer;
+
+      // OSM tile cũ (giữ lại tham khảo):
+      // L.tileLayer(OSM_TILE_URL, {
+      //   maxZoom: 19,
+      //   attribution: '&copy; OpenStreetMap contributors',
+      // }).addTo(map);
+
       cleanup();
 
-      // 4. Gọi API OSRM để lấy tuyến đường thực tế đi qua các điểm tuần tự
-      if (routeWaypoints.length > 1) {
-        // Định dạng của OSRM là: lng,lat;lng,lat;...
-        const coordinatesQuery = routeWaypoints.map(pt => `${pt[1]},${pt[0]}`).join(';');
-        const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordinatesQuery}?overview=full&geometries=geojson`;
+      await drawRouteWithOsrmFallback(L, map, routeWaypoints, displayPoints);
 
-        try {
-          const response = await fetch(osrmUrl);
-          const data = await response.json();
+      // OSRM inline cũ (đã tách sang drawRouteWithOsrmFallback):
+      // if (routeWaypoints.length > 1) {
+      //   const coordinatesQuery = routeWaypoints.map(pt => `${pt[1]},${pt[0]}`).join(';');
+      //   const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordinatesQuery}?overview=full&geometries=geojson`;
+      //   try {
+      //     const response = await fetch(osrmUrl);
+      //     const data = await response.json();
+      //     if (data.code === 'Ok' && data.routes?.[0]?.geometry?.coordinates) {
+      //       const osrmRoutePoints: [number, number][] = data.routes[0].geometry.coordinates.map(
+      //         (coord: [number, number]) => [coord[1], coord[0]]
+      //       );
+      //       routePointsRef.current = osrmRoutePoints;
+      //       routeLayerRef.current = L.polyline(osrmRoutePoints, {
+      //         color: '#6366f1', weight: 5, opacity: 0.8, lineCap: 'round', lineJoin: 'round',
+      //       }).addTo(map);
+      //       if (truckLocation) trimPassedRoute(truckLocation.lat, truckLocation.lng);
+      //       map.fitBounds(L.latLngBounds([...osrmRoutePoints, ...displayPoints]), { padding: [50, 50] });
+      //     } else {
+      //       routePointsRef.current = routeWaypoints;
+      //       routeLayerRef.current = L.polyline(routeWaypoints, {
+      //         color: '#6366f1', weight: 5, opacity: 0.8, dashArray: '5, 10',
+      //       }).addTo(map);
+      //       map.fitBounds(L.latLngBounds(displayPoints), { padding: [50, 50] });
+      //     }
+      //   } catch (err) {
+      //     console.error('Gọi API OSRM thất bại, chuyển sang vẽ đường thẳng fallback:', err);
+      //     routePointsRef.current = routeWaypoints;
+      //     routeLayerRef.current = L.polyline(routeWaypoints, {
+      //       color: '#6366f1', weight: 5, opacity: 0.8, dashArray: '5, 10',
+      //     }).addTo(map);
+      //     map.fitBounds(L.latLngBounds(displayPoints), { padding: [50, 50] });
+      //   }
+      // } else {
+      //   if (displayPoints.length > 1) {
+      //     map.fitBounds(L.latLngBounds(displayPoints), { padding: [50, 50] });
+      //   } else {
+      //     map.setView(center, 14);
+      //   }
+      // }
 
-          if (data.code === 'Ok' && data.routes?.[0]?.geometry?.coordinates) {
-            // OSRM trả về dạng [lng, lat], cần đảo ngược lại thành [lat, lng] cho Leaflet
-            const osrmRoutePoints: [number, number][] = data.routes[0].geometry.coordinates.map(
-              (coord: [number, number]) => [coord[1], coord[0]]
-            );
-            routePointsRef.current = osrmRoutePoints;
-
-            // Vẽ đường đi thực tế uốn lượn theo map
-            routeLayerRef.current = L.polyline(osrmRoutePoints, {
-              color: '#6366f1',
-              weight: 5,
-              opacity: 0.8,
-              lineCap: 'round',
-              lineJoin: 'round',
-            }).addTo(map);
-            if (truckLocation) trimPassedRoute(truckLocation.lat, truckLocation.lng);
-
-            // Tự động căn chỉnh bản đồ ôm trọn tuyến đường và các marker pickup.
-            map.fitBounds(L.latLngBounds([...osrmRoutePoints, ...displayPoints]), { padding: [50, 50] });
-          } else {
-            routePointsRef.current = routeWaypoints;
-            routeLayerRef.current = L.polyline(routeWaypoints, {
-              color: '#6366f1',
-              weight: 5,
-              opacity: 0.8,
-              dashArray: '5, 10',
-            }).addTo(map);
-            map.fitBounds(L.latLngBounds(displayPoints), { padding: [50, 50] });
-          }
-        } catch (err) {
-          console.error("Gọi API OSRM thất bại, chuyển sang vẽ đường thẳng fallback:", err);
-          // Fallback: Nếu OSRM lỗi, vẽ đường thẳng nối các điểm để giao diện không bị trống đường
-          routePointsRef.current = routeWaypoints;
-          routeLayerRef.current = L.polyline(routeWaypoints, {
-            color: '#6366f1',
-            weight: 5,
-            opacity: 0.8,
-            dashArray: '5, 10'
-          }).addTo(map);
-          map.fitBounds(L.latLngBounds(displayPoints), { padding: [50, 50] });
-        }
-      } else {
-        if (displayPoints.length > 1) {
-          map.fitBounds(L.latLngBounds(displayPoints), { padding: [50, 50] });
-        } else {
-          map.setView(center, 14);
-        }
-      }
       if (cancelled) return;
 
       /* ── Giữ nguyên đoạn vẽ các Marker (Xuất phát & Điểm dừng) dưới đây ── */

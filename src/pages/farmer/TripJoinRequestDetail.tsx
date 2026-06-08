@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { tripService, TripJoinRequestResponse } from '../../services';
 import { USER_INFO_KEY } from '../../services/api.config';
+import { createBaseTileLayer, loadLeafletCss } from '../../utils/vietmapLeaflet';
 
 // ─── Get current user id from localStorage ────────────────────────────────────
 function getCurrentUserId(): number | null {
@@ -227,11 +228,7 @@ const TripJoinRequestDetail: React.FC = () => {
       if (req.pickupLat && req.pickupLng)
         reverseGeocode(req.pickupLat, req.pickupLng).then(a => { if (!dead) setPickupAddr(a); });
 
-      if (!document.querySelector('link[href*="leaflet.css"]')) {
-        const l = document.createElement('link');
-        l.rel = 'stylesheet'; l.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-        document.head.appendChild(l);
-      }
+      loadLeafletCss();
       const L = await import('leaflet');
       if (dead || !mapRef.current) return;
 
@@ -241,9 +238,12 @@ const TripJoinRequestDetail: React.FC = () => {
       const pickupPt: [number, number] = [req.pickupLat, req.pickupLng];
 
       const map = L.map(mapRef.current, { center: startPt, zoom: 13 });
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19, attribution: '&copy; OpenStreetMap contributors',
-      }).addTo(map);
+      const baseTileLayer = await createBaseTileLayer(L);
+      baseTileLayer.addTo(map);
+      // OSM tile cũ:
+      // L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      //   maxZoom: 19, attribution: '&copy; OpenStreetMap contributors',
+      // }).addTo(map);
       leafletRef.current = map;
 
       // ── Icons Helper ───────────────────────────────────────────────────────
