@@ -22,6 +22,15 @@ import { globalShowAlert } from '../../contexts/PopupContext';
 import ShopProducts from './ShopProducts';
 import { useAuth } from '../../contexts/AuthContext';
 
+// ── Cloudinary URL helper ────────────────────────────────────────────────────
+function clImg(url: string | undefined, mode: 'main' | 'thumb' = 'main'): string {
+  if (!url || !url.includes('res.cloudinary.com')) return url ?? '';
+  const transform = mode === 'main'
+    ? 'f_auto,q_auto:best,e_sharpen:60'
+    : 'f_auto,q_auto:eco,c_fill,w_150,h_150,g_center';
+  return url.replace('/upload/', `/upload/${transform}/`);
+}
+
 // ── Image Gallery Component ───────────────────────────────────────────────────
 interface ImageGalleryProps {
   images: ProductImageResponse[];
@@ -58,14 +67,14 @@ const ImageGallery: React.FC<ImageGalleryProps> = ({ images, productName }) => {
     <>
       {/* Main image */}
       <div className="flex flex-col gap-3">
-        <div className="relative aspect-square rounded-2xl overflow-hidden border border-gray-100 shadow-sm group cursor-zoom-in" onClick={() => setLightbox(true)}>
+        <div className="relative aspect-square rounded-2xl overflow-hidden border border-gray-100 shadow-sm group cursor-zoom-in bg-gray-50" onClick={() => setLightbox(true)}>
           <img
-            src={sorted[activeIdx]?.imageUrl}
-            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+            src={clImg(sorted[activeIdx]?.imageUrl, 'main')}
+            className="w-full h-full object-contain"
             alt={`${productName} - ảnh ${activeIdx + 1}`}
           />
-          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-all flex items-center justify-center">
-            <ZoomIn className="size-8 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
+          <div className="absolute inset-0 bg-transparent group-hover:bg-black/8 transition-colors duration-200 flex items-center justify-center">
+            <ZoomIn className="size-8 text-white opacity-0 group-hover:opacity-80 transition-opacity duration-200 drop-shadow-lg" />
           </div>
           {sorted.length > 1 && (
             <>
@@ -95,7 +104,7 @@ const ImageGallery: React.FC<ImageGalleryProps> = ({ images, productName }) => {
                   idx === activeIdx ? 'border-primary shadow-md scale-105' : 'border-gray-200 hover:border-gray-400'
                 }`}
               >
-                <img src={img.imageUrl} className="w-full h-full object-cover" alt={`Thumbnail ${idx + 1}`} />
+                <img src={clImg(img.imageUrl, 'thumb')} className="w-full h-full object-cover" alt={`Thumbnail ${idx + 1}`} />
               </button>
             ))}
           </div>
@@ -121,7 +130,7 @@ const ImageGallery: React.FC<ImageGalleryProps> = ({ images, productName }) => {
             </>
           )}
           <img
-            src={sorted[activeIdx]?.imageUrl}
+            src={clImg(sorted[activeIdx]?.imageUrl, 'main')}
             className="max-h-[90vh] max-w-[90vw] object-contain rounded-xl"
             alt={productName}
             onClick={e => e.stopPropagation()}
