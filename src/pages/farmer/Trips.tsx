@@ -20,18 +20,29 @@ const Trips: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
+      const response =
+        tab === 'my-trips'
+          ? await tripService.getMyTrips(page, 10, status)
+          : await tripService.getTripJoined(page, 10, status);
+
+      const pageResult = response.result;
+      const content = Array.isArray(pageResult)
+        ? pageResult
+        : pageResult?.content || [];
+      const pages = Array.isArray(pageResult)
+        ? 1
+        : pageResult?.totalPages || 0;
+
       if (tab === 'my-trips') {
-        const response = await tripService.getMyTrips(page, 10, status);
-        setMyTrips(response.result?.content || []);
-        setTotalPages(response.result?.totalPages || 0);
+        setMyTrips(content as TripResponse[]);
       } else {
-        const response = await tripService.getTripJoined(page, 10, status);
-        setJoinedTrips(response.result?.content || []);
-        setTotalPages(response.result?.totalPages || 0);
+        setJoinedTrips(content as TripResponse[]);
       }
-    } catch (err) {
+
+      setTotalPages(pages);
+    } catch (err: any) {
       console.error('Load trips failed', err);
-      setError('Không thể tải dữ liệu chuyến đi. Vui lòng thử lại sau.');
+      setError(err?.data?.message || err?.message || 'Không thể tải dữ liệu chuyến đi. Vui lòng thử lại sau.');
     } finally {
       setLoading(false);
     }
