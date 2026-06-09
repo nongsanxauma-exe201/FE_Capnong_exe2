@@ -1,9 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AppRole, KYCStatus } from '../../types';
 import { ArrowLeft, CheckCircle, Store, User, Truck, ShieldAlert } from 'lucide-react';
-import { authService, otpService } from '../../services';
+import { authService } from '../../services';
 import { useAuth } from '../../contexts/AuthContext';
-import OTPVerification from '../../components/auth/OTPVerification';
 import { useNavigate } from 'react-router-dom';
 
 interface OAuthRegisterProps {
@@ -48,8 +47,8 @@ const OAuthRegister: React.FC<OAuthRegisterProps> = ({ onGoToLogin }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
-    const [showOtpVerification, setShowOtpVerification] = useState(false);
-    const [pendingRegistration, setPendingRegistration] = useState<any>(null);
+    // Dùng ref để tránh double-submit (React StrictMode / double-click)
+    const submittingRef = useRef(false);
 
     // Shop Owner specific fields
     const [shopName, setShopName] = useState('');
@@ -111,12 +110,48 @@ const OAuthRegister: React.FC<OAuthRegisterProps> = ({ onGoToLogin }) => {
         }
     }, [isAuthenticated, authUser, navigate]);
 
+    // Điều hướng sau khi đăng ký thành công (FARMER/SHIPPER → /kyc, BUYER → /)
+    const handleAfterRegister = (password: string) => {
+        const isPendingRole = selectedRole === AppRole.FARMER || selectedRole === AppRole.SHIPPER;
+        setSuccess(isPendingRole
+            ? 'Đăng ký thành công! Hồ sơ của bạn đang chờ duyệt.'
+            : 'Đăng ký thành công! Đang chuyển hướng...'
+        );
+        setTimeout(async () => {
+            window.history.replaceState({}, document.title, '/');
+            if (isPendingRole) {
+                navigate('/kyc', {
+                    state: {
+                        pendingUser: {
+                            name: fullName, email, role: selectedRole, phone,
+                            shopName: selectedRole === AppRole.FARMER ? shopName : null,
+                            address,
+                            bankAccount: selectedRole === AppRole.FARMER ? bankAccount : shipperBankAccount,
+                            description: selectedRole === AppRole.FARMER ? description : null,
+                            avatar: avatar || null,
+                        }
+                    }
+                });
+            } else {
+                // BUYER: thử tự đăng nhập
+                try {
+                    await authService.login({ email, password });
+                    login(selectedRole);
+                    navigate('/');
+                } catch {
+                    onGoToLogin();
+                }
+            }
+        }, 1200);
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (submittingRef.current) return; // chặn double-submit
         setError(null);
         setSuccess(null);
 
-        // Basic Validation
+        // Validation
         if (!fullName || !email || !phone) {
             setError('Vui lòng điền đầy đủ thông tin bắt buộc'); return;
         }
@@ -124,15 +159,15 @@ const OAuthRegister: React.FC<OAuthRegisterProps> = ({ onGoToLogin }) => {
             setError('Vui lòng đồng ý với điều khoản dịch vụ'); return;
         }
 
-        const roleMap: Record<AppRole, string> = {
+        const roleMap: Partial<Record<AppRole, string>> = {
             [AppRole.BUYER]: 'BUYER',
             [AppRole.FARMER]: 'SHOP_OWNER',
             [AppRole.SHIPPER]: 'SHIPPER',
             [AppRole.ADMIN]: 'ADMIN',
         };
 
-        // Prepare Registration Data
-        const randomPassword = Math.random().toString(36).slice(-10) + "A1@";
+        // Mật khẩu ngẫu nhiên cho tài khoản Google (user đăng nhập bằng Google, không cần nhớ)
+        const randomPassword = Math.random().toString(36).slice(-10) + 'A1@';
 
         const registrationData: any = {
             email,
@@ -158,121 +193,55 @@ const OAuthRegister: React.FC<OAuthRegisterProps> = ({ onGoToLogin }) => {
             if (!driverLicenseFile || !portraitFile) {
                 setError('Vui lòng tải lên đầy đủ giấy tờ hợp lệ'); return;
             }
-
-            const descriptionStr = `Loại xe: ${vehicleType === 'motorbike' ? 'Xe máy' : 'Ô tô'}. ` +
-                `Thành phố: ${city}. ` +
-                `Ngân hàng: ${shipperBankName} - ${shipperBankAccount} - ${shipperBankAccountName}`;
-
             registrationData.license = driverLicense;
             registrationData.vehicleNumber = licensePlate;
             registrationData.address = address;
-            registrationData.description = descriptionStr;
+            registrationData.description =
+                `Loại xe: ${vehicleType === 'motorbike' ? 'Xe máy' : 'Ô tô'}. ` +
+                `Thành phố: ${city}. ` +
+                `Ngân hàng: ${shipperBankName} - ${shipperBankAccount} - ${shipperBankAccountName}`;
         }
 
-        setPendingRegistration({
-            data: registrationData,
-            logoFile: selectedRole === AppRole.FARMER ? logoFile : portraitFile,
-            achievementFile: selectedRole === AppRole.FARMER ? achievementFile : driverLicenseFile
-        });
-
+        submittingRef.current = true;
         setIsLoading(true);
         try {
-            await otpService.sendOtp(email);
-            setShowOtpVerification(true);
+            // ── [FIX #3] Đăng ký trực tiếp, KHÔNG cần OTP ──
+            // Google đã xác thực email rồi nên bỏ bước gửi OTP
+            const logoOrPortrait   = (selectedRole === AppRole.FARMER ? logoFile      : portraitFile)   ?? undefined;
+            const achieveOrLicense = (selectedRole === AppRole.FARMER ? achievementFile : driverLicenseFile) ?? undefined;
+
+            await authService.register(registrationData, logoOrPortrait, achieveOrLicense);
+            handleAfterRegister(randomPassword);
+
         } catch (err: any) {
-            setError(err?.data?.message || 'Không thể gửi mã xác nhận. Vui lòng thử lại.');
+            const code = err?.data?.code ?? err?.status;
+            // ── [FIX #2] Nếu user đã tồn tại (code 1001) ──
+            // Có thể xảy ra khi React StrictMode double-invoke hoặc user thử đăng ký lại
+            // → Xử lý như thành công vì tài khoản đã được tạo ở lần trước
+            if (code === 1001 || err?.data?.message?.includes('already exists')) {
+                handleAfterRegister(registrationData.password);
+            } else {
+                setError(err?.data?.message || 'Đăng ký thất bại. Vui lòng thử lại.');
+            }
         } finally {
             setIsLoading(false);
+            submittingRef.current = false;
         }
     };
 
-    if (showOtpVerification) {
-        return (
-            <OTPVerification
-                email={email}
-                onVerified={async () => {
-                    if (pendingRegistration) {
-                        setIsLoading(true);
-                        try {
-                            const response = await authService.register(
-                                pendingRegistration.data,
-                                pendingRegistration.logoFile,
-                                pendingRegistration.achievementFile
-                            );
-                            if (response.result) {
-                                // Auto-login after registration
-                                let loginResponse;
-                                try {
-                                    loginResponse = await authService.login({
-                                        email: email,
-                                        password: pendingRegistration.data.password
-                                    });
-                                } catch (loginErr) {
-                                    console.error("Auto-login failed:", loginErr);
-                                }
-
-                                if (loginResponse?.result?.token) {
-                                    setSuccess('Đăng ký thành công! Đang chuyển hướng...');
-                                    setTimeout(() => {
-                                        // Clear URL params
-                                        window.history.replaceState({}, document.title, "/");
-                                        login(selectedRole);
-                                        if (selectedRole === AppRole.FARMER || selectedRole === AppRole.SHIPPER) {
-                                            navigate('/kyc');
-                                        } else {
-                                            navigate('/');
-                                        }
-                                    }, 1000);
-                                } else {
-                                    // If login fails (e.g. pending approval), but registration was successful
-                                    if (selectedRole === AppRole.FARMER || selectedRole === AppRole.SHIPPER) {
-                                        setSuccess('Đăng ký thành công! Hồ sơ của bạn đang được chờ duyệt.');
-                                        setTimeout(() => {
-                                            window.history.replaceState({}, document.title, "/");
-                                            navigate('/kyc', { 
-                                                state: { 
-                                                    pendingUser: {
-                                                        name: fullName,
-                                                        email: email,
-                                                        role: selectedRole,
-                                                        phone: phone,
-                                                        shopName: selectedRole === AppRole.FARMER ? shopName : null,
-                                                        address: address,
-                                                        bankAccount: selectedRole === AppRole.FARMER ? bankAccount : shipperBankAccount,
-                                                        description: selectedRole === AppRole.FARMER ? description : null,
-                                                        avatar: avatar || (logoFile ? URL.createObjectURL(logoFile) : (portraitFile ? URL.createObjectURL(portraitFile) : null)),
-                                                        achievement: selectedRole === AppRole.FARMER ? (achievementFile ? achievementFile.name : null) : (driverLicenseFile ? driverLicenseFile.name : null)
-                                                    }
-                                                } 
-                                            });
-                                        }, 1500);
-                                    } else {
-                                        onGoToLogin();
-                                    }
-                                }
-                            }
-                        } catch (err: any) {
-                            setError(err?.data?.message || 'Đăng ký thất bại. Vui lòng thử lại.');
-                            setShowOtpVerification(false);
-                        } finally {
-                            setIsLoading(false);
-                        }
-                    }
-                }}
-                onBack={() => { setShowOtpVerification(false); setPendingRegistration(null); }}
-            />
-        );
-    }
+    // ── [FIX #1] Avatar fallback khi Google URL không load ──
+    const avatarFallback = `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName || 'G')}&background=4ade80&color=ffffff&size=128`;
 
     return (
         <div className="flex min-h-screen w-full bg-background-light font-sans">
             {/* ── LEFT ── Brand image panel */}
-            <div className="hidden lg:block lg:w-1/2 relative h-full shrink-0">
-                <div className="absolute inset-0 bg-black/20 z-10" />
+            <div className="hidden lg:flex lg:w-1/2 relative min-h-screen shrink-0">
+                <div className="absolute inset-0 bg-black/30 z-10" />
                 <img
                     alt="Nông sản tươi sạch"
                     className="absolute inset-0 w-full h-full object-cover"
                     src="https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80"
+                    onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                 />
                 <div className="absolute inset-0 z-20 p-10 flex flex-col justify-between">
                     <div className="flex items-center gap-3">
@@ -289,19 +258,26 @@ const OAuthRegister: React.FC<OAuthRegisterProps> = ({ onGoToLogin }) => {
                             Hoàn tất <br /> hồ sơ của bạn
                         </h2>
                         <p className="text-white/85 text-base font-medium drop-shadow-sm leading-relaxed">
-                            Tài khoản Google của bạn đã được xác thực thành công. Vui lòng bổ sung một số thông tin để gia nhập cộng đồng Xấu Mã.
+                            Tài khoản Google của bạn đã được xác thực thành công. Vui lòng bổ sung thêm thông tin để gia nhập cộng đồng Xấu Mã.
                         </p>
                     </div>
                 </div>
             </div>
 
             {/* ── RIGHT ── Registration form */}
-            <div className="w-full lg:w-1/2 h-full overflow-y-auto custom-scrollbar bg-background-light flex flex-col">
+            <div className="w-full lg:w-1/2 min-h-screen overflow-y-auto custom-scrollbar bg-background-light flex flex-col">
                 <div className="w-full max-w-[500px] m-auto px-8 py-10 flex-shrink-0">
 
                     <div className="mb-8 flex items-center gap-4 bg-primary/5 p-4 rounded-2xl border border-primary/10">
                         <div className="relative">
-                            <img src={avatar || `https://ui-avatars.com/api/?name=${fullName}&background=random`} className="size-14 rounded-full border-2 border-white shadow-sm" alt="Avatar" />
+                            {/* [FIX #1] onError fallback khi Google URL không load được */}
+                            <img
+                                src={avatar || avatarFallback}
+                                referrerPolicy="no-referrer"
+                                onError={e => { (e.currentTarget as HTMLImageElement).src = avatarFallback; }}
+                                className="size-14 rounded-full border-2 border-white shadow-sm object-cover"
+                                alt="Avatar"
+                            />
                             <div className="absolute -bottom-1 -right-1 bg-white rounded-full p-0.5 shadow-sm">
                                 <img src="https://www.svgrepo.com/show/475656/google-color.svg" className="size-4" />
                             </div>
