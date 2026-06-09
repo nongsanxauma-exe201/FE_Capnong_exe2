@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Star,
@@ -7,19 +7,142 @@ import {
   ChevronRight,
   Plus,
   Minus,
-  Heart,
-  Share2,
   Loader2,
   AlertCircle,
   MessageSquare,
-  ChefHat
+  ChefHat,
+  ChevronLeft,
+  X,
+  ZoomIn
 } from 'lucide-react';
-import { productService, ProductResponse, cartService, reviewService, ReviewResponse, comboService, BuildComboResponse } from '../../services';
+import { productService, ProductResponse, ProductImageResponse, cartService, reviewService, ReviewResponse, comboService, BuildComboResponse } from '../../services';
 import { userService } from '../../services';
 import { UserResponse } from '../../services/auth.service';
 import { globalShowAlert } from '../../contexts/PopupContext';
 import ShopProducts from './ShopProducts';
 import { useAuth } from '../../contexts/AuthContext';
+
+// ── Cloudinary URL helper ────────────────────────────────────────────────────
+function clImg(url: string | undefined, mode: 'main' | 'thumb' = 'main'): string {
+  if (!url || !url.includes('res.cloudinary.com')) return url ?? '';
+  const transform = mode === 'main'
+    ? 'f_auto,q_auto:best,e_sharpen:60'
+    : 'f_auto,q_auto:eco,c_fill,w_150,h_150,g_center';
+  return url.replace('/upload/', `/upload/${transform}/`);
+}
+
+// ── Image Gallery Component ───────────────────────────────────────────────────
+interface ImageGalleryProps {
+  images: ProductImageResponse[];
+  productName: string;
+}
+
+const ImageGallery: React.FC<ImageGalleryProps> = ({ images, productName }) => {
+  const [activeIdx, setActiveIdx] = useState(0);
+  const [lightbox, setLightbox] = useState(false);
+
+  const sorted = [...images].sort((a, b) => {
+    if (a.isPrimary) return -1;
+    if (b.isPrimary) return 1;
+    return a.displayOrder - b.displayOrder;
+  });
+
+  const prev = useCallback(() => setActiveIdx(i => (i - 1 + sorted.length) % sorted.length), [sorted.length]);
+  const next = useCallback(() => setActiveIdx(i => (i + 1) % sorted.length), [sorted.length]);
+
+  useEffect(() => {
+    if (!lightbox) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') prev();
+      if (e.key === 'ArrowRight') next();
+      if (e.key === 'Escape') setLightbox(false);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [lightbox, prev, next]);
+
+  if (!sorted.length) return null;
+
+  return (
+    <>
+      {/* Main image */}
+      <div className="flex flex-col gap-3">
+        <div className="relative aspect-square rounded-2xl overflow-hidden border border-gray-100 shadow-sm group cursor-zoom-in bg-gray-50" onClick={() => setLightbox(true)}>
+          <img
+            src={clImg(sorted[activeIdx]?.imageUrl, 'main')}
+            className="w-full h-full object-contain"
+            alt={`${productName} - ảnh ${activeIdx + 1}`}
+          />
+          <div className="absolute inset-0 bg-transparent group-hover:bg-black/8 transition-colors duration-200 flex items-center justify-center">
+            <ZoomIn className="size-8 text-white opacity-0 group-hover:opacity-80 transition-opacity duration-200 drop-shadow-lg" />
+          </div>
+          {sorted.length > 1 && (
+            <>
+              <button onClick={e => { e.stopPropagation(); prev(); }}
+                className="absolute left-3 top-1/2 -translate-y-1/2 size-9 bg-white/90 rounded-full flex items-center justify-center shadow-md hover:bg-white transition-all">
+                <ChevronLeft className="size-5 text-gray-700" />
+              </button>
+              <button onClick={e => { e.stopPropagation(); next(); }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 size-9 bg-white/90 rounded-full flex items-center justify-center shadow-md hover:bg-white transition-all">
+                <ChevronRight className="size-5 text-gray-700" />
+              </button>
+              <span className="absolute bottom-3 right-3 bg-black/50 text-white text-xs font-bold px-2.5 py-1 rounded-full">
+                {activeIdx + 1}/{sorted.length}
+              </span>
+            </>
+          )}
+        </div>
+
+        {/* Thumbnail row */}
+        {sorted.length > 1 && (
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {sorted.map((img, idx) => (
+              <button
+                key={img.id}
+                onClick={() => setActiveIdx(idx)}
+                className={`flex-shrink-0 size-16 rounded-xl overflow-hidden border-2 transition-all ${
+                  idx === activeIdx ? 'border-primary shadow-md scale-105' : 'border-gray-200 hover:border-gray-400'
+                }`}
+              >
+                <img src={clImg(img.imageUrl, 'thumb')} className="w-full h-full object-cover" alt={`Thumbnail ${idx + 1}`} />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Lightbox */}
+      {lightbox && (
+        <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center" onClick={() => setLightbox(false)}>
+          <button onClick={() => setLightbox(false)} className="absolute top-4 right-4 size-10 bg-white/20 rounded-full flex items-center justify-center hover:bg-white/30 transition-all">
+            <X className="size-5 text-white" />
+          </button>
+          {sorted.length > 1 && (
+            <>
+              <button onClick={e => { e.stopPropagation(); prev(); }}
+                className="absolute left-4 top-1/2 -translate-y-1/2 size-12 bg-white/20 rounded-full flex items-center justify-center hover:bg-white/30 transition-all">
+                <ChevronLeft className="size-6 text-white" />
+              </button>
+              <button onClick={e => { e.stopPropagation(); next(); }}
+                className="absolute right-4 top-1/2 -translate-y-1/2 size-12 bg-white/20 rounded-full flex items-center justify-center hover:bg-white/30 transition-all">
+                <ChevronRight className="size-6 text-white" />
+              </button>
+            </>
+          )}
+          <img
+            src={clImg(sorted[activeIdx]?.imageUrl, 'main')}
+            className="max-h-[90vh] max-w-[90vw] object-contain rounded-xl"
+            alt={productName}
+            onClick={e => e.stopPropagation()}
+          />
+          <span className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/60 text-sm font-bold">
+            {activeIdx + 1} / {sorted.length}
+          </span>
+        </div>
+      )}
+    </>
+  );
+};
 
 interface ProductDetailProps {
   productId?: string;
@@ -77,7 +200,17 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId: propProductId,
       return;
     }
 
-    setProduct(foundProduct);
+    // Load gallery images for this product
+    try {
+      const imgRes = await productService.getImages(idNum);
+      if (imgRes.result && imgRes.result.length > 0) {
+        setProduct({ ...foundProduct, images: imgRes.result });
+      } else {
+        setProduct(foundProduct);
+      }
+    } catch {
+      setProduct(foundProduct);
+    }
 
     setRelatedProducts(
       buyerProducts
@@ -234,13 +367,19 @@ return (
     </div>
 
     <div className="max-w-7xl mx-auto px-4 grid grid-cols-1 lg:grid-cols-2 gap-12 mb-20 animate-in fade-in duration-500">
-      <div className="flex">
-        <div className="flex-1 relative aspect-square rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
-          <img src={product.imageUrl || 'https://picsum.photos/seed/product/400/400'} className="w-full h-full object-cover" alt={product.productName} />
+      <div className="flex flex-col">
+        {product.images && product.images.length > 0 ? (
+          <ImageGallery images={product.images} productName={product.productName} />
+        ) : (
+          <div className="relative aspect-square rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
+            <img src={product.imageUrl || 'https://picsum.photos/seed/product/400/400'} className="w-full h-full object-cover" alt={product.productName} />
+          </div>
+        )}
+        <div className="flex gap-2 mt-3">
           {isOutOfStock ? (
-            <span className="absolute top-4 right-4 bg-red-500 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase">Hết hàng</span>
+            <span className="bg-red-50 text-red-500 text-[10px] font-bold px-3 py-1 rounded-full border border-red-100 uppercase">Hết hàng</span>
           ) : (
-            <span className="absolute top-4 right-4 bg-primary text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest">Tươi mới</span>
+            <span className="bg-primary/10 text-primary text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest">Tươi mới</span>
           )}
         </div>
       </div>
