@@ -55,7 +55,7 @@ export type { AddCartItemRequest, CartItemResponse, CartResponse } from './cart.
 export type { ReviewResponse, ReviewCreateRequest, ReviewReplyRequest } from './review.service';
 export type { CodPendingOrderResponse } from './codSettlement.service';
 export type { ApiResponse, RequestConfig } from './http.client';
-export type { UserUpdateRequest } from './user.service';
+export type { UserUpdateRequest, AdminUserReport, AdminUserReportItem, AdminUserReportType } from './user.service';
 export type {
     BuildPlanResponse,
     BuildPlanItemResponse,
