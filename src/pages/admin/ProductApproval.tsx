@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Check, X, Eye, ArrowLeft, AlertCircle, Loader2, RefreshCw, Package } from 'lucide-react';
-import { productService, ProductResponse } from '../../services';
+import { Check, X, Eye, ArrowLeft, AlertCircle, Loader2, RefreshCw, Package, Star } from 'lucide-react';
+import { productService, ProductResponse, ProductImageResponse } from '../../services';
 import { globalShowAlert, globalShowConfirm } from '../../contexts/PopupContext';
 
 const ProductApproval: React.FC = () => {
@@ -13,6 +13,9 @@ const ProductApproval: React.FC = () => {
   const [rejectingProductId, setRejectingProductId] = useState<number | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [galleryImages, setGalleryImages] = useState<ProductImageResponse[]>([]);
+  const [galleryLoading, setGalleryLoading] = useState(false);
+  const [previewIdx, setPreviewIdx] = useState(0);
 
   const fetchProducts = async () => {
     try {
@@ -29,6 +32,24 @@ const ProductApproval: React.FC = () => {
   };
 
   useEffect(() => { fetchProducts(); }, []);
+
+  // Load gallery khi admin mở xem chi tiết sản phẩm
+  useEffect(() => {
+    if (!selectedProduct) { setGalleryImages([]); setPreviewIdx(0); return; }
+    setGalleryLoading(true);
+    productService.getImages(selectedProduct.id)
+      .then(res => {
+        const imgs = (res.result ?? []).slice().sort((a, b) => {
+          if (a.isPrimary) return -1;
+          if (b.isPrimary) return 1;
+          return (a.displayOrder ?? 0) - (b.displayOrder ?? 0);
+        });
+        setGalleryImages(imgs);
+        setPreviewIdx(0);
+      })
+      .catch(() => setGalleryImages([]))
+      .finally(() => setGalleryLoading(false));
+  }, [selectedProduct?.id]);
 
   const handleApprove = async (product: ProductResponse) => {
     if (!await globalShowConfirm(`Duyệt sản phẩm "${product.productName}"?`)) return;
@@ -100,11 +121,58 @@ const ProductApproval: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-1">
             <div className="bg-white rounded-[32px] border border-gray-100 shadow-sm p-8">
-              <img
-                src={selectedProduct.imageUrl || 'https://picsum.photos/seed/product/400/400'}
-                alt={selectedProduct.productName}
-                className="w-full h-64 rounded-2xl object-cover mb-6 border border-gray-100 bg-gray-50"
-              />
+              {/* Gallery preview */}
+              {galleryLoading ? (
+                <div className="w-full h-64 rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-center mb-6">
+                  <Loader2 className="size-8 text-primary animate-spin" />
+                </div>
+              ) : galleryImages.length > 0 ? (
+                <div className="mb-6">
+                  {/* Main preview */}
+                  <div className="relative w-full aspect-square rounded-2xl overflow-hidden border border-gray-100 bg-gray-50 mb-3">
+                    <img
+                      src={galleryImages[previewIdx]?.imageUrl}
+                      alt={selectedProduct.productName}
+                      className="w-full h-full object-cover"
+                    />
+                    {galleryImages[previewIdx]?.isPrimary && (
+                      <div className="absolute bottom-2 left-2 flex items-center gap-1 bg-primary text-white text-[10px] font-black px-2 py-1 rounded-full">
+                        <Star className="size-3 fill-white" /> Ảnh chính
+                      </div>
+                    )}
+                    <div className="absolute top-2 right-2 bg-black/40 text-white text-[10px] font-bold px-2 py-1 rounded-full">
+                      {previewIdx + 1}/{galleryImages.length}
+                    </div>
+                  </div>
+                  {/* Thumbnail strip */}
+                  {galleryImages.length > 1 && (
+                    <div className="flex gap-2 flex-wrap">
+                      {galleryImages.map((img, idx) => (
+                        <button
+                          key={img.id}
+                          onClick={() => setPreviewIdx(idx)}
+                          className={`relative size-14 rounded-xl overflow-hidden border-2 transition-all ${
+                            idx === previewIdx ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100'
+                          }`}
+                        >
+                          <img src={img.imageUrl} alt="" className="w-full h-full object-cover" />
+                          {img.isPrimary && (
+                            <div className="absolute inset-0 flex items-end justify-center pb-0.5">
+                              <Star className="size-3 text-primary fill-primary drop-shadow" />
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <img
+                  src={selectedProduct.imageUrl || 'https://picsum.photos/seed/product/400/400'}
+                  alt={selectedProduct.productName}
+                  className="w-full h-64 rounded-2xl object-cover mb-6 border border-gray-100 bg-gray-50"
+                />
+              )}
               <div className="space-y-3">
                 <div className="p-4 bg-yellow-50 rounded-2xl border border-yellow-100">
                   <p className="text-[10px] font-black text-yellow-600 uppercase tracking-widest mb-1">TRẠNG THÁI</p>
