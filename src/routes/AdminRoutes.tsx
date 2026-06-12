@@ -14,6 +14,7 @@ import BadBuyers from '../pages/admin/BadBuyers';
 import AdminWallet from '../pages/admin/AdminWallet';
 import ProductApproval from '../pages/admin/ProductApproval';
 import CodSettlement from '../pages/admin/CodSettlement';
+import UserReport from '../pages/admin/UserReport';
 import { AppRole } from '../types';
 
 const AdminRoutes = () => {
@@ -36,6 +37,7 @@ const AdminRoutes = () => {
             <Route path="bad-buyers" element={<BadBuyers />} />
             <Route path="wallet" element={<AdminWallet />} />
             <Route path="cod-settlement" element={<CodSettlement />} />
+            <Route path="user-report" element={<UserReport />} />
         </Route>
     );
 };

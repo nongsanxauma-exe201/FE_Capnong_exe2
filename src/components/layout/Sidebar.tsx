@@ -25,7 +25,8 @@ import {
   ClipboardCheck,
   MapPin,
   Loader2,
-  Banknote
+  Banknote,
+  BarChart3
 } from 'lucide-react';
 import { useNotificationWebSocket } from '@/src/services/useNotificationWebSocket';
 import { useAuth } from '../../contexts/AuthContext';
@@ -88,6 +89,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, user, currentPath, onNavigate, 
 
   const adminMenu = [
     { name: 'Bảng điều khiển', icon: LayoutDashboard, id: 'admin-overview' },
+    { name: 'Báo cáo người dùng', icon: BarChart3, id: 'admin-user-report' },
     { name: 'Tin nhắn', icon: MessageSquare, id: 'admin-messages' },
     { name: 'Duyệt KYC', icon: ShieldCheck, id: 'admin-kyc' },
     { name: 'Quản lý tin tức', icon: Newspaper, id: 'admin-news' },

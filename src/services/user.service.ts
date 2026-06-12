@@ -12,6 +12,30 @@ export interface UserUpdateRequest {
   description?: string;
 }
 
+export type AdminUserReportType = 'week' | 'month' | 'year' | 'all';
+
+export interface AdminUserReportItem {
+  totalBuyers?: number;
+  totalShops?: number;
+  totalUserLock?: number;
+  fromDate?: string;
+  toDate?: string;
+  label?: string;
+}
+
+export interface AdminUserReport {
+  totalUsers?: number;
+  totalShops?: number;
+  totalShopPending?: number;
+  totalBuyers?: number;
+  totalActiveUsers?: number;
+  totalInactiveUsers?: number;
+  totalShopSelling?: number;
+  totalShopNotSelling?: number;
+  totalUserLock?: number;
+  userReports?: AdminUserReportItem[];
+}
+
 class UserService {
   async getAllUsers(): Promise<ApiResponse<UserResponse[]>> {
     return httpClient.get<UserResponse[]>('/users');
@@ -98,6 +122,16 @@ class UserService {
    */
   async deleteUser(userId: number): Promise<ApiResponse<void>> {
     return httpClient.delete<void>(`/users/${userId}`);
+  }
+
+  async generateAdminUserReport(
+    options: { type: AdminUserReportType } | { from: string; to: string }
+  ): Promise<ApiResponse<AdminUserReport>> {
+    const params: Record<string, string> =
+      'from' in options
+        ? { from: options.from, to: options.to }
+        : { type: options.type };
+    return httpClient.post<AdminUserReport>('/users/report', {}, { params });
   }
 }
 

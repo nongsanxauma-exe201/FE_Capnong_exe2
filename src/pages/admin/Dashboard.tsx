@@ -19,6 +19,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { userService, orderService, productService, UserResponse, OrderResponse, ProductResponse } from '../../services';
+import { getOrderStatusBadgeClass, getOrderStatusLabel } from '../../constants/orderStatusLabels';
 
 const AdminDashboard: React.FC = () => {
   const [users, setUsers] = useState<UserResponse[]>([]);
@@ -130,7 +131,7 @@ const AdminDashboard: React.FC = () => {
                 <tr>
                   <th className="px-10 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Nông dân</th>
                   <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Email</th>
-                  <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Trạng thái</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest min-w-[110px]">Trạng thái</th>
                   <th className="px-10 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Thao tác</th>
                 </tr>
               </thead>
@@ -148,8 +149,8 @@ const AdminDashboard: React.FC = () => {
                       </div>
                     </td>
                     <td className="px-6 py-5 text-xs font-bold text-gray-600">{item.email || 'N/A'}</td>
-                    <td className="px-6 py-5">
-                      <span className="px-3 py-1 bg-orange-50 text-orange-500 text-[10px] font-bold rounded-full">
+                    <td className="px-6 py-5 whitespace-nowrap">
+                      <span className="inline-flex items-center px-3 py-1.5 bg-orange-50 text-orange-600 text-xs font-bold rounded-lg leading-none">
                         {item.status === 'ACTIVE' ? 'Hoạt động' : item.status === 'INACTIVE' ? 'Tạm ngưng' : 'Chờ duyệt'}
                       </span>
                     </td>
@@ -181,8 +182,8 @@ const AdminDashboard: React.FC = () => {
                     <td className="px-10 py-5 text-sm font-black text-gray-900">#{order.id}</td>
                     <td className="px-6 py-5 text-center text-sm font-bold text-gray-700">{(order.totalAmount || 0).toLocaleString('vi-VN')}đ</td>
                     <td className="px-6 py-5 text-center">
-                      <span className={`px-3 py-1 rounded-lg text-[10px] font-black ${order.status === 'COMPLETED' || order.status === 'DELIVERED' ? 'bg-green-50 text-green-600' : order.status === 'CANCELLED' ? 'bg-red-50 text-red-500' : 'bg-orange-50 text-orange-500'}`}>
-                        {order.status === 'COMPLETED' ? 'Hoàn thành' : order.status === 'DELIVERED' ? 'Đã giao' : order.status === 'CANCELLED' ? 'Đã hủy' : order.status === 'PENDING' ? 'Chờ xử lý' : order.status === 'PROCESSING' ? 'Đang xử lý' : order.status === 'SHIPPING' ? 'Đang giao' : order.status || 'N/A'}
+                      <span className={`px-3 py-1 rounded-lg text-[10px] font-black ${getOrderStatusBadgeClass(order.status)}`}>
+                        {getOrderStatusLabel(order.status)}
                       </span>
                     </td>
                   </tr>
