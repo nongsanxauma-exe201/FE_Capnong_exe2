@@ -162,15 +162,21 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
 
    const handleAddressChange = (val: string) => {
       setRecipientAddress(val);
-      setSelectedPlaceId(null); // user đang tự gõ → không còn placeId hợp lệ
+      setSelectedPlaceId(null);
       setShowSuggestions(false);
 
       if (suggestTimer) clearTimeout(suggestTimer);
       const t = setTimeout(async () => {
-         if (val.trim().length >= 5) {
+         // Goong AutoComplete chỉ hoạt động tốt với short query.
+         // Nếu user đã gõ có dấu phẩy (vd "32A Tân Hòa 2, Quận 9, H"),
+         // chỉ lấy phần trước dấu phẩy đầu tiên để search → kết quả đúng hơn.
+         const commaIdx = val.indexOf(',');
+         const searchQuery = commaIdx !== -1 ? val.substring(0, commaIdx).trim() : val.trim();
+
+         if (searchQuery.length >= 4) {
             try {
                const res = await httpClient.get<{ placeId: string; description: string }[]>(
-                  `/address/suggestions?input=${encodeURIComponent(val)}`
+                  `/address/suggestions?input=${encodeURIComponent(searchQuery)}`
                );
                if (res.result && res.result.length > 0) {
                   setSuggestions(res.result);
