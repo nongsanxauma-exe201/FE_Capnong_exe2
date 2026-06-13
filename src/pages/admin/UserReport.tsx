@@ -13,6 +13,7 @@ import {
   BarChart3,
   TrendingUp,
   CalendarRange,
+  Truck,
 } from 'lucide-react';
 import {
   BarChart,
@@ -57,6 +58,7 @@ const defaultCustomRange = () => {
 const CHART_COLORS = {
   buyers: '#10b981',
   shops: '#3b82f6',
+  shippers: '#8b5cf6',
   locked: '#ef4444',
 };
 
@@ -144,6 +146,7 @@ const UserReport: React.FC = () => {
         label: item.label || '',
         buyers: item.totalBuyers ?? 0,
         shops: item.totalShops ?? 0,
+        shippers: item.totalShipper ?? 0,
         locked: item.totalUserLock ?? 0,
       })),
     [report?.userReports]
@@ -153,10 +156,12 @@ const UserReport: React.FC = () => {
     const totalUsers = report?.totalUsers ?? 0;
     const buyers = report?.totalBuyers ?? 0;
     const shops = report?.totalShops ?? 0;
-    const others = Math.max(0, totalUsers - buyers - shops);
+    const shippers = report?.totalShipper ?? 0;
+    const others = Math.max(0, totalUsers - buyers - shops - shippers);
     return [
       { name: 'Người mua', value: buyers, color: PIE_COLORS[0] },
       { name: 'Cửa hàng', value: shops, color: PIE_COLORS[1] },
+      { name: 'Shipper', value: shippers, color: PIE_COLORS[4] },
       { name: 'Khác', value: others, color: PIE_COLORS[2] },
     ].filter((d) => d.value > 0);
   }, [report]);
@@ -185,6 +190,7 @@ const UserReport: React.FC = () => {
     { label: 'Tổng người dùng', value: report?.totalUsers, icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
     { label: 'Người mua', value: report?.totalBuyers, icon: ShoppingBag, color: 'text-emerald-600', bg: 'bg-emerald-50' },
     { label: 'Cửa hàng', value: report?.totalShops, icon: Store, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+    { label: 'Shipper', value: report?.totalShipper, icon: Truck, color: 'text-violet-600', bg: 'bg-violet-50' },
     { label: 'Đang hoạt động', value: report?.totalActiveUsers, icon: UserCheck, color: 'text-teal-600', bg: 'bg-teal-50' },
     { label: 'Không hoạt động', value: report?.totalInactiveUsers, icon: UserX, color: 'text-gray-600', bg: 'bg-gray-50' },
     { label: 'Chờ duyệt KYC', value: report?.totalShopPending, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
@@ -210,7 +216,7 @@ const UserReport: React.FC = () => {
             <BarChart3 className="size-7 text-primary" />
             Báo cáo người dùng
           </h1>
-          <p className="text-sm text-gray-400 mt-1">Thống kê tăng trưởng người mua, cửa hàng và tài khoản bị khóa</p>
+          <p className="text-sm text-gray-400 mt-1">Thống kê người mua, cửa hàng, shipper và tài khoản bị khóa</p>
         </div>
         <button
           type="button"
@@ -371,7 +377,7 @@ const UserReport: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
             <h2 className="text-lg font-black text-gray-900 mb-1">Tăng trưởng theo thời gian</h2>
-            <p className="text-xs text-gray-400">Số lượng đăng ký mới và tài khoản bị khóa trong từng kỳ</p>
+            <p className="text-xs text-gray-400">Người mua, cửa hàng, shipper mới và tài khoản bị khóa theo từng kỳ</p>
           </div>
           <label className="flex items-center gap-2 shrink-0">
             <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Kiểu biểu đồ</span>
@@ -399,6 +405,7 @@ const UserReport: React.FC = () => {
                 <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
                 <Bar dataKey="buyers" name="Người mua mới" fill={CHART_COLORS.buyers} radius={[6, 6, 0, 0]} />
                 <Bar dataKey="shops" name="Cửa hàng mới" fill={CHART_COLORS.shops} radius={[6, 6, 0, 0]} />
+                <Bar dataKey="shippers" name="Shipper mới" fill={CHART_COLORS.shippers} radius={[6, 6, 0, 0]} />
                 <Bar dataKey="locked" name="Bị khóa" fill={CHART_COLORS.locked} radius={[6, 6, 0, 0]} />
               </BarChart>
             ) : (
@@ -413,6 +420,7 @@ const UserReport: React.FC = () => {
                 <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
                 <Line type="monotone" dataKey="buyers" name="Người mua mới" stroke={CHART_COLORS.buyers} strokeWidth={2.5} dot={{ r: 4 }} />
                 <Line type="monotone" dataKey="shops" name="Cửa hàng mới" stroke={CHART_COLORS.shops} strokeWidth={2.5} dot={{ r: 4 }} />
+                <Line type="monotone" dataKey="shippers" name="Shipper mới" stroke={CHART_COLORS.shippers} strokeWidth={2.5} dot={{ r: 4 }} />
                 <Line type="monotone" dataKey="locked" name="Bị khóa" stroke={CHART_COLORS.locked} strokeWidth={2.5} dot={{ r: 4 }} />
               </LineChart>
             )}
