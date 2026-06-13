@@ -18,6 +18,7 @@ export interface AdminUserReportItem {
   totalBuyers?: number;
   totalShops?: number;
   totalUserLock?: number;
+  totalShipper?: number;
   fromDate?: string;
   toDate?: string;
   label?: string;
@@ -33,6 +34,7 @@ export interface AdminUserReport {
   totalShopSelling?: number;
   totalShopNotSelling?: number;
   totalUserLock?: number;
+  totalShipper?: number;
   userReports?: AdminUserReportItem[];
 }
 
