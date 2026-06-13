@@ -50,6 +50,12 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
    // Debounce timer cho address input
    const [addressTimer, setAddressTimer] = useState<NodeJS.Timeout | null>(null);
 
+   // Gợi ý địa chỉ
+   const [suggestions, setSuggestions] = useState<{ placeId: string; description: string }[]>([]);
+   const [showSuggestions, setShowSuggestions] = useState(false);
+   const [suggestTimer, setSuggestTimer] = useState<NodeJS.Timeout | null>(null);
+   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
+
    useEffect(() => {
       const fetchData = async () => {
          try {
@@ -117,13 +123,13 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
    }, []);
 
    // ✅ Tính phí ship khi địa chỉ thay đổi (debounce 800ms)
-   const fetchShippingFee = useCallback(async (address: string, sId: number) => {
+   const fetchShippingFee = useCallback(async (address: string, sId: number, placeId: string | null = null) => {
       if (!address.trim() || address.trim().length < 10) return;
       try {
          setLoadingFee(true);
-         const res = await httpClient.get<number>(
-            `/orders/shipping-fee?shippingAddress=${encodeURIComponent(address)}&shopId=${sId}`
-         );
+         let url = `/orders/shipping-fee?shippingAddress=${encodeURIComponent(address)}&shopId=${sId}`;
+         if (placeId) url += `&placeId=${encodeURIComponent(placeId)}`;
+         const res = await httpClient.get<number>(url);
          if (res.result != null) {
             setShippingFee(res.result);
          }
@@ -153,6 +159,46 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
          fetchShippingFee(recipientAddress, shopId);
       }
    }, [shopId]);
+
+   const handleAddressChange = (val: string) => {
+      setRecipientAddress(val);
+      setSelectedPlaceId(null);
+      setShowSuggestions(false);
+
+      if (suggestTimer) clearTimeout(suggestTimer);
+      const t = setTimeout(async () => {
+         // Goong AutoComplete chỉ hoạt động tốt với short query.
+         // Nếu user đã gõ có dấu phẩy (vd "32A Tân Hòa 2, Quận 9, H"),
+         // chỉ lấy phần trước dấu phẩy đầu tiên để search → kết quả đúng hơn.
+         const commaIdx = val.indexOf(',');
+         const searchQuery = commaIdx !== -1 ? val.substring(0, commaIdx).trim() : val.trim();
+
+         if (searchQuery.length >= 4) {
+            try {
+               const res = await httpClient.get<{ placeId: string; description: string }[]>(
+                  `/address/suggestions?input=${encodeURIComponent(searchQuery)}`
+               );
+               if (res.result && res.result.length > 0) {
+                  setSuggestions(res.result);
+                  setShowSuggestions(true);
+               } else {
+                  setSuggestions([]);
+               }
+            } catch (_) {}
+         } else {
+            setSuggestions([]);
+         }
+      }, 400);
+      setSuggestTimer(t);
+   };
+
+   const handleSelectSuggestion = (s: { placeId: string; description: string }) => {
+      setRecipientAddress(s.description);
+      setSelectedPlaceId(s.placeId);
+      setSuggestions([]);
+      setShowSuggestions(false);
+      if (shopId) fetchShippingFee(s.description, shopId, s.placeId);
+   };
 
    const validateForm = (): boolean => {
       if (!recipientName.trim()) { globalShowAlert('Vui lòng nhập tên người nhận', 'Lỗi', 'error'); return false; }
@@ -295,10 +341,9 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
                               <input type="tel" value={recipientPhone} onChange={(e) => setRecipientPhone(e.target.value)} placeholder="Nhập SĐT" className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold outline-none focus:border-primary focus:bg-white transition-all" disabled={isProcessing} />
                            </div>
                         </div>
-                        <div>
+                        <div className="relative">
                            <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">
                               Địa chỉ nhận hàng *
-                              {/* ✅ Hiện trạng thái tính phí ship */}
                               {loadingFee && (
                                  <span className="ml-2 text-primary font-bold normal-case">
                                     <Loader2 className="size-3 inline animate-spin mr-1" />
@@ -308,13 +353,29 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
                            </label>
                            <textarea
                               value={recipientAddress}
-                              onChange={(e) => setRecipientAddress(e.target.value)}
+                              onChange={(e) => handleAddressChange(e.target.value)}
+                              onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
                               placeholder="Số nhà, đường, phường/xã, quận/huyện, tỉnh/thành phố"
                               className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium outline-none focus:border-primary focus:bg-white transition-all resize-none"
                               rows={2}
                               disabled={isProcessing}
+                              autoComplete="off"
                            />
-                           {/* ✅ Hiện phí ship ngay dưới ô địa chỉ */}
+                           {/* Dropdown gợi ý địa chỉ */}
+                           {showSuggestions && suggestions.length > 0 && (
+                              <ul className="absolute z-50 w-full bg-white border border-gray-200 rounded-xl shadow-lg mt-1 overflow-hidden max-h-52 overflow-y-auto">
+                                 {suggestions.slice(0, 5).map((s, i) => (
+                                    <li
+                                       key={s.placeId ?? i}
+                                       onMouseDown={() => handleSelectSuggestion(s)}
+                                       className="flex items-start gap-2 px-3 py-2.5 hover:bg-green-50 cursor-pointer border-b border-gray-100 last:border-0"
+                                    >
+                                       <MapPin className="size-4 text-primary shrink-0 mt-0.5" />
+                                       <span className="text-sm text-gray-700 font-medium leading-snug">{s.description}</span>
+                                    </li>
+                                 ))}
+                              </ul>
+                           )}
                            {!loadingFee && recipientAddress.length >= 10 && (
                               <div className="mt-2 flex items-center gap-2 text-xs text-primary font-bold">
                                  <Truck className="size-3.5" />
