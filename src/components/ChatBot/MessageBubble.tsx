@@ -354,10 +354,23 @@ const CartItemRow: React.FC<{ item: AiCartItem; onView: () => void }> = ({
       <p style={{ margin: 0, fontSize: '13px', fontWeight: 600 }}>{item.name}</p>
       <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#666' }}>
         {item.quantity}
-        {item.unit ? ` ${item.unit}` : ''} × {formatPrice(item.unitPrice)}
+        {item.unit ? ` ${item.unit}` : ''} ×{' '}
+        {item.originalPrice != null && item.discountPercent ? (
+          <span>
+            <span style={{ textDecoration: 'line-through', color: '#999', marginRight: '4px' }}>
+              {formatPrice(item.originalPrice)}
+            </span>
+            <span style={{ background: '#e8f5e9', color: '#2e7d32', padding: '1px 5px', borderRadius: '6px', fontSize: '10px', fontWeight: 700, marginRight: '4px' }}>
+              -{item.discountPercent}%
+            </span>
+            <span style={{ color: '#29a33d', fontWeight: 700 }}>{formatPrice(item.unitPrice)}</span>
+          </span>
+        ) : (
+          formatPrice(item.unitPrice)
+        )}
       </p>
     </div>
-    <p style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: '#E53935' }}>
+    <p style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: '#29a33d' }}>
       {formatPrice(item.totalPrice)}
     </p>
   </div>

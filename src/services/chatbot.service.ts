@@ -43,6 +43,8 @@ export interface AiCartItem {
   quantity: number;
   unit?: string;
   unitPrice?: number;
+  originalPrice?: number;
+  discountPercent?: number;
   totalPrice?: number;
 }
 
