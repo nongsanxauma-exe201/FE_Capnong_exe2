@@ -62,7 +62,17 @@ export type {
     BuildPlanCreateRequest,
     BuildPlanItemCreateRequest
 } from '../types';
-export type { ChatRequest, ChatbotApiResponse } from './chatbot.service';
+export type {
+  AiChatRequest,
+  AiChatResponse,
+  AiItemOption,
+  AiCartPreview,
+  AiCheckoutDraft,
+  AiResponseType,
+  AiItemType,
+  ChatRequest,
+  ProductSuggestion,
+} from './chatbot.service';
 export type { AvailableShipperResponse } from './staff.service';
 
 // Export constants

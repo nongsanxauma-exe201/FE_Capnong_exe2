@@ -20,12 +20,6 @@ export interface CartItemResponse {
     shopOwnerId?: number;
 }
 
-export interface CartResponse {
-    cartId: number;
-    items: CartItemResponse[];
-    totalAmount: number;
-}
-
 export const cartService = {
     getCart: async (): Promise<ApiResponse<CartResponse>> => {
         return await api.get<CartResponse>('/cart');
@@ -67,3 +61,8 @@ export const cartService = {
         return await api.post<CartResponse>(`/cart/add-plan/${planId}`);
     }
 };
+
+/** Báo cho Header + trang Cart refetch giỏ hàng ngay lập tức */
+export function notifyCartUpdated() {
+    window.dispatchEvent(new Event('cart-updated'));
+}
