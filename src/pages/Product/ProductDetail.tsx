@@ -174,8 +174,10 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId: propProductId,
   const [isReviewsLoading, setIsReviewsLoading] = useState(false);
   const [shopReviews, setShopReviews] = useState<ReviewResponse[]>([]);
   const [shopOwner, setShopOwner] = useState<UserResponse | null>(null);
-  const [showShareMenu, setShowShareMenu] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [showShareMenu,     setShowShareMenu]     = useState(false);
+  const [showShopShareMenu, setShowShopShareMenu] = useState(false);
+  const [copied,            setCopied]            = useState(false);
+  const [shopCopied,        setShopCopied]        = useState(false);
 
   const handleBack = () => {
     if (propOnBack) propOnBack();
@@ -319,11 +321,11 @@ useEffect(() => {
   if (product?.shopId) fetchShopReviews();
 }, [product?.shopId]);
 
-// Fetch shop owner info for real avatar and join date
+// Fetch shop owner info for real avatar and join date (only when authenticated, endpoint requires auth)
 useEffect(() => {
   const fetchShopOwner = async () => {
     const ownerId = product?.shopOwnerId || product?.shopId;
-    if (!ownerId) return;
+    if (!ownerId || !isAuthenticated) return;
     try {
       const res = await userService.getUserById(ownerId);
       if (res.result) setShopOwner(res.result);
@@ -332,7 +334,49 @@ useEffect(() => {
     }
   };
   if (product) fetchShopOwner();
-}, [product?.shopOwnerId, product?.shopId]);
+}, [product?.shopOwnerId, product?.shopId, isAuthenticated]);
+
+// OG tags cho social sharing (Telegram, Zalo, Discord)
+useEffect(() => {
+  const DEFAULT_TITLE = 'XẤU MÃ - Nông Sản Mộc Mạc, Giá Trị Thật';
+  const DEFAULT_DESC  = 'Nền tảng nông sản sạch, tươi ngon, giao hàng tận nhà.';
+  const DEFAULT_IMG   = 'https://nongsanxauma.vn/logo.png';
+
+  const setMeta = (property: string, content: string) => {
+    let el = document.querySelector(`meta[property="${property}"]`);
+    if (!el) {
+      el = document.createElement('meta');
+      el.setAttribute('property', property);
+      document.head.appendChild(el);
+    }
+    el.setAttribute('content', content);
+  };
+
+  if (product) {
+    const shop = product.shopName || `Cửa hàng #${product.shopId}`;
+    const price = product.salePrice ?? product.sellingPrice ?? 0;
+    const priceStr = price.toLocaleString('vi-VN') + 'đ';
+    const desc = `${priceStr}/${product.unit || 'kg'} tại ${shop} · ${product.description?.slice(0, 80) || 'Nông sản sạch, tươi ngon'}`;
+
+    document.title = `${product.productName} - ${shop} | Nông Sản Xấu Mã`;
+    setMeta('og:title',       `${product.productName} - ${shop}`);
+    setMeta('og:description', desc);
+    setMeta('og:image',       product.imageUrl || DEFAULT_IMG);
+    setMeta('og:url',         window.location.href);
+    setMeta('og:type',        'product');
+    setMeta('og:site_name',   'Nông Sản Xấu Mã');
+  }
+
+  return () => {
+    document.title = DEFAULT_TITLE;
+    setMeta('og:title',       DEFAULT_TITLE);
+    setMeta('og:description', DEFAULT_DESC);
+    setMeta('og:image',       DEFAULT_IMG);
+    setMeta('og:url',         'https://nongsanxauma.vn');
+    setMeta('og:type',        'website');
+    setMeta('og:site_name',   'Nông Sản Xấu Mã');
+  };
+}, [product]);
 
 if (viewShopMode && selectedShopId) {
   return <ShopProducts shopId={selectedShopId} onBack={() => setViewShopMode(false)} isAuthenticated={isAuthenticated} onOpenLogin={() => navigate('/login')} />;
@@ -365,17 +409,18 @@ const isOutOfStock = product.stockQuantity <= 0;
 const productUrl = `${window.location.origin}/product/${product.id}`;
 const shopUrl = product.shopId ? `${window.location.origin}/shop/${product.shopId}` : null;
 
+const isMobileBrowser = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
 const handleShare = async (type: 'product' | 'shop') => {
   const url = type === 'shop' && shopUrl ? shopUrl : productUrl;
-  const title = type === 'shop' ? `Cửa hàng ${farmName} trên CapNong` : `${product.productName} - ${farmName}`;
+  const title = type === 'shop' ? `Cửa hàng ${farmName} trên Nông Sản Xấu Mã` : `${product.productName} - ${farmName}`;
   const text = type === 'shop'
-    ? `Xem cửa hàng ${farmName} trên CapNong - nông sản sạch tươi mới mỗi ngày!`
-    : `${product.productName}${product.salePrice ? ` chỉ còn ${product.salePrice.toLocaleString('vi-VN')}đ` : ` - ${(product.sellingPrice || 0).toLocaleString('vi-VN')}đ`} tại ${farmName} trên CapNong!`;
-  if (navigator.share) {
-    try { await navigator.share({ title, text, url }); } catch { /* user cancelled */ }
-  } else {
-    setShowShareMenu(true);
+    ? `Xem cửa hàng ${farmName} trên Nông Sản Xấu Mã - nông sản sạch tươi mới mỗi ngày!`
+    : `${product.productName}${product.salePrice ? ` chỉ còn ${product.salePrice.toLocaleString('vi-VN')}đ` : ` - ${(product.sellingPrice || 0).toLocaleString('vi-VN')}đ`} tại ${farmName} trên Nông Sản Xấu Mã!`;
+  if (isMobileBrowser && navigator.share) {
+    try { await navigator.share({ title, text, url }); return; } catch { /* user cancelled */ }
   }
+  setShowShareMenu(true);
 };
 
 const copyLink = async (type: 'product' | 'shop') => {
@@ -560,7 +605,7 @@ return (
     </div>
 
     <div className="max-w-7xl mx-auto px-4 mb-20">
-      <div className="bg-gradient-to-br from-green-50 to-white rounded-[32px] border border-green-100 shadow-sm p-10 relative overflow-hidden">
+      <div className="bg-gradient-to-br from-green-50 to-white rounded-[32px] border border-green-100 shadow-sm p-10 relative">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 relative z-10">
           <div className="flex items-start gap-5">
             <div className="size-24 rounded-2xl overflow-hidden bg-white shadow-sm flex-shrink-0 border-4 border-white">
@@ -583,12 +628,40 @@ return (
                 >
                   <MessageSquare className="size-3.5" /> Chat Shop
                 </button>
-                <button
-                  onClick={() => handleShare('shop')}
-                  className="flex items-center gap-1.5 px-5 py-2.5 bg-gray-50 text-gray-600 font-black text-[10px] uppercase tracking-widest rounded-xl border border-gray-200 hover:bg-gray-100 transition-all shadow-sm"
-                >
-                  <Share2 className="size-3.5" /> Chia sẻ
-                </button>
+                <div className="relative">
+                  <button
+                    onClick={() => setShowShopShareMenu(v => !v)}
+                    className="flex items-center gap-1.5 px-5 py-2.5 bg-gray-50 text-gray-600 font-black text-[10px] uppercase tracking-widest rounded-xl border border-gray-200 hover:bg-gray-100 transition-all shadow-sm"
+                  >
+                    <Share2 className="size-3.5" /> Chia sẻ
+                  </button>
+                  {showShopShareMenu && shopUrl && (
+                    <div className="absolute left-0 top-12 z-50 bg-white rounded-2xl shadow-xl border border-gray-100 p-3 w-56 animate-in fade-in slide-in-from-top-2">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Chia sẻ cửa hàng</p>
+                        <button onClick={() => setShowShopShareMenu(false)} className="size-5 flex items-center justify-center hover:bg-gray-100 rounded-lg">
+                          <X className="size-3 text-gray-400" />
+                        </button>
+                      </div>
+                      <div className="space-y-1">
+                        <button onClick={async () => { await navigator.clipboard.writeText(shopUrl); setShopCopied(true); setTimeout(() => setShopCopied(false), 2000); }}
+                          className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-gray-50 text-xs font-bold text-gray-700 transition-colors">
+                          {shopCopied ? <Check className="size-3.5 text-green-500" /> : <Copy className="size-3.5 text-gray-400" />}
+                          {shopCopied ? 'Đã sao chép!' : 'Sao chép link cửa hàng'}
+                        </button>
+                        <button onClick={() => { window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shopUrl)}`, '_blank', 'width=600,height=400'); }}
+                          className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-blue-50 text-xs font-bold text-blue-600 transition-colors">
+                          <Facebook className="size-3.5" /> Chia sẻ Facebook
+                        </button>
+                        <button onClick={() => { window.open(`https://zalo.me/share?url=${encodeURIComponent(shopUrl)}`, '_blank', 'width=600,height=400'); }}
+                          className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-blue-50 text-xs font-bold text-blue-500 transition-colors">
+                          <span className="size-3.5 rounded-full bg-blue-500 text-white text-[7px] font-black flex items-center justify-center flex-shrink-0">Z</span>
+                          Chia sẻ Zalo
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>

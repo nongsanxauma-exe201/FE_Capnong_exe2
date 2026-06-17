@@ -19,6 +19,11 @@ import {
   Gift,
   ChefHat,
   Tag,
+  Share2,
+  Copy,
+  Check,
+  X,
+  Facebook,
 } from 'lucide-react';
 import { productService, ProductResponse, userService, UserResponse, cartService, reviewService, ReviewResponse, mysteryBoxService, MysteryBox, comboService, BuildComboResponse } from '../../services';
 import { globalShowAlert } from '../../contexts/PopupContext';
@@ -49,6 +54,8 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
   const [addingToCart, setAddingToCart] = useState<number | null>(null);
   const [addingBoxToCart, setAddingBoxToCart] = useState<number | null>(null);
   const [addingComboToCart, setAddingComboToCart] = useState<number | null>(null);
+  const [showShareMenu, setShowShareMenu] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
@@ -306,7 +313,7 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
               </div>
 
               {/* Actions */}
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <button
                   onClick={handleChatNow}
                   className="px-4 py-2 bg-primary text-white font-bold text-xs rounded-xl hover:bg-primary-dark transition-colors flex items-center gap-2 shadow-lg shadow-primary/20"
@@ -318,6 +325,51 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
                   <Heart className="size-3.5" />
                   Theo dõi
                 </button>
+                <div className="relative">
+                  <button
+                    onClick={() => setShowShareMenu(v => !v)}
+                    className="px-4 py-2 bg-white text-gray-700 font-bold text-xs rounded-xl hover:bg-gray-50 transition-colors flex items-center gap-2 border border-gray-200"
+                  >
+                    <Share2 className="size-3.5" />
+                    Chia sẻ
+                  </button>
+                  {showShareMenu && (
+                    <div className="absolute left-0 top-11 z-30 bg-white rounded-2xl shadow-xl border border-gray-100 p-3 w-52 animate-in fade-in slide-in-from-top-2">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Chia sẻ cửa hàng</p>
+                        <button onClick={() => setShowShareMenu(false)} className="size-5 flex items-center justify-center hover:bg-gray-100 rounded-lg">
+                          <X className="size-3 text-gray-400" />
+                        </button>
+                      </div>
+                      <div className="space-y-1">
+                        <button
+                          onClick={async () => {
+                            await navigator.clipboard.writeText(`${window.location.origin}/shop/${shopId}`);
+                            setCopied(true);
+                            setTimeout(() => setCopied(false), 2000);
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-gray-50 text-xs font-bold text-gray-700 transition-colors"
+                        >
+                          {copied ? <Check className="size-3.5 text-green-500" /> : <Copy className="size-3.5 text-gray-400" />}
+                          {copied ? 'Đã sao chép!' : 'Sao chép link'}
+                        </button>
+                        <button
+                          onClick={() => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(`${window.location.origin}/shop/${shopId}`)}`, '_blank', 'width=600,height=400')}
+                          className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-blue-50 text-xs font-bold text-blue-600 transition-colors"
+                        >
+                          <Facebook className="size-3.5" /> Facebook
+                        </button>
+                        <button
+                          onClick={() => window.open(`https://zalo.me/share?url=${encodeURIComponent(`${window.location.origin}/shop/${shopId}`)}`, '_blank', 'width=600,height=400')}
+                          className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-blue-50 text-xs font-bold text-blue-500 transition-colors"
+                        >
+                          <span className="size-3.5 rounded-full bg-blue-500 text-white text-[7px] font-black flex items-center justify-center flex-shrink-0">Z</span>
+                          Zalo
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>

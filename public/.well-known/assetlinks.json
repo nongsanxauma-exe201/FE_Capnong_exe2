@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.nongsanxauma",
+      "sha256_cert_fingerprints": [
+        "79:19:85:0E:FE:F3:CF:5C:86:A3:5B:51:F9:5F:48:E3:53:D9:54:EA:91:6C:1A:C4:80:B5:43:F6:C3:E9:49:EA"
+      ]
+    }
+  }
+]
