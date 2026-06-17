@@ -1,16 +1,16 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
 import { chatBotService } from '../../services/chatbot.service';
-import { ChatMessage, ProductSuggestion } from './chatbot.types';
+import { notifyCartUpdated } from '../../services/cart.service';
+import { ChatMessage } from './chatbot.types';
+import { saveChatMessages, loadChatMessages, clearChatStorage, getStorageKey } from './utils/storageUtils';
 
-// ===== SUGGESTIONS MẶC ĐỊNH =====
 const DEFAULT_SUGGESTIONS = [
-  'Shop có những loại củ quả gì?',
-  'Tôi muốn lên kế hoạch ăn uống 3 ngày',
-  'Chính sách giao hàng như thế nào?',
-  'Sản phẩm nào đang có khuyến mãi?'
+  'Phí ship tính như thế nào?',
+  'Tìm xoài',
+  'Mua cho tôi 2kg xoài',
+  'Có mystery box không',
 ];
 
-// ===== STATE =====
 interface ChatBotState {
   isOpen: boolean;
   messages: ChatMessage[];
@@ -24,10 +24,9 @@ const initialState: ChatBotState = {
   messages: [],
   isLoading: false,
   error: null,
-  suggestions: DEFAULT_SUGGESTIONS
+  suggestions: DEFAULT_SUGGESTIONS,
 };
 
-// ===== ACTIONS =====
 type Action =
   | { type: 'TOGGLE_CHAT' }
   | { type: 'SET_LOADING'; payload: boolean }
@@ -55,7 +54,7 @@ function reducer(state: ChatBotState, action: Action): ChatBotState {
         ...state,
         messages: state.messages.map(msg =>
           msg.id === action.payload.id ? { ...msg, ...action.payload.updates } : msg
-        )
+        ),
       };
     case 'CLEAR_MESSAGES':
       return { ...state, messages: [], error: null };
@@ -66,7 +65,6 @@ function reducer(state: ChatBotState, action: Action): ChatBotState {
   }
 }
 
-// ===== CONTEXT =====
 interface ChatBotContextType {
   isOpen: boolean;
   messages: ChatMessage[];
@@ -83,10 +81,56 @@ interface ChatBotContextType {
 
 const ChatBotContext = createContext<ChatBotContextType | undefined>(undefined);
 
-// ===== PROVIDER =====
 interface ChatBotProviderProps {
   children: React.ReactNode;
   userId?: number;
+}
+
+function getOrCreateChatSessionId(): string {
+  const key = 'ai_chat_session_id';
+  try {
+    const existing = localStorage.getItem(key);
+    if (existing) return existing;
+
+    const created = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+    localStorage.setItem(key, created);
+    return created;
+  } catch {
+    return `sess_${Date.now()}`;
+  }
+}
+
+function getUserMessagesKey(userId?: number) {
+  return userId ? getStorageKey(`messages_${userId}`) : getStorageKey('messages');
+}
+
+function loadUserMessages(userId?: number): ChatMessage[] {
+  try {
+    const stored = localStorage.getItem(getUserMessagesKey(userId));
+    if (!stored) return [];
+
+    const messages = JSON.parse(stored);
+    return messages.map((msg: ChatMessage) => ({
+      ...msg,
+      timestamp: new Date(msg.timestamp),
+    }));
+  } catch {
+    return loadChatMessages();
+  }
+}
+
+function saveUserMessages(messages: ChatMessage[], userId?: number) {
+  try {
+    localStorage.setItem(getUserMessagesKey(userId), JSON.stringify(messages));
+  } catch (error) {
+    console.error('Failed to save chat messages:', error);
+    saveChatMessages(messages);
+  }
+}
+
+function clearUserMessages(userId?: number) {
+  localStorage.removeItem(getUserMessagesKey(userId));
+  clearChatStorage();
 }
 
 export function ChatBotProvider({ children, userId }: ChatBotProviderProps) {
@@ -95,11 +139,15 @@ export function ChatBotProvider({ children, userId }: ChatBotProviderProps) {
   const generateId = () =>
     `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-  // Load lịch sử chat khi mount
   useEffect(() => {
     if (!userId) return;
     loadHistory();
   }, [userId]);
+
+  useEffect(() => {
+    if (!userId || state.messages.length === 0) return;
+    saveUserMessages(state.messages, userId);
+  }, [state.messages, userId]);
 
   const toggleChat = useCallback(() => {
     dispatch({ type: 'TOGGLE_CHAT' });
@@ -109,13 +157,12 @@ export function ChatBotProvider({ children, userId }: ChatBotProviderProps) {
     const trimmed = message.trim();
     if (!trimmed) return;
 
-    // Thêm tin nhắn user ngay lập tức
     const userMsg: ChatMessage = {
       id: generateId(),
       content: trimmed,
       sender: 'user',
       timestamp: new Date(),
-      status: 'sending'
+      status: 'sending',
     };
 
     dispatch({ type: 'ADD_MESSAGE', payload: userMsg });
@@ -123,34 +170,48 @@ export function ChatBotProvider({ children, userId }: ChatBotProviderProps) {
     dispatch({ type: 'SET_ERROR', payload: null });
 
     try {
-      const response = await chatBotService.sendMessage(trimmed);
+      const response = await chatBotService.sendMessage(trimmed, getOrCreateChatSessionId());
 
-      // Cập nhật status user message
       dispatch({
         type: 'UPDATE_MESSAGE',
-        payload: { id: userMsg.id, updates: { status: 'sent' } }
+        payload: { id: userMsg.id, updates: { status: 'sent' } },
       });
 
-      // Thêm tin nhắn bot kèm sản phẩm gợi ý
       const botMsg: ChatMessage = {
         id: generateId(),
-        content: response.reply,
+        content: response.message,
         sender: 'bot',
-        timestamp: new Date(response.timestamp),
+        timestamp: new Date(),
         status: 'sent',
-        suggestedProducts: response.suggestedProducts ?? []
+        responseType: response.type,
+        itemOptions: response.itemOptions,
+        selectedProduct: response.selectedProduct,
+        cart: response.cart,
+        checkout: response.checkout,
       };
 
       dispatch({ type: 'ADD_MESSAGE', payload: botMsg });
 
+      if (response.type === 'CART_UPDATED') {
+        notifyCartUpdated();
+      }
+
+      if (response.type === 'ITEM_OPTIONS' && response.itemOptions?.length) {
+        dispatch({
+          type: 'SET_SUGGESTIONS',
+          payload: response.itemOptions.map((_, index) => String(index + 1)),
+        });
+      } else {
+        dispatch({ type: 'SET_SUGGESTIONS', payload: DEFAULT_SUGGESTIONS });
+      }
     } catch (error: any) {
       dispatch({
         type: 'UPDATE_MESSAGE',
-        payload: { id: userMsg.id, updates: { status: 'error' } }
+        payload: { id: userMsg.id, updates: { status: 'error' } },
       });
       dispatch({
         type: 'SET_ERROR',
-        payload: error.message || 'Đã xảy ra lỗi. Vui lòng thử lại.'
+        payload: error.message || 'Đã xảy ra lỗi. Vui lòng thử lại.',
       });
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
@@ -160,42 +221,33 @@ export function ChatBotProvider({ children, userId }: ChatBotProviderProps) {
   const loadHistory = useCallback(async () => {
     dispatch({ type: 'SET_LOADING', payload: true });
     try {
-      const history = await chatBotService.getHistory();
-
-      const messages: ChatMessage[] = history.map(item => ({
-        id: String(item.id),
-        content: item.content,
-        sender: item.role === 'USER' ? 'user' : 'bot',
-        timestamp: new Date(item.createdAt),
-        status: 'sent' as const
-      }));
-
+      const messages = loadUserMessages(userId);
       dispatch({ type: 'SET_MESSAGES', payload: messages });
-    } catch (error: any) {
+    } catch {
       dispatch({
         type: 'SET_ERROR',
-        payload: 'Không thể tải lịch sử chat.'
+        payload: 'Không thể tải lịch sử chat.',
       });
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
-  }, []);
+  }, [userId]);
 
   const clearHistory = useCallback(async () => {
     dispatch({ type: 'SET_LOADING', payload: true });
     try {
-      await chatBotService.clearHistory();
+      clearUserMessages(userId);
       dispatch({ type: 'CLEAR_MESSAGES' });
       dispatch({ type: 'SET_SUGGESTIONS', payload: DEFAULT_SUGGESTIONS });
-    } catch (error: any) {
+    } catch {
       dispatch({
         type: 'SET_ERROR',
-        payload: 'Không thể xóa lịch sử chat.'
+        payload: 'Không thể xóa lịch sử chat.',
       });
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
-  }, []);
+  }, [userId]);
 
   const selectSuggestion = useCallback((suggestion: string) => {
     sendMessage(suggestion);
@@ -206,15 +258,17 @@ export function ChatBotProvider({ children, userId }: ChatBotProviderProps) {
   }, []);
 
   return (
-    <ChatBotContext.Provider value={{
-      ...state,
-      toggleChat,
-      sendMessage,
-      clearHistory,
-      loadHistory,
-      selectSuggestion,
-      dismissError
-    }}>
+    <ChatBotContext.Provider
+      value={{
+        ...state,
+        toggleChat,
+        sendMessage,
+        clearHistory,
+        loadHistory,
+        selectSuggestion,
+        dismissError,
+      }}
+    >
       {children}
     </ChatBotContext.Provider>
   );
