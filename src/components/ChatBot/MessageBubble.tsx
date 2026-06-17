@@ -541,6 +541,64 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
       );
     }
 
+    if (message.responseType === 'NAVIGATION' && message.navigation) {
+      return (
+        <div style={{ marginTop: '10px' }}>
+          {message.cart?.items?.length ? (
+            <div
+              style={{
+                marginBottom: '10px',
+                backgroundColor: '#f8faf8',
+                border: '1px solid #e8f5e9',
+                borderRadius: '10px',
+                padding: '10px 12px',
+              }}
+            >
+              {message.cart.items.map(item => (
+                <CartItemRow
+                  key={`${item.itemType}-${item.itemId}`}
+                  item={item}
+                  onView={() => navigate(getItemDetailPath(item))}
+                />
+              ))}
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginTop: '8px',
+                  paddingTop: '8px',
+                  borderTop: '1px solid #e0e0e0',
+                }}
+              >
+                <span style={{ fontSize: '13px', fontWeight: 600 }}>Tổng</span>
+                <span style={{ fontSize: '14px', fontWeight: 700, color: '#E53935' }}>
+                  {formatPrice(message.cart.totalAmount)}
+                </span>
+              </div>
+            </div>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => navigate(message.navigation!.url)}
+            style={{
+              width: '100%',
+              padding: '10px 12px',
+              borderRadius: '10px',
+              border: 'none',
+              backgroundColor: '#2196F3',
+              color: '#fff',
+              fontSize: '13px',
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            {message.navigation.label}
+          </button>
+        </div>
+      );
+    }
+
     if (message.responseType === 'CHECKOUT_DRAFT' && message.checkout) {
       return (
         <div

@@ -186,6 +186,7 @@ export function ChatBotProvider({ children, userId }: ChatBotProviderProps) {
         responseType: response.type,
         itemOptions: response.itemOptions,
         selectedProduct: response.selectedProduct,
+        navigation: response.navigation,
         cart: response.cart,
         checkout: response.checkout,
       };

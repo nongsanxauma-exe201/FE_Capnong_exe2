@@ -12,6 +12,7 @@ export type AiResponseType =
   | 'TEXT'
   | 'ITEM_OPTIONS'
   | 'PRODUCT_DETAIL'
+  | 'NAVIGATION'
   | 'CART_UPDATED'
   | 'CHECKOUT_DRAFT'
   | 'ERROR';
@@ -55,11 +56,17 @@ export interface AiCheckoutDraft {
   totalAmount?: number;
 }
 
+export interface AiNavigationAction {
+  url: string;
+  label: string;
+}
+
 export interface AiChatResponse {
   type: AiResponseType;
   message: string;
   itemOptions?: AiItemOption[];
   selectedProduct?: AiItemOption;
+  navigation?: AiNavigationAction;
   cart?: AiCartPreview;
   checkout?: AiCheckoutDraft;
 }

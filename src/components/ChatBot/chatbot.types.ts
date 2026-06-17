@@ -4,6 +4,7 @@ import type {
   AiCartPreview,
   AiCheckoutDraft,
   AiItemOption,
+  AiNavigationAction,
   AiResponseType,
 } from '../../services/chatbot.service';
 
@@ -29,6 +30,7 @@ export interface ChatMessage {
   responseType?: AiResponseType;
   itemOptions?: AiItemOption[];
   selectedProduct?: AiItemOption;
+  navigation?: AiNavigationAction;
   cart?: AiCartPreview;
   checkout?: AiCheckoutDraft;
 }
