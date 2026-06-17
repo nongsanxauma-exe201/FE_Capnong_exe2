@@ -66,7 +66,7 @@ const Login: React.FC<LoginProps> = ({ onGoToRegister, onForgotPassword }) => {
   }, [isAuthenticated, user, navigate]);
 
   const handleGoogleLogin = () => {
-    const backendOAuthUrl = `${BE_URL}/oauth2/authorization/google?role=BUYER`;
+    const backendOAuthUrl = `${BE_URL}/oauth2/authorization/google?role=BUYER&prompt=select_account`;
     window.location.href = backendOAuthUrl;
   };
 
