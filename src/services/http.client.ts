@@ -168,9 +168,9 @@ class HttpClient {
             const token = localStorage.getItem(TOKEN_KEY);
             const basename = '/';
 
-            // Chỉ reload nếu đang có token (cần logout) và không ở trang chủ
-            // Nếu đã ở trang chủ và không có token, không cần reload nữa để tránh loop
-            if (token || window.location.pathname !== basename) {
+            // Chỉ redirect khi đang có token (cần force-logout do token hết hạn/invalid)
+            // Nếu không có token, user chưa đăng nhập, không cần redirect — trang sẽ tự xử lý lỗi
+            if (token) {
               localStorage.removeItem(TOKEN_KEY);
               localStorage.removeItem(REFRESH_TOKEN_KEY);
               localStorage.removeItem(USER_INFO_KEY);
