@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   ArrowLeft, Save, Camera, Info, Truck, HelpCircle,
-  AlertTriangle, Loader2, AlertCircle, X, Star, Plus
+  AlertTriangle, Loader2, AlertCircle, X, Star, Plus, Tag
 } from 'lucide-react';
 import { productService, ProductImageResponse } from '../../services';
 
@@ -15,6 +15,9 @@ const EditProduct: React.FC<{ productId: number; onBack: () => void }> = ({ prod
   const [unit, setUnit] = useState('kg');
   const [categoryId, setCategoryId] = useState<number>(1);
   const [expiryDate, setExpiryDate] = useState('');
+  const [discountPercent, setDiscountPercent] = useState<number | ''>('');
+  const [discountStartDate, setDiscountStartDate] = useState('');
+  const [discountEndDate, setDiscountEndDate] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +41,9 @@ const EditProduct: React.FC<{ productId: number; onBack: () => void }> = ({ prod
         setUnit(p.unit || 'kg');
         setCategoryId(p.categoryId || 1);
         setExpiryDate(p.expiryDate || '');
+        setDiscountPercent(p.discountPercent ?? '');
+        setDiscountStartDate(p.discountStartDate ? p.discountStartDate.slice(0, 16) : '');
+        setDiscountEndDate(p.discountEndDate ? p.discountEndDate.slice(0, 16) : '');
       }
       if (imagesRes.result) setGalleryImages(imagesRes.result);
     }).catch(() => setError('Không thể tải thông tin sản phẩm.')).finally(() => setLoading(false));
@@ -104,7 +110,10 @@ const EditProduct: React.FC<{ productId: number; onBack: () => void }> = ({ prod
     try {
       await productService.updateProduct(productId, {
         productName, sellingPrice: price, stockQuantity: stock,
-        description, unit, expiryDate: expiryDate || undefined, categoryId: categoryId || 1
+        description, unit, expiryDate: expiryDate || undefined, categoryId: categoryId || 1,
+        discountPercent: discountPercent !== '' ? Number(discountPercent) : undefined,
+        discountStartDate: discountStartDate ? discountStartDate + ':00' : undefined,
+        discountEndDate: discountEndDate ? discountEndDate + ':00' : undefined,
       });
       onBack();
     } catch (err: any) {
@@ -220,6 +229,63 @@ const EditProduct: React.FC<{ productId: number; onBack: () => void }> = ({ prod
                 <div className="p-4 bg-primary/5 rounded-2xl flex items-start gap-3 border border-primary/10">
                   <HelpCircle className="size-4 text-primary shrink-0 mt-0.5" />
                   <p className="text-[11px] text-gray-500 font-medium">Gợi ý: Nhóm <b>Củ</b> thường có thời gian bảo quản tốt nhất trong 3 – 5 ngày ở nhiệt độ 5°C.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Discount Section */}
+          <div className="bg-white rounded-[32px] border border-orange-100 shadow-sm p-10">
+            <div className="flex items-center gap-3 mb-8">
+              <div className="size-10 bg-orange-500/10 rounded-xl flex items-center justify-center text-orange-500"><Tag className="size-5" /></div>
+              <div>
+                <h4 className="font-black text-gray-800 uppercase tracking-tight">Thiết lập giảm giá</h4>
+                <p className="text-[11px] text-gray-400 font-medium mt-0.5">Tùy chọn — để trống nếu không giảm giá</p>
+              </div>
+            </div>
+            <div className="space-y-6">
+              <div className="flex flex-col gap-3">
+                <label className="text-sm font-bold text-gray-700">Phần trăm giảm giá (%)</label>
+                <div className="relative">
+                  <input
+                    type="number" min={0} max={99}
+                    value={discountPercent}
+                    onChange={e => setDiscountPercent(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="VD: 20 (giảm 20%)"
+                    className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-orange-400/20 focus:bg-white transition-all"
+                  />
+                  <span className="absolute right-6 top-1/2 -translate-y-1/2 font-bold text-orange-400">%</span>
+                </div>
+                {discountPercent !== '' && Number(discountPercent) > 0 && price > 0 && (
+                  <div className="flex items-center gap-3 p-3 bg-orange-50 rounded-xl border border-orange-100">
+                    <span className="text-xs text-gray-500 line-through">{price.toLocaleString('vi-VN')}đ</span>
+                    <span className="text-sm font-black text-orange-600">
+                      {Math.round(price * (1 - Number(discountPercent) / 100)).toLocaleString('vi-VN')}đ
+                    </span>
+                    <span className="ml-auto bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">-{discountPercent}%</span>
+                  </div>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-6">
+                <div className="flex flex-col gap-3">
+                  <label className="text-sm font-bold text-gray-700">Bắt đầu giảm giá</label>
+                  <input
+                    type="datetime-local"
+                    value={discountStartDate}
+                    onChange={e => setDiscountStartDate(e.target.value)}
+                    className="w-full px-5 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-medium text-gray-600 outline-none"
+                  />
+                  <p className="text-[10px] text-gray-400">Để trống = giảm giá ngay</p>
+                </div>
+                <div className="flex flex-col gap-3">
+                  <label className="text-sm font-bold text-gray-700">Kết thúc giảm giá</label>
+                  <input
+                    type="datetime-local"
+                    value={discountEndDate}
+                    onChange={e => setDiscountEndDate(e.target.value)}
+                    className="w-full px-5 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-medium text-gray-600 outline-none"
+                  />
+                  <p className="text-[10px] text-gray-400">Để trống = không hết hạn</p>
                 </div>
               </div>
             </div>

@@ -224,7 +224,7 @@ const BuyerHome: React.FC<BuyerHomeProps> = ({ onSelectProduct, isAuthenticated 
                         </>
                       )}
                       <div className="absolute top-3 right-3 bg-white/90 backdrop-blur px-2 py-1 rounded-full shadow-sm flex items-center gap-1">
-                        <Award className="size-3 text-green-600" />
+                        <Award className="size-3 text-primary" />
                         <span className="text-[10px] font-bold uppercase">Cam kết sạch</span>
                       </div>
                       {/* Cart icon — same pattern as product cards */}
@@ -345,7 +345,17 @@ const BuyerHome: React.FC<BuyerHomeProps> = ({ onSelectProduct, isAuthenticated 
                       )}
                       <div className="flex items-end justify-between mt-2">
                         <div className="flex flex-col">
-                          <span className="text-primary font-black text-2xl">{product.sellingPrice.toLocaleString('vi-VN')}đ</span>
+                          {product.salePrice != null && product.salePrice > 0 ? (
+                            <>
+                              <div className="flex items-center gap-2">
+                                <span className="text-red-500 text-sm line-through font-semibold">{(product.sellingPrice || 0).toLocaleString('vi-VN')}đ</span>
+                                <span className="bg-primary text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">-{product.discountPercent}%</span>
+                              </div>
+                              <span className="text-primary font-black text-2xl">{product.salePrice.toLocaleString('vi-VN')}đ</span>
+                            </>
+                          ) : (
+                            <span className="text-primary font-black text-2xl">{(product.sellingPrice || 0).toLocaleString('vi-VN')}đ</span>
+                          )}
                           <span className="text-[10px] text-gray-400 font-bold uppercase">Mỗi {product.unit}</span>
                         </div>
                         <span className="bg-green-100 text-green-700 text-[10px] font-black px-2 py-1 rounded-md">TƯƠI SẠCH</span>
