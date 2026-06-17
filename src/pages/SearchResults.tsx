@@ -459,13 +459,24 @@ const SearchResults: React.FC<SearchResultsProps> = ({ onSelectProduct }) => {
                             )}
                           </div>
                         )}
-                        <div className="flex items-baseline gap-1 mt-auto pt-2">
-                          <span className="text-xl font-black text-gray-900">
-                            {(product.sellingPrice || 0).toLocaleString('vi-VN')}đ
-                          </span>
-                          <span className="text-[10px] text-gray-400 font-medium">
-                            / {product.unit || 'kg'}
-                          </span>
+                        <div className="flex flex-col mt-auto pt-2">
+                          {product.salePrice != null && product.salePrice > 0 ? (
+                            <>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-sm text-red-500 line-through font-semibold">{(product.sellingPrice || 0).toLocaleString('vi-VN')}đ</span>
+                                <span className="bg-primary text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">-{product.discountPercent}%</span>
+                              </div>
+                              <div className="flex items-baseline gap-1">
+                                <span className="text-xl font-black text-primary">{product.salePrice.toLocaleString('vi-VN')}đ</span>
+                                <span className="text-[10px] text-gray-400 font-medium">/ {product.unit || 'kg'}</span>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="flex items-baseline gap-1">
+                              <span className="text-xl font-black text-primary">{(product.sellingPrice || 0).toLocaleString('vi-VN')}đ</span>
+                              <span className="text-[10px] text-gray-400 font-medium">/ {product.unit || 'kg'}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -506,7 +517,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({ onSelectProduct }) => {
                           {box.description || 'Hộp quà nông sản bí ẩn từ farm'}
                         </p>
                         <div className="flex items-baseline gap-1 mt-auto pt-2">
-                          <span className="text-xl font-black text-gray-900">
+                          <span className="text-xl font-black text-primary">
                             {(box.price || 0).toLocaleString('vi-VN')}đ
                           </span>
                         </div>

@@ -248,7 +248,7 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
                   <h2 className="text-2xl font-black text-gray-900 mb-1">{shopName}</h2>
                   <div className="flex flex-wrap items-center gap-3 text-sm">
                     {shopInfo?.status === 'ACTIVE' && (
-                      <span className="flex items-center gap-1 text-green-600 font-bold">
+                      <span className="flex items-center gap-1 text-primary font-bold">
                         <ShieldCheck className="size-3.5" />
                         Đã xác thực
                       </span>
@@ -278,7 +278,7 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
 
                 <div className="bg-white rounded-xl p-3 border border-gray-100 shadow-sm">
                   <div className="flex items-center gap-2 mb-1">
-                    <TrendingUp className="size-4 text-green-600" />
+                    <TrendingUp className="size-4 text-primary" />
                     <span className="text-lg font-black text-gray-900">{activeProducts}</span>
                   </div>
                   <p className="text-[10px] text-gray-500 font-bold uppercase">Đang bán</p>
@@ -439,10 +439,18 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
                         </h4>
                         <p className="text-xs text-gray-500 font-medium mb-2">{product.unit}</p>
 
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-lg font-black text-primary">
-                            {product.sellingPrice.toLocaleString('vi-VN')}đ
-                          </span>
+                        <div className="flex flex-col gap-0.5 mb-2">
+                          {product.salePrice != null && product.salePrice > 0 ? (
+                            <>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs text-red-500 line-through font-semibold">{(product.sellingPrice || 0).toLocaleString('vi-VN')}đ</span>
+                                <span className="bg-primary text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">-{product.discountPercent}%</span>
+                              </div>
+                              <span className="text-lg font-black text-primary">{product.salePrice.toLocaleString('vi-VN')}đ</span>
+                            </>
+                          ) : (
+                            <span className="text-lg font-black text-primary">{(product.sellingPrice || 0).toLocaleString('vi-VN')}đ</span>
+                          )}
                         </div>
 
                         <div className="flex items-center justify-between">
@@ -450,7 +458,7 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
                             Còn: {product.stockQuantity} {product.unit}
                           </span>
                           {product.stockQuantity > 0 ? (
-                            <span className="text-[10px] text-green-600 font-bold">Còn hàng</span>
+                            <span className="text-[10px] text-primary font-bold">Còn hàng</span>
                           ) : (
                             <span className="text-[10px] text-red-600 font-bold">Hết hàng</span>
                           )}
@@ -544,7 +552,7 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
             <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
               <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-100">
                 <div className="size-9 bg-green-100 rounded-xl flex items-center justify-center">
-                  <ChefHat className="size-5 text-green-600" />
+                  <ChefHat className="size-5 text-primary" />
                 </div>
                 <div>
                   <h3 className="text-lg font-black text-gray-900">Combo Nấu Ăn</h3>
@@ -599,7 +607,7 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
                           <div>
                             <span className="text-lg font-black text-primary">{combo.discountPrice.toLocaleString('vi-VN')}đ</span>
                             {savings > 0 && (
-                              <p className="text-[10px] text-green-600 font-bold flex items-center gap-1 mt-0.5">
+                              <p className="text-[10px] text-primary font-bold flex items-center gap-1 mt-0.5">
                                 <Tag className="size-3" /> Tiết kiệm {savings.toLocaleString('vi-VN')}đ
                               </p>
                             )}

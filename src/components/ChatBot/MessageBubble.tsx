@@ -136,9 +136,25 @@ const InlineProductCard: React.FC<InlineProductCardProps> = ({ product, onClick 
           {product.category}
         </p>
       )}
-      <p style={{ margin: '2px 0 0', fontSize: '13px', fontWeight: 700, color: '#E53935' }}>
-        {formatPrice(product.price)}
-      </p>
+      {product.salePrice != null && product.discountPercent ? (
+        <div>
+          <p style={{ margin: '2px 0 0', fontSize: '11px', fontWeight: 600, color: '#9ca3af', textDecoration: 'line-through' }}>
+            {formatPrice(product.price)}
+          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <p style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: '#29a33d' }}>
+              {formatPrice(product.salePrice)}
+            </p>
+            <span style={{ fontSize: '9px', fontWeight: 800, color: '#fff', backgroundColor: '#29a33d', borderRadius: '99px', padding: '1px 5px' }}>
+              -{product.discountPercent}%
+            </span>
+          </div>
+        </div>
+      ) : (
+        <p style={{ margin: '2px 0 0', fontSize: '13px', fontWeight: 700, color: '#29a33d' }}>
+          {formatPrice(product.price)}
+        </p>
+      )}
     </div>
 
     <div
@@ -248,9 +264,25 @@ const ItemOptionCard: React.FC<ItemOptionCardProps> = ({
         {option.itemType === 'MYSTERY_BOX' ? 'Túi mù' : 'Sản phẩm'}
         {option.unit ? ` • ${option.unit}` : ''}
       </p>
-      <p style={{ margin: '2px 0 0', fontSize: '13px', fontWeight: 700, color: '#E53935' }}>
-        {formatPrice(option.price)}
-      </p>
+      {option.salePrice != null && option.discountPercent ? (
+        <div>
+          <p style={{ margin: '2px 0 0', fontSize: '11px', fontWeight: 600, color: '#9ca3af', textDecoration: 'line-through' }}>
+            {formatPrice(option.price)}
+          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <p style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: '#29a33d' }}>
+              {formatPrice(option.salePrice)}
+            </p>
+            <span style={{ fontSize: '9px', fontWeight: 800, color: '#fff', backgroundColor: '#29a33d', borderRadius: '99px', padding: '1px 5px' }}>
+              -{option.discountPercent}%
+            </span>
+          </div>
+        </div>
+      ) : (
+        <p style={{ margin: '2px 0 0', fontSize: '13px', fontWeight: 700, color: '#29a33d' }}>
+          {formatPrice(option.price)}
+        </p>
+      )}
     </div>
 
     <button

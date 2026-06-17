@@ -206,7 +206,19 @@ const FarmerDashboard: React.FC<{ onNavigate: (id: string) => void }> = ({ onNav
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-center text-sm font-bold text-gray-700">{(p.sellingPrice || 0).toLocaleString('vi-VN')}đ</td>
+                      <td className="px-6 py-4 text-center">
+                        {p.salePrice != null && p.salePrice > 0 ? (
+                          <div className="flex flex-col items-center gap-0.5">
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs text-red-500 line-through font-semibold">{(p.sellingPrice || 0).toLocaleString('vi-VN')}đ</span>
+                              <span className="bg-primary text-white text-[8px] font-black px-1 py-0.5 rounded-full">-{p.discountPercent}%</span>
+                            </div>
+                            <span className="text-sm font-bold text-primary">{p.salePrice.toLocaleString('vi-VN')}đ</span>
+                          </div>
+                        ) : (
+                          <span className="text-sm font-bold text-primary">{(p.sellingPrice || 0).toLocaleString('vi-VN')}đ</span>
+                        )}
+                      </td>
                       <td className="px-6 py-4 text-center">
                         <span className="px-3 py-1 bg-green-50 text-green-600 text-[10px] font-bold rounded-full">Nông sản</span>
                       </td>

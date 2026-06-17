@@ -18,6 +18,8 @@ export interface CartItemResponse {
     shopName?: string;
     itemType: 'PRODUCT' | 'MYSTERY_BOX' | 'BUILD_COMBO' | 'COMBO';
     shopOwnerId?: number;
+    discountPercent?: number;
+    salePrice?: number;
 }
 
 export const cartService = {
