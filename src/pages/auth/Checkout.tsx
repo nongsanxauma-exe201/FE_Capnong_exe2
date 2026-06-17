@@ -13,10 +13,12 @@ type CartItemWithShop = {
    productName: string;
    quantity: number;
    price: number;
+   salePrice?: number;
+   discountPercent?: number;
    imageUrl?: string;
    shopName?: string;
    itemType?: string;
-   shopOwnerId?: number; // ✅ field mới từ BE
+   shopOwnerId?: number;
 };
 
 interface CheckoutProps {
@@ -92,7 +94,7 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
                   });
                }
 
-               const filteredTotalAmount = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+               const filteredTotalAmount = items.reduce((sum, item) => sum + ((item.salePrice ?? item.price) * item.quantity), 0);
 
                setCartData({
                   ...cartRes.result,
@@ -442,9 +444,16 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
                                  </div>
                                  <p className="text-gray-500 font-medium">SL: {item.quantity}</p>
                               </div>
-                              <span className="font-black text-gray-900 whitespace-nowrap">
-                                 {((item.price || 0) * item.quantity).toLocaleString('vi-VN')}đ
-                              </span>
+                              <div className="text-right">
+                                 {item.salePrice != null && item.discountPercent ? (
+                                   <div>
+                                     <span className="text-[9px] font-bold text-red-400 line-through block">{((item.price || 0) * item.quantity).toLocaleString('vi-VN')}đ</span>
+                                     <span className="font-black text-primary whitespace-nowrap">{(item.salePrice * item.quantity).toLocaleString('vi-VN')}đ</span>
+                                   </div>
+                                 ) : (
+                                   <span className="font-black text-gray-900 whitespace-nowrap">{((item.price || 0) * item.quantity).toLocaleString('vi-VN')}đ</span>
+                                 )}
+                              </div>
                            </div>
                         ))}
                      </div>

@@ -181,7 +181,7 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
   const totalItems = cart?.items.length || 0;
   
   const selectedItems = cart?.items.filter(it => selectedKeys.has(itemKey(it))) || [];
-  const selectedTotal = selectedItems.reduce((sum, it) => sum + (it.price * it.quantity), 0);
+  const selectedTotal = selectedItems.reduce((sum, it) => sum + ((it.salePrice ?? it.price) * it.quantity), 0);
   const selectedShops = Array.from(new Set(selectedItems.map(it => it.shopName)));
   const isMultiShop = selectedShops.length > 1;
   const shopsCount = Object.keys(groupedItems).length;
@@ -324,7 +324,17 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
                                   <h4 className="text-lg font-black text-gray-900">{item.productName}</h4>
                                 </div>
                                 <div className="text-right">
-                                  <p className="text-lg font-black text-gray-900">{(item.price || 0).toLocaleString('vi-VN')}đ</p>
+                                  {item.salePrice != null && item.discountPercent ? (
+                                    <div>
+                                      <p className="text-xs font-bold text-red-400 line-through">{(item.price || 0).toLocaleString('vi-VN')}đ</p>
+                                      <div className="flex items-center justify-end gap-1.5">
+                                        <span className="text-lg font-black text-primary">{item.salePrice.toLocaleString('vi-VN')}đ</span>
+                                        <span className="text-[9px] font-black text-white bg-primary rounded-full px-1.5 py-0.5">-{item.discountPercent}%</span>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <p className="text-lg font-black text-primary">{(item.price || 0).toLocaleString('vi-VN')}đ</p>
+                                  )}
                                   <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
                                     {isMysteryBox ? 'Mỗi túi' : isCombo ? 'Mỗi combo' : 'Mỗi đơn vị'}
                                   </p>
@@ -343,7 +353,7 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
                                   </button>
                                 </div>
                                 <div className="flex items-center gap-4">
-                                  <span className="text-xl font-black text-gray-900">{((item.price || 0) * item.quantity).toLocaleString('vi-VN')}đ</span>
+                                  <span className="text-xl font-black text-primary">{(((item.salePrice ?? item.price) || 0) * item.quantity).toLocaleString('vi-VN')}đ</span>
                                   <button disabled={isUpdating} onClick={() => handleRemoveItem(item)} className="size-10 bg-red-50 rounded-2xl flex items-center justify-center text-red-400 hover:bg-red-500 hover:text-white transition-colors disabled:opacity-50">
                                     <Trash2 className="size-4" />
                                   </button>

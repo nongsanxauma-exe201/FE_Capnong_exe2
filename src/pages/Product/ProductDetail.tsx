@@ -13,7 +13,11 @@ import {
   ChefHat,
   ChevronLeft,
   X,
-  ZoomIn
+  ZoomIn,
+  Share2,
+  Copy,
+  Check,
+  Facebook
 } from 'lucide-react';
 import { productService, ProductResponse, ProductImageResponse, cartService, reviewService, ReviewResponse, comboService, BuildComboResponse } from '../../services';
 import { userService } from '../../services';
@@ -170,6 +174,8 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId: propProductId,
   const [isReviewsLoading, setIsReviewsLoading] = useState(false);
   const [shopReviews, setShopReviews] = useState<ReviewResponse[]>([]);
   const [shopOwner, setShopOwner] = useState<UserResponse | null>(null);
+  const [showShareMenu, setShowShareMenu] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const handleBack = () => {
     if (propOnBack) propOnBack();
@@ -356,6 +362,41 @@ if (error || !product) {
 const farmName = product.shopName || (product.shopId ? `Nông trại #${product.shopId}` : 'Nông trại đối tác');
 const isOutOfStock = product.stockQuantity <= 0;
 
+const productUrl = `${window.location.origin}/product/${product.id}`;
+const shopUrl = product.shopId ? `${window.location.origin}/shop/${product.shopId}` : null;
+
+const handleShare = async (type: 'product' | 'shop') => {
+  const url = type === 'shop' && shopUrl ? shopUrl : productUrl;
+  const title = type === 'shop' ? `Cửa hàng ${farmName} trên CapNong` : `${product.productName} - ${farmName}`;
+  const text = type === 'shop'
+    ? `Xem cửa hàng ${farmName} trên CapNong - nông sản sạch tươi mới mỗi ngày!`
+    : `${product.productName}${product.salePrice ? ` chỉ còn ${product.salePrice.toLocaleString('vi-VN')}đ` : ` - ${(product.sellingPrice || 0).toLocaleString('vi-VN')}đ`} tại ${farmName} trên CapNong!`;
+  if (navigator.share) {
+    try { await navigator.share({ title, text, url }); } catch { /* user cancelled */ }
+  } else {
+    setShowShareMenu(true);
+  }
+};
+
+const copyLink = async (type: 'product' | 'shop') => {
+  const url = type === 'shop' && shopUrl ? shopUrl : productUrl;
+  await navigator.clipboard.writeText(url);
+  setCopied(true);
+  setTimeout(() => setCopied(false), 2000);
+};
+
+const shareToFacebook = (type: 'product' | 'shop') => {
+  const url = encodeURIComponent(type === 'shop' && shopUrl ? shopUrl : productUrl);
+  window.open(`https://www.facebook.com/sharer/sharer.php?u=${url}`, '_blank', 'width=600,height=400');
+};
+
+const shareToZalo = (type: 'product' | 'shop') => {
+  const url = encodeURIComponent(type === 'shop' && shopUrl ? shopUrl : productUrl);
+  window.open(`https://zalo.me/share?url=${url}`, '_blank', 'width=600,height=400');
+};
+
+const hasActiveDiscount = product.salePrice != null && product.salePrice > 0;
+
 return (
   <div className="flex-1 bg-white pb-20">
     <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between border-b border-gray-100 mb-8">
@@ -364,6 +405,52 @@ return (
         <ChevronRight className="size-4" />
         <span className="text-gray-900 font-medium">{product.productName}</span>
       </nav>
+      <div className="relative">
+        <button
+          onClick={() => handleShare('product')}
+          className="flex items-center gap-2 px-4 py-2 bg-gray-50 hover:bg-gray-100 text-gray-600 rounded-xl text-xs font-bold transition-all border border-gray-200"
+        >
+          <Share2 className="size-4" /> Chia sẻ
+        </button>
+        {showShareMenu && (
+          <div className="absolute right-0 top-12 z-20 bg-white rounded-2xl shadow-xl border border-gray-100 p-4 w-64 animate-in fade-in slide-in-from-top-2">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-black text-gray-700 uppercase tracking-widest">Chia sẻ sản phẩm</p>
+              <button onClick={() => setShowShareMenu(false)} className="size-6 flex items-center justify-center hover:bg-gray-100 rounded-lg"><X className="size-3.5 text-gray-400" /></button>
+            </div>
+            <div className="space-y-2">
+              <button onClick={() => { copyLink('product'); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 text-sm font-bold text-gray-700 transition-colors">
+                {copied ? <Check className="size-4 text-green-500" /> : <Copy className="size-4 text-gray-400" />}
+                {copied ? 'Đã sao chép!' : 'Sao chép link sản phẩm'}
+              </button>
+              <button onClick={() => shareToFacebook('product')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-blue-50 text-sm font-bold text-blue-600 transition-colors">
+                <Facebook className="size-4" /> Chia sẻ Facebook
+              </button>
+              <button onClick={() => shareToZalo('product')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-blue-50 text-sm font-bold text-blue-500 transition-colors">
+                <span className="size-4 rounded-full bg-blue-500 text-white text-[8px] font-black flex items-center justify-center flex-shrink-0">Z</span>
+                Chia sẻ Zalo
+              </button>
+              {shopUrl && (
+                <>
+                  <div className="border-t border-gray-100 my-1" />
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Chia sẻ cửa hàng</p>
+                  <button onClick={() => { copyLink('shop'); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 text-sm font-bold text-gray-700 transition-colors">
+                    {copied ? <Check className="size-4 text-green-500" /> : <Copy className="size-4 text-gray-400" />}
+                    Sao chép link cửa hàng
+                  </button>
+                  <button onClick={() => shareToFacebook('shop')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-blue-50 text-sm font-bold text-blue-600 transition-colors">
+                    <Facebook className="size-4" /> Facebook (Cửa hàng)
+                  </button>
+                  <button onClick={() => shareToZalo('shop')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-blue-50 text-sm font-bold text-blue-500 transition-colors">
+                    <span className="size-4 rounded-full bg-blue-500 text-white text-[8px] font-black flex items-center justify-center flex-shrink-0">Z</span>
+                    Zalo (Cửa hàng)
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
 
     <div className="max-w-7xl mx-auto px-4 grid grid-cols-1 lg:grid-cols-2 gap-12 mb-20 animate-in fade-in duration-500">
@@ -406,10 +493,27 @@ return (
         </div>
 
         <div className="flex flex-col gap-1 mt-2">
-          <div className="flex items-center gap-3">
-            <span className="text-primary font-black text-4xl">{(product.sellingPrice || 0).toLocaleString('vi-VN')}đ</span>
-            <span className="text-gray-400 font-bold uppercase text-xs mt-2">/ {product.unit || 'KG'}</span>
-          </div>
+          {hasActiveDiscount ? (
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-3">
+                <span className="text-red-500 text-lg line-through font-semibold">{(product.sellingPrice || 0).toLocaleString('vi-VN')}đ</span>
+                <span className="bg-primary text-white text-xs font-black px-2.5 py-1 rounded-full">-{product.discountPercent}%</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-primary font-black text-4xl">{(product.salePrice!).toLocaleString('vi-VN')}đ</span>
+                <span className="text-gray-400 font-bold uppercase text-xs mt-2">/ {product.unit || 'KG'}</span>
+              </div>
+              <p className="text-xs text-primary font-bold mt-1">
+                Tiết kiệm {((product.sellingPrice || 0) - product.salePrice!).toLocaleString('vi-VN')}đ
+                {product.discountEndDate && ` · Còn đến ${new Date(product.discountEndDate).toLocaleDateString('vi-VN')}`}
+              </p>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <span className="text-primary font-black text-4xl">{(product.sellingPrice || 0).toLocaleString('vi-VN')}đ</span>
+              <span className="text-gray-400 font-bold uppercase text-xs mt-2">/ {product.unit || 'KG'}</span>
+            </div>
+          )}
           <p className="text-gray-500 text-sm leading-relaxed mt-6 whitespace-pre-wrap">
             {product.description || "Sản phẩm sạch được thu hoạch ngay tại vườn."}
           </p>
@@ -478,6 +582,12 @@ return (
                   className="flex items-center gap-1.5 px-5 py-2.5 bg-blue-50 text-blue-600 font-black text-[10px] uppercase tracking-widest rounded-xl border border-blue-100 hover:bg-blue-500 hover:text-white transition-all shadow-sm"
                 >
                   <MessageSquare className="size-3.5" /> Chat Shop
+                </button>
+                <button
+                  onClick={() => handleShare('shop')}
+                  className="flex items-center gap-1.5 px-5 py-2.5 bg-gray-50 text-gray-600 font-black text-[10px] uppercase tracking-widest rounded-xl border border-gray-200 hover:bg-gray-100 transition-all shadow-sm"
+                >
+                  <Share2 className="size-3.5" /> Chia sẻ
                 </button>
               </div>
             </div>

@@ -12,6 +12,8 @@ export interface ProductSuggestion {
   id: number;
   name: string;
   price: number;
+  salePrice?: number;
+  discountPercent?: number;
   imageUrl: string;
   category: string;
 }

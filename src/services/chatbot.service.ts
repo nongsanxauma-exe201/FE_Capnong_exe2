@@ -28,6 +28,8 @@ export interface AiItemOption {
   name: string;
   imageUrl?: string;
   price?: number;
+  salePrice?: number;
+  discountPercent?: number;
   unit?: string;
   availableQuantity?: number;
   description?: string;
