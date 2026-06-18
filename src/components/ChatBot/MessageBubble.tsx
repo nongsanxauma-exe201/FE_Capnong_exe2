@@ -407,7 +407,7 @@ const renderContentWithProducts = (
                   <InlineProductCard
                     key={product.id}
                     product={product}
-                    onClick={() => navigate(`/product/${product.id}`)}
+                    onClick={() => navigate(`/san-pham/${product.id}`)}
                   />
                 ))}
               </div>
