@@ -344,7 +344,7 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
                       <div className="space-y-1">
                         <button
                           onClick={async () => {
-                            await navigator.clipboard.writeText(`${window.location.origin}/shop/${shopId}`);
+                            await navigator.clipboard.writeText(`${window.location.origin}/cua-hang/${shopId}`);
                             setCopied(true);
                             setTimeout(() => setCopied(false), 2000);
                           }}
@@ -354,17 +354,42 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
                           {copied ? 'Đã sao chép!' : 'Sao chép link'}
                         </button>
                         <button
-                          onClick={() => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(`${window.location.origin}/shop/${shopId}`)}`, '_blank', 'width=600,height=400')}
+                          onClick={() => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(`${window.location.origin}/cua-hang/${shopId}`)}`, '_blank', 'width=600,height=400')}
                           className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-blue-50 text-xs font-bold text-blue-600 transition-colors"
                         >
                           <Facebook className="size-3.5" /> Facebook
                         </button>
                         <button
-                          onClick={() => window.open(`https://zalo.me/share?url=${encodeURIComponent(`${window.location.origin}/shop/${shopId}`)}`, '_blank', 'width=600,height=400')}
+                          onClick={() => {
+                            const rawUrl = `${window.location.origin}/cua-hang/${shopId}`;
+                            const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+                            if (isMobile) {
+                              window.location.href = `zalo://share?url=${encodeURIComponent(rawUrl)}`;
+                            } else {
+                              navigator.clipboard.writeText(rawUrl);
+                              alert('Đã sao chép link! Mở Zalo và dán vào hội thoại để chia sẻ.');
+                            }
+                          }}
                           className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-blue-50 text-xs font-bold text-blue-500 transition-colors"
                         >
                           <span className="size-3.5 rounded-full bg-blue-500 text-white text-[7px] font-black flex items-center justify-center flex-shrink-0">Z</span>
                           Zalo
+                        </button>
+                        <button
+                          onClick={() => {
+                            const rawUrl = `${window.location.origin}/cua-hang/${shopId}`;
+                            const url = encodeURIComponent(rawUrl);
+                            const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+                            if (isMobile) {
+                              window.location.href = `fb-messenger://share?link=${url}`;
+                            } else {
+                              window.open(`https://www.facebook.com/dialog/send?link=${url}&app_id=&redirect_uri=${url}`, '_blank', 'width=600,height=400');
+                            }
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-indigo-50 text-xs font-bold text-indigo-600 transition-colors"
+                        >
+                          <svg className="size-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.145 2 11.243c0 2.913 1.405 5.514 3.608 7.24V22l3.259-1.793c.872.242 1.795.372 2.748.372 5.523 0 10-4.145 10-9.336C21.615 6.145 17.523 2 12 2zm1.067 12.573l-2.545-2.715-4.965 2.715 5.463-5.8 2.609 2.715 4.9-2.715-5.462 5.8z"/></svg>
+                          Messenger
                         </button>
                       </div>
                     </div>

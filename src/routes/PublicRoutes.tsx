@@ -23,7 +23,7 @@ const PublicRoutes = () => {
         if (id.startsWith('box-')) {
             navigate(`/mystery-box/${id.replace('box-', '')}`);
         } else {
-            navigate(`/product/${id}`);
+            navigate(`/san-pham/${id}`);
         }
     };
 
@@ -41,6 +41,9 @@ const PublicRoutes = () => {
             <Route path="/" element={renderRoot()} />
             <Route path="/search" element={<SearchResults onSelectProduct={handleSelectProduct} />} />
             <Route path="/meal-plan" element={<MealPlan />} />
+            <Route path="/san-pham/:productId" element={<ProductDetail />} />
+            <Route path="/cua-hang/:shopId" element={<ShopPage />} />
+            {/* backward compat — old links still work */}
             <Route path="/product/:productId" element={<ProductDetail />} />
             <Route path="/shop/:shopId" element={<ShopPage />} />
             <Route path="/mystery-box/:boxId" element={<MysteryBoxDetail />} />
