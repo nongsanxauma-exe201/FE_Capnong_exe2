@@ -27,6 +27,8 @@ export interface OrderCreationRequest {
     note?: string;
     paymentMethod: string;
     voucherUserId?: string;
+    voucherUserIds?: string[];
+    voucherCodes?: string[];
     items: OrderItemRequest[];
 }
 
