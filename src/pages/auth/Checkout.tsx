@@ -49,7 +49,7 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
    const [loadingFee, setLoadingFee] = useState(false);
    const [shopId, setShopId] = useState<number | null>(null);
    const [orderVouchers, setOrderVouchers] = useState<VoucherUserResponse[]>([]);
-   const [selectedVouchers, setSelectedVouchers] = useState<VoucherUserResponse[]>([]);
+   const [selectedVoucher, setSelectedVoucher] = useState<VoucherUserResponse | null>(null);
    const [loadingVouchers, setLoadingVouchers] = useState(false);
    const [voucherError, setVoucherError] = useState<string | null>(null);
 
@@ -183,17 +183,8 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
       return Boolean(a.voucherResponse?.voucherCode && a.voucherResponse.voucherCode === b.voucherResponse?.voucherCode);
    };
 
-   const getVoucherApplications = (items: VoucherUserResponse[], amount: number) => {
-      let remainingAmount = amount;
-      return items.map((item) => {
-         const discount = calculateVoucherDiscount(item, remainingAmount);
-         remainingAmount = Math.max(0, remainingAmount - discount);
-         return { item, discount, remainingAmount };
-      });
-   };
-
-   const selectedVoucherApplications = getVoucherApplications(selectedVouchers, cartData?.totalAmount || 0);
-   const voucherDiscount = selectedVoucherApplications.reduce((sum, app) => sum + app.discount, 0);
+   const selectedVoucherDiscount = calculateVoucherDiscount(selectedVoucher, cartData?.totalAmount || 0);
+   const voucherDiscount = selectedVoucherDiscount;
    const voucherCheckAmount = Math.max(0, (cartData?.totalAmount || 0) - voucherDiscount);
 
    useEffect(() => {
@@ -209,9 +200,7 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
             setVoucherError(null);
             const response = await voucherService.getVouchersForOrder(shopId, amount, 0, 20);
             const list = response.result?.content || [];
-            setOrderVouchers(
-               list.filter((item) => item.voucherResponse && !selectedVouchers.some((selected) => isSameVoucherItem(selected, item)))
-            );
+            setOrderVouchers(list.filter((item) => item.voucherResponse));
          } catch (err) {
             console.error('Failed to load checkout vouchers', err);
             setOrderVouchers([]);
@@ -222,7 +211,7 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
       };
 
       fetchOrderVouchers();
-   }, [shopId, voucherCheckAmount, selectedVouchers]);
+   }, [shopId, voucherCheckAmount]);
 
    const handleAddressChange = (val: string) => {
       setRecipientAddress(val);
@@ -288,8 +277,10 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
             shippingAddress: recipientAddress,
             note,
             paymentMethod,
-            voucherUserId: selectedVouchers[0]?.voucherUserId,
-            voucherUserIds: selectedVouchers.map((voucher) => voucher.voucherUserId).filter(Boolean),
+            voucherUserId: selectedVoucher?.voucherUserId,
+            voucherCodes: selectedVoucher?.voucherResponse?.voucherCode
+               ? [selectedVoucher.voucherResponse.voucherCode]
+               : undefined,
             items: cartData.items.map(item => {
                if (item.itemType === 'MYSTERY_BOX') {
                   return { mysteryBoxId: item.mysteryBoxId, quantity: item.quantity };
@@ -529,35 +520,34 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
                               <Gift className="size-4 text-primary" />
                               <span className="text-xs font-black uppercase text-gray-900">Voucher</span>
                            </div>
-                           {selectedVouchers.length > 0 && (
+                           {selectedVoucher && (
                               <button
                                  type="button"
-                                 onClick={() => setSelectedVouchers([])}
+                                 onClick={() => setSelectedVoucher(null)}
                                  className="text-[10px] font-black text-red-500 hover:text-red-600"
                               >
-                                 Bỏ tất cả
+                                 Bỏ chọn
                               </button>
                            )}
                         </div>
-                        {selectedVoucherApplications.length > 0 && (
+                        {selectedVoucher && (
                            <div className="mb-3 space-y-2">
                               <p className="text-[10px] font-black uppercase tracking-wider text-primary">Đã áp dụng</p>
-                              {selectedVoucherApplications.map(({ item, discount }) => {
-                                 const voucher = item.voucherResponse;
+                              {(() => {
+                                 const voucher = selectedVoucher.voucherResponse;
                                  if (!voucher) return null;
-                                 const voucherKey = getVoucherItemKey(item);
                                  return (
-                                    <div key={`selected-${voucherKey}`} className="rounded-xl border-2 border-primary bg-primary/5 p-3">
+                                    <div key={`selected-${getVoucherItemKey(selectedVoucher)}`} className="rounded-xl border-2 border-primary bg-primary/5 p-3">
                                        <div className="flex items-start justify-between gap-2">
                                           <div>
                                              <p className="text-[10px] font-black text-primary uppercase">{voucher.voucherCode}</p>
                                              <p className="mt-0.5 text-xs font-black text-gray-900">
-                                                Đã áp dụng -{discount.toLocaleString('vi-VN')}đ
+                                                Đã áp dụng -{selectedVoucherDiscount.toLocaleString('vi-VN')}đ
                                              </p>
                                           </div>
                                           <button
                                              type="button"
-                                             onClick={() => setSelectedVouchers((prev) => prev.filter((selected) => getVoucherItemKey(selected) !== voucherKey))}
+                                             onClick={() => setSelectedVoucher(null)}
                                              className="text-[10px] font-black text-red-500"
                                           >
                                              Bỏ
@@ -565,7 +555,7 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
                                        </div>
                                     </div>
                                  );
-                              })}
+                              })()}
                            </div>
                         )}
                         {loadingVouchers ? (
@@ -576,20 +566,22 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
                            <div className="rounded-xl bg-gray-50 p-3 text-xs font-bold text-gray-400">Không có voucher phù hợp cho đơn này.</div>
                         ) : (
                            <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
-                              {selectedVouchers.length > 0 && (
-                                 <p className="text-[10px] font-black uppercase tracking-wider text-gray-400">Có thể áp dụng thêm</p>
-                              )}
                               {orderVouchers.map((item) => {
                                  const voucher = item.voucherResponse;
                                  if (!voucher) return null;
-                                 const discount = calculateVoucherDiscount(item, voucherCheckAmount);
+                                 const discount = calculateVoucherDiscount(item, cartData?.totalAmount || 0);
                                  const voucherKey = getVoucherItemKey(item);
+                                 const isSelected = isSameVoucherItem(selectedVoucher, item);
                                  return (
                                     <button
                                        key={voucherKey}
                                        type="button"
-                                       onClick={() => setSelectedVouchers((prev) => prev.some((selected) => isSameVoucherItem(selected, item)) ? prev : [...prev, item])}
-                                       className="w-full rounded-xl border border-gray-200 bg-white p-3 text-left transition-all hover:border-primary/40 hover:bg-primary/5"
+                                       onClick={() => setSelectedVoucher(item)}
+                                       className={`w-full rounded-xl border p-3 text-left transition-all ${
+                                          isSelected
+                                             ? 'border-primary bg-primary/5'
+                                             : 'border-gray-200 bg-white hover:border-primary/40 hover:bg-primary/5'
+                                       }`}
                                     >
                                        <div className="flex items-start justify-between gap-2">
                                           <div>
@@ -606,7 +598,7 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
                                                 -{discount.toLocaleString('vi-VN')}đ
                                              </span>
                                              <span className="mt-1 inline-block rounded-lg bg-gray-100 px-2 py-1 text-[9px] font-black text-gray-500">
-                                                Áp dụng thêm
+                                                {isSelected ? 'Đang áp dụng' : 'Áp dụng'}
                                              </span>
                                           </div>
                                        </div>
