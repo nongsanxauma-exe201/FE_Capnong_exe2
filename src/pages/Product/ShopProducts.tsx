@@ -25,7 +25,7 @@ import {
   X,
   Facebook,
 } from 'lucide-react';
-import { productService, ProductResponse, userService, UserResponse, cartService, reviewService, ReviewResponse, mysteryBoxService, MysteryBox, comboService, BuildComboResponse } from '../../services';
+import { productService, ProductResponse, userService, UserResponse, cartService, reviewService, ReviewResponse, mysteryBoxService, MysteryBox, comboService, BuildComboResponse, voucherService, VoucherResponse } from '../../services';
 import { globalShowAlert } from '../../contexts/PopupContext';
 
 interface ShopProductsProps {
@@ -56,6 +56,11 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
   const [addingComboToCart, setAddingComboToCart] = useState<number | null>(null);
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [shopVouchers, setShopVouchers] = useState<VoucherResponse[]>([]);
+  const [receivingVoucher, setReceivingVoucher] = useState<string | null>(null);
+  const [canReceiveMap, setCanReceiveMap] = useState<Record<string, boolean>>({});
+  const [voucherLoading, setVoucherLoading] = useState(false);
+  const [voucherError, setVoucherError] = useState<string | null>(null);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
@@ -106,6 +111,44 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
     fetchShopData();
   }, [shopId]);
 
+  useEffect(() => {
+    const fetchShopVouchers = async () => {
+      try {
+        setVoucherLoading(true);
+        setVoucherError(null);
+        const response = await voucherService.getBuyerShopVouchers(shopId, 0, 3);
+        const result = response.result;
+        const vouchers = Array.isArray(result) ? result : result?.content || [];
+        setShopVouchers(vouchers);
+
+        if (isAuthenticated && vouchers.length > 0) {
+          const statuses = await Promise.all(
+            vouchers.map(async (voucher) => {
+              try {
+                const canReceive = await voucherService.canReceiveVoucher(voucher.voucherCode);
+                return [voucher.voucherCode, Boolean(canReceive.result)] as const;
+              } catch {
+                return [voucher.voucherCode, false] as const;
+              }
+            })
+          );
+          setCanReceiveMap(Object.fromEntries(statuses));
+        } else {
+          setCanReceiveMap({});
+        }
+      } catch (err) {
+        console.error('Failed to load shop vouchers', err);
+        setShopVouchers([]);
+        setCanReceiveMap({});
+        setVoucherError('Không tải được voucher của shop.');
+      } finally {
+        setVoucherLoading(false);
+      }
+    };
+
+    fetchShopVouchers();
+  }, [shopId, isAuthenticated]);
+
   const handleAddToCart = async (productId: number) => {
     if (!isAuthenticated) { onOpenLogin(); return; }
     setAddingToCart(productId);
@@ -144,6 +187,25 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
       globalShowAlert('Không thể thêm combo vào giỏ hàng. Vui lòng thử lại.', 'Lỗi', 'error');
     } finally {
       setAddingComboToCart(null);
+    }
+  };
+
+  const handleReceiveVoucher = async (voucherCode: string) => {
+    if (!isAuthenticated) { onOpenLogin(); return; }
+    try {
+      setReceivingVoucher(voucherCode);
+      await voucherService.receiveVoucher(voucherCode);
+      setCanReceiveMap((prev) => ({ ...prev, [voucherCode]: false }));
+      setShopVouchers((prev) => prev.map((voucher) => (
+        voucher.voucherCode === voucherCode
+          ? { ...voucher, claimedCount: (voucher.claimedCount ?? 0) + 1 }
+          : voucher
+      )));
+      globalShowAlert('Đã lưu voucher vào kho của bạn.', 'Thành công', 'success');
+    } catch (err: any) {
+      globalShowAlert(err?.data?.message || 'Không thể nhận voucher. Vui lòng thử lại.', 'Lỗi', 'error');
+    } finally {
+      setReceivingVoucher(null);
     }
   };
 
@@ -380,6 +442,63 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
               <p className="text-sm text-gray-600 font-medium">{shopInfo.description}</p>
             </div>
           )}
+
+          <div className="mt-4 bg-white rounded-2xl border border-emerald-100 p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div className="flex items-center gap-2">
+                <Gift className="size-5 text-primary" />
+                <h3 className="text-sm font-black text-gray-900">Voucher của shop</h3>
+              </div>
+              <button
+                onClick={() => navigate(`/shop/${shopId}/vouchers`)}
+                className="text-xs font-black text-primary hover:text-primary-dark"
+              >
+                Xem tất cả
+              </button>
+            </div>
+
+            {voucherLoading ? (
+              <div className="rounded-2xl bg-gray-50 p-4 text-xs font-bold text-gray-400">
+                Đang tải voucher...
+              </div>
+            ) : voucherError ? (
+              <div className="rounded-2xl bg-red-50 p-4 text-xs font-bold text-red-600">
+                {voucherError}
+              </div>
+            ) : shopVouchers.length === 0 ? (
+              <div className="rounded-2xl bg-gray-50 p-4 text-xs font-bold text-gray-400">
+                Shop hiện chưa có voucher để nhận.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {shopVouchers.map((voucher) => {
+                  const canReceive = canReceiveMap[voucher.voucherCode] !== false;
+                  return (
+                    <div key={voucher.voucherCode} className="rounded-2xl border border-dashed border-primary/30 bg-primary/5 p-4 flex flex-col gap-3">
+                      <div>
+                        <p className="text-xs font-black text-primary">{voucher.voucherCode}</p>
+                        <p className="mt-1 text-lg font-black text-gray-900">Giảm {voucher.discountValue}%</p>
+                        <p className="text-xs text-gray-500 font-bold">
+                          Tối đa {Number(voucher.maxDiscount).toLocaleString('vi-VN')}đ · Đơn từ {Number(voucher.minOrderValue).toLocaleString('vi-VN')}đ
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleReceiveVoucher(voucher.voucherCode)}
+                        disabled={receivingVoucher === voucher.voucherCode || (isAuthenticated && !canReceive)}
+                        className="w-full rounded-xl bg-primary px-3 py-2 text-xs font-black text-white hover:bg-primary-dark disabled:bg-gray-200 disabled:text-gray-500"
+                      >
+                        {receivingVoucher === voucher.voucherCode
+                          ? 'Đang lưu...'
+                          : isAuthenticated && !canReceive
+                            ? 'Đã nhận'
+                            : 'Nhận voucher'}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
