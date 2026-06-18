@@ -3,6 +3,7 @@ import BuyerHome from '../pages/BuyerHome';
 import SearchResults from '../pages/SearchResults';
 import ProductDetail from '../pages/Product/ProductDetail';
 import ShopPage from '../pages/Product/ShopPage';
+import ShopVouchers from '../pages/Product/ShopVouchers';
 import MysteryBoxDetail from '../pages/MysteryBox/MysteryBoxDetail';
 import AllMysteryBoxes from '../pages/MysteryBox/AllMysteryBoxes';
 import News from '../pages/News/News';
@@ -43,6 +44,7 @@ const PublicRoutes = () => {
             <Route path="/meal-plan" element={<MealPlan />} />
             <Route path="/product/:productId" element={<ProductDetail />} />
             <Route path="/shop/:shopId" element={<ShopPage />} />
+            <Route path="/shop/:shopId/vouchers" element={<ShopVouchers />} />
             <Route path="/mystery-box/:boxId" element={<MysteryBoxDetail />} />
             <Route path="/mystery-boxes" element={<AllMysteryBoxes />} />
             <Route path="/news" element={<News />} />

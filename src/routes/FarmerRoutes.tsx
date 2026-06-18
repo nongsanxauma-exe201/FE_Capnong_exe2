@@ -23,6 +23,7 @@ import TripJoinRequests from '../pages/farmer/TripJoinRequests';
 import TripJoinRequestDetail from '../pages/farmer/TripJoinRequestDetail';
 import SendJoinRequest from '../pages/farmer/SendJoinRequest';
 import FarmerDisputes from '../pages/farmer/FarmerDisputes';
+import Vouchers from '../pages/farmer/Vouchers';
 import { AppRole, KYCStatus } from '../types';
 // ── Wrapper components ──────────────────────────────────────────────────────
 
@@ -114,6 +115,7 @@ const FarmerRoutes = () => {
             <Route path="profile" element={<Profile />} />
             <Route path="blind-box" element={<Navigate to="/farmer/mystery-box-editor" replace />} />
             <Route path="reviews" element={<Reviews />} />
+            <Route path="vouchers" element={<Vouchers />} />
             <Route path="tracking/:orderId" element={<TrackingWrapper />} />
             <Route path="farmer-disputes" element={<FarmerDisputes />} />
             <Route path="messages" element={<AdminMessages />} />

@@ -7,6 +7,7 @@ import Checkout from '../pages/auth/Checkout';
 import Success from '../pages/auth/Success';
 import Tracking from '../pages/auth/Tracking';
 import MyOrders from '../pages/auth/MyOrders';
+import MyVouchers from '../pages/auth/MyVouchers';
 import MyReturns from '../pages/auth/MyReturns';
 import UserProfile from '../pages/auth/UserProfile';
 import Wallet from '../pages/auth/Wallet';
@@ -44,6 +45,11 @@ const ProtectedRoutes = () => {
             <Route path="/my-orders" element={
                 <ProtectedRoute>
                     <MyOrders onBack={() => navigate('/')} onViewTracking={(id) => navigate(`/tracking/${id}`)} />
+                </ProtectedRoute>
+            } />
+            <Route path="/my-vouchers" element={
+                <ProtectedRoute allowedRoles={[AppRole.BUYER]}>
+                    <MyVouchers />
                 </ProtectedRoute>
             } />
             <Route path="/my-returns" element={
