@@ -406,8 +406,8 @@ if (error || !product) {
 const farmName = product.shopName || (product.shopId ? `Nông trại #${product.shopId}` : 'Nông trại đối tác');
 const isOutOfStock = product.stockQuantity <= 0;
 
-const productUrl = `${window.location.origin}/product/${product.id}`;
-const shopUrl = product.shopId ? `${window.location.origin}/shop/${product.shopId}` : null;
+const productUrl = `${window.location.origin}/san-pham/${product.id}`;
+const shopUrl = product.shopId ? `${window.location.origin}/cua-hang/${product.shopId}` : null;
 
 const isMobileBrowser = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
@@ -436,8 +436,27 @@ const shareToFacebook = (type: 'product' | 'shop') => {
 };
 
 const shareToZalo = (type: 'product' | 'shop') => {
-  const url = encodeURIComponent(type === 'shop' && shopUrl ? shopUrl : productUrl);
-  window.open(`https://zalo.me/share?url=${url}`, '_blank', 'width=600,height=400');
+  const rawUrl = type === 'shop' && shopUrl ? shopUrl : productUrl;
+  const url = encodeURIComponent(rawUrl);
+  // Trên mobile: dùng deep link mở thẳng app Zalo (không cần đăng ký SDK)
+  // Trên desktop: Zalo web share yêu cầu đăng ký tại developers.zalo.me — fallback copy link
+  if (isMobileBrowser) {
+    window.location.href = `zalo://share?url=${url}`;
+  } else {
+    navigator.clipboard.writeText(rawUrl);
+    alert('Đã sao chép link! Mở Zalo và dán vào hội thoại để chia sẻ.');
+  }
+};
+
+const shareToMessenger = (type: 'product' | 'shop') => {
+  const rawUrl = type === 'shop' && shopUrl ? shopUrl : productUrl;
+  const url = encodeURIComponent(rawUrl);
+  if (isMobileBrowser) {
+    // Deep link mở Messenger app trên mobile
+    window.location.href = `fb-messenger://share?link=${url}`;
+  } else {
+    window.open(`https://www.facebook.com/dialog/send?link=${url}&app_id=&redirect_uri=${url}`, '_blank', 'width=600,height=400');
+  }
 };
 
 const hasActiveDiscount = product.salePrice != null && product.salePrice > 0;
@@ -475,6 +494,10 @@ return (
                 <span className="size-4 rounded-full bg-blue-500 text-white text-[8px] font-black flex items-center justify-center flex-shrink-0">Z</span>
                 Chia sẻ Zalo
               </button>
+              <button onClick={() => shareToMessenger('product')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-indigo-50 text-sm font-bold text-indigo-600 transition-colors">
+                <svg className="size-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.145 2 11.243c0 2.913 1.405 5.514 3.608 7.24V22l3.259-1.793c.872.242 1.795.372 2.748.372 5.523 0 10-4.145 10-9.336C21.615 6.145 17.523 2 12 2zm1.067 12.573l-2.545-2.715-4.965 2.715 5.463-5.8 2.609 2.715 4.9-2.715-5.462 5.8z"/></svg>
+                Chia sẻ Messenger
+              </button>
               {shopUrl && (
                 <>
                   <div className="border-t border-gray-100 my-1" />
@@ -489,6 +512,10 @@ return (
                   <button onClick={() => shareToZalo('shop')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-blue-50 text-sm font-bold text-blue-500 transition-colors">
                     <span className="size-4 rounded-full bg-blue-500 text-white text-[8px] font-black flex items-center justify-center flex-shrink-0">Z</span>
                     Zalo (Cửa hàng)
+                  </button>
+                  <button onClick={() => shareToMessenger('shop')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-indigo-50 text-sm font-bold text-indigo-600 transition-colors">
+                    <svg className="size-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.145 2 11.243c0 2.913 1.405 5.514 3.608 7.24V22l3.259-1.793c.872.242 1.795.372 2.748.372 5.523 0 10-4.145 10-9.336C21.615 6.145 17.523 2 12 2zm1.067 12.573l-2.545-2.715-4.965 2.715 5.463-5.8 2.609 2.715 4.9-2.715-5.462 5.8z"/></svg>
+                    Messenger (Cửa hàng)
                   </button>
                 </>
               )}
@@ -653,10 +680,15 @@ return (
                           className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-blue-50 text-xs font-bold text-blue-600 transition-colors">
                           <Facebook className="size-3.5" /> Chia sẻ Facebook
                         </button>
-                        <button onClick={() => { window.open(`https://zalo.me/share?url=${encodeURIComponent(shopUrl)}`, '_blank', 'width=600,height=400'); }}
+                        <button onClick={() => shareToZalo('shop')}
                           className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-blue-50 text-xs font-bold text-blue-500 transition-colors">
                           <span className="size-3.5 rounded-full bg-blue-500 text-white text-[7px] font-black flex items-center justify-center flex-shrink-0">Z</span>
                           Chia sẻ Zalo
+                        </button>
+                        <button onClick={() => shareToMessenger('shop')}
+                          className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-indigo-50 text-xs font-bold text-indigo-600 transition-colors">
+                          <svg className="size-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.145 2 11.243c0 2.913 1.405 5.514 3.608 7.24V22l3.259-1.793c.872.242 1.795.372 2.748.372 5.523 0 10-4.145 10-9.336C21.615 6.145 17.523 2 12 2zm1.067 12.573l-2.545-2.715-4.965 2.715 5.463-5.8 2.609 2.715 4.9-2.715-5.462 5.8z"/></svg>
+                          Chia sẻ Messenger
                         </button>
                       </div>
                     </div>
