@@ -203,7 +203,22 @@ const ProductApproval: React.FC = () => {
                 <div className="grid grid-cols-2 gap-6">
                   <div>
                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 block">Giá bán</label>
-                    <p className="text-lg font-black text-primary">{(selectedProduct.sellingPrice || 0).toLocaleString('vi-VN')}đ / {selectedProduct.unit}</p>
+                    {selectedProduct.discountPercent != null && selectedProduct.discountPercent > 0 ? (
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-red-500 line-through font-semibold">{(selectedProduct.sellingPrice || 0).toLocaleString('vi-VN')}đ</span>
+                          <span className="bg-primary text-white text-[9px] font-black px-2 py-0.5 rounded-full">-{selectedProduct.discountPercent}%</span>
+                        </div>
+                        <p className="text-lg font-black text-primary">
+                          {(selectedProduct.salePrice ?? Math.round((selectedProduct.sellingPrice || 0) * (1 - selectedProduct.discountPercent / 100))).toLocaleString('vi-VN')}đ / {selectedProduct.unit}
+                        </p>
+                        {selectedProduct.discountEndDate && (
+                          <p className="text-[10px] text-primary font-bold">Còn đến {new Date(selectedProduct.discountEndDate).toLocaleDateString('vi-VN')}</p>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-lg font-black text-primary">{(selectedProduct.sellingPrice || 0).toLocaleString('vi-VN')}đ / {selectedProduct.unit}</p>
+                    )}
                   </div>
                   <div>
                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 block">Tồn kho</label>
@@ -363,7 +378,19 @@ const ProductApproval: React.FC = () => {
                       </span>
                     </td>
                     <td className="px-6 py-5 text-center">
-                      <p className="text-sm font-black text-primary">{(product.sellingPrice || 0).toLocaleString('vi-VN')}đ</p>
+                      {product.discountPercent != null && product.discountPercent > 0 ? (
+                        <div className="flex flex-col items-center gap-0.5">
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs text-red-500 line-through font-semibold">{(product.sellingPrice || 0).toLocaleString('vi-VN')}đ</span>
+                            <span className="bg-primary text-white text-[8px] font-black px-1 py-0.5 rounded-full">-{product.discountPercent}%</span>
+                          </div>
+                          <p className="text-sm font-black text-primary">
+                            {(product.salePrice ?? Math.round((product.sellingPrice || 0) * (1 - product.discountPercent / 100))).toLocaleString('vi-VN')}đ
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-sm font-black text-primary">{(product.sellingPrice || 0).toLocaleString('vi-VN')}đ</p>
+                      )}
                       <p className="text-[10px] text-gray-400">{product.stockQuantity} {product.unit}</p>
                     </td>
                     <td className="px-6 py-5">

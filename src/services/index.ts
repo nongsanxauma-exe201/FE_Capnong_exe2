@@ -26,6 +26,7 @@ export { tripService } from './trip.service';
 export { chatBotService } from './chatbot.service';
 export { staffService } from './staff.service';
 export { codSettlementService, getCodCollectAmount, isCodPayment, isCodOrder } from './codSettlement.service';
+export { voucherService } from './voucher.service';
 export { httpClient } from './http.client';
 
 // Export types
@@ -54,6 +55,7 @@ export type {
 export type { AddCartItemRequest, CartItemResponse, CartResponse } from './cart.service';
 export type { ReviewResponse, ReviewCreateRequest, ReviewReplyRequest } from './review.service';
 export type { CodPendingOrderResponse } from './codSettlement.service';
+export type { VoucherResponse, VoucherCreateRequest, VoucherUpdateRequest, VoucherUserResponse } from './voucher.service';
 export type { ApiResponse, RequestConfig } from './http.client';
 export type { UserUpdateRequest, AdminUserReport, AdminUserReportItem, AdminUserReportType } from './user.service';
 export type {
@@ -62,7 +64,17 @@ export type {
     BuildPlanCreateRequest,
     BuildPlanItemCreateRequest
 } from '../types';
-export type { ChatRequest, ChatbotApiResponse } from './chatbot.service';
+export type {
+  AiChatRequest,
+  AiChatResponse,
+  AiItemOption,
+  AiCartPreview,
+  AiCheckoutDraft,
+  AiResponseType,
+  AiItemType,
+  ChatRequest,
+  ProductSuggestion,
+} from './chatbot.service';
 export type { AvailableShipperResponse } from './staff.service';
 
 // Export constants

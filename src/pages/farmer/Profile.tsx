@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Camera, ShieldCheck, Mail, Phone, MapPin, Star, Award, Leaf, FileText, Plus, Save, ExternalLink, User, CheckCircle2, Hourglass, ShieldAlert, Package, ShoppingBag, TrendingUp, Loader2, BookOpen } from 'lucide-react';
+import { Camera, ShieldCheck, Mail, Phone, MapPin, Star, Award, Leaf, FileText, Plus, Save, ExternalLink, User, CheckCircle2, Hourglass, ShieldAlert, Package, ShoppingBag, TrendingUp, Loader2, BookOpen, Share2, Copy, Check, X, Facebook } from 'lucide-react';
 import { authService, UserResponse, productService, ProductResponse, orderService, OrderResponse } from '../../services';
 
 const Profile: React.FC = () => {
@@ -18,6 +18,9 @@ const Profile: React.FC = () => {
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
+  const [showShareMenu, setShowShareMenu] = useState(false);
+  const [copied, setCopied] = useState(false);
+
   // Real statistics
   const [products, setProducts] = useState<ProductResponse[]>([]);
   const [orders, setOrders] = useState<OrderResponse[]>([]);
@@ -240,6 +243,55 @@ const Profile: React.FC = () => {
                   </div>
                 </div>
               </div>
+
+              {/* Nút chia sẻ gian hàng */}
+              {user?.id && (
+                <div className="relative shrink-0">
+                  <button
+                    onClick={() => setShowShareMenu(v => !v)}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-xl text-xs font-black hover:bg-primary-dark transition-all shadow-sm"
+                  >
+                    <Share2 className="size-4" />
+                    Chia sẻ gian hàng
+                  </button>
+                  {showShareMenu && (
+                    <div className="absolute right-0 top-12 z-50 bg-white rounded-2xl shadow-xl border border-gray-100 p-4 w-60">
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Chia sẻ cửa hàng</p>
+                        <button onClick={() => setShowShareMenu(false)} className="size-6 flex items-center justify-center hover:bg-gray-100 rounded-lg">
+                          <X className="size-3.5 text-gray-400" />
+                        </button>
+                      </div>
+                      <div className="space-y-1">
+                        <button
+                          onClick={async () => {
+                            await navigator.clipboard.writeText(`${window.location.origin}/shop/${user.id}`);
+                            setCopied(true);
+                            setTimeout(() => setCopied(false), 2000);
+                          }}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 text-sm font-bold text-gray-700 transition-colors"
+                        >
+                          {copied ? <Check className="size-4 text-green-500" /> : <Copy className="size-4 text-gray-400" />}
+                          {copied ? 'Đã sao chép!' : 'Sao chép link'}
+                        </button>
+                        <button
+                          onClick={() => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(`${window.location.origin}/shop/${user.id}`)}`, '_blank', 'width=600,height=400')}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-blue-50 text-sm font-bold text-blue-600 transition-colors"
+                        >
+                          <Facebook className="size-4" /> Chia sẻ Facebook
+                        </button>
+                        <button
+                          onClick={() => window.open(`https://zalo.me/share?url=${encodeURIComponent(`${window.location.origin}/shop/${user.id}`)}`, '_blank', 'width=600,height=400')}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-blue-50 text-sm font-bold text-blue-500 transition-colors"
+                        >
+                          <span className="size-4 rounded-full bg-blue-500 text-white text-[8px] font-black flex items-center justify-center flex-shrink-0">Z</span>
+                          Chia sẻ Zalo
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Nút xem hướng dẫn */}
               <button

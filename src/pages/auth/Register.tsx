@@ -74,7 +74,7 @@ const Register: React.FC<RegisterProps> = ({ onGoToLogin, onGoToShipperRegister 
     let roleParam = selectedRole === AppRole.FARMER ? 'SHOP_OWNER' : selectedRole;
     
     // Construct the backend URL for OAuth2
-    const backendOAuthUrl = `${BE_URL}/oauth2/authorization/google?role=${roleParam}`;
+    const backendOAuthUrl = `${BE_URL}/oauth2/authorization/google?role=${roleParam}&prompt=select_account`;
     window.location.href = backendOAuthUrl;
   };
 

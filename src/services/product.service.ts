@@ -24,6 +24,11 @@ export interface ProductResponse {
     categoryId?: number;
     expiryDate?: string;
     images?: ProductImageResponse[];
+    // Discount
+    discountPercent?: number;
+    discountStartDate?: string;
+    discountEndDate?: string;
+    salePrice?: number;
 }
 
 function normalizeProduct(p: ProductResponse): ProductResponse {
@@ -38,6 +43,9 @@ export interface ProductCreationRequest {
     description: string;
     categoryId?: number;
     expiryDate?: string;
+    discountPercent?: number;
+    discountStartDate?: string;
+    discountEndDate?: string;
 }
 
 export interface ImageOrderItem {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import { MapPin, CreditCard, ChevronRight, Lock, Loader2, ShieldCheck, Wallet, ChevronLeft, AlertCircle, Package, X, Gift, Truck } from 'lucide-react';
-import { orderService, paymentService, authService, cartService, CartResponse } from '../../services';
+import { orderService, paymentService, authService, cartService, CartResponse, voucherService, VoucherUserResponse } from '../../services';
 import { httpClient } from '../../services/http.client';
 import { globalShowAlert } from '../../contexts/PopupContext';
 
@@ -13,10 +13,12 @@ type CartItemWithShop = {
    productName: string;
    quantity: number;
    price: number;
+   salePrice?: number;
+   discountPercent?: number;
    imageUrl?: string;
    shopName?: string;
    itemType?: string;
-   shopOwnerId?: number; // ✅ field mới từ BE
+   shopOwnerId?: number;
 };
 
 interface CheckoutProps {
@@ -46,6 +48,10 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
    const [shippingFee, setShippingFee] = useState<number>(15000);
    const [loadingFee, setLoadingFee] = useState(false);
    const [shopId, setShopId] = useState<number | null>(null);
+   const [orderVouchers, setOrderVouchers] = useState<VoucherUserResponse[]>([]);
+   const [selectedVouchers, setSelectedVouchers] = useState<VoucherUserResponse[]>([]);
+   const [loadingVouchers, setLoadingVouchers] = useState(false);
+   const [voucherError, setVoucherError] = useState<string | null>(null);
 
    // Debounce timer cho address input
    const [addressTimer, setAddressTimer] = useState<NodeJS.Timeout | null>(null);
@@ -92,7 +98,7 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
                   });
                }
 
-               const filteredTotalAmount = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+               const filteredTotalAmount = items.reduce((sum, item) => sum + ((item.salePrice ?? item.price) * item.quantity), 0);
 
                setCartData({
                   ...cartRes.result,
@@ -160,6 +166,64 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
       }
    }, [shopId]);
 
+   const calculateVoucherDiscount = (voucherItem: VoucherUserResponse | null, amount: number) => {
+      const voucher = voucherItem?.voucherResponse;
+      if (!voucher) return 0;
+      if (amount < Number(voucher.minOrderValue ?? 0)) return 0;
+      const rawDiscount = amount * (Number(voucher.discountValue ?? 0) / 100);
+      return Math.min(rawDiscount, Number(voucher.maxDiscount ?? rawDiscount));
+   };
+
+   const getVoucherItemKey = (item: VoucherUserResponse | null) =>
+      item?.voucherUserId || item?.voucherResponse?.voucherCode || '';
+
+   const isSameVoucherItem = (a: VoucherUserResponse | null, b: VoucherUserResponse | null) => {
+      if (!a || !b) return false;
+      if (a.voucherUserId && b.voucherUserId && a.voucherUserId === b.voucherUserId) return true;
+      return Boolean(a.voucherResponse?.voucherCode && a.voucherResponse.voucherCode === b.voucherResponse?.voucherCode);
+   };
+
+   const getVoucherApplications = (items: VoucherUserResponse[], amount: number) => {
+      let remainingAmount = amount;
+      return items.map((item) => {
+         const discount = calculateVoucherDiscount(item, remainingAmount);
+         remainingAmount = Math.max(0, remainingAmount - discount);
+         return { item, discount, remainingAmount };
+      });
+   };
+
+   const selectedVoucherApplications = getVoucherApplications(selectedVouchers, cartData?.totalAmount || 0);
+   const voucherDiscount = selectedVoucherApplications.reduce((sum, app) => sum + app.discount, 0);
+   const voucherCheckAmount = Math.max(0, (cartData?.totalAmount || 0) - voucherDiscount);
+
+   useEffect(() => {
+      const fetchOrderVouchers = async () => {
+         const amount = voucherCheckAmount;
+         if (!shopId || amount <= 0) {
+            setOrderVouchers([]);
+            return;
+         }
+
+         try {
+            setLoadingVouchers(true);
+            setVoucherError(null);
+            const response = await voucherService.getVouchersForOrder(shopId, amount, 0, 20);
+            const list = response.result?.content || [];
+            setOrderVouchers(
+               list.filter((item) => item.voucherResponse && !selectedVouchers.some((selected) => isSameVoucherItem(selected, item)))
+            );
+         } catch (err) {
+            console.error('Failed to load checkout vouchers', err);
+            setOrderVouchers([]);
+            setVoucherError('Không tải được voucher khả dụng.');
+         } finally {
+            setLoadingVouchers(false);
+         }
+      };
+
+      fetchOrderVouchers();
+   }, [shopId, voucherCheckAmount, selectedVouchers]);
+
    const handleAddressChange = (val: string) => {
       setRecipientAddress(val);
       setSelectedPlaceId(null);
@@ -224,6 +288,8 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
             shippingAddress: recipientAddress,
             note,
             paymentMethod,
+            voucherUserId: selectedVouchers[0]?.voucherUserId,
+            voucherUserIds: selectedVouchers.map((voucher) => voucher.voucherUserId).filter(Boolean),
             items: cartData.items.map(item => {
                if (item.itemType === 'MYSTERY_BOX') {
                   return { mysteryBoxId: item.mysteryBoxId, quantity: item.quantity };
@@ -299,7 +365,8 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
       );
    }
 
-   const totalAmount = (cartData?.totalAmount || 0) + shippingFee;
+   const subtotalAmount = cartData?.totalAmount || 0;
+   const totalAmount = Math.max(0, subtotalAmount - voucherDiscount) + shippingFee;
 
    return (
       <div className="min-h-screen bg-gray-50 pb-20">
@@ -442,11 +509,112 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
                                  </div>
                                  <p className="text-gray-500 font-medium">SL: {item.quantity}</p>
                               </div>
-                              <span className="font-black text-gray-900 whitespace-nowrap">
-                                 {((item.price || 0) * item.quantity).toLocaleString('vi-VN')}đ
-                              </span>
+                              <div className="text-right">
+                                 {item.salePrice != null && item.discountPercent ? (
+                                   <div>
+                                     <span className="text-[9px] font-bold text-red-400 line-through block">{((item.price || 0) * item.quantity).toLocaleString('vi-VN')}đ</span>
+                                     <span className="font-black text-primary whitespace-nowrap">{(item.salePrice * item.quantity).toLocaleString('vi-VN')}đ</span>
+                                   </div>
+                                 ) : (
+                                   <span className="font-black text-gray-900 whitespace-nowrap">{((item.price || 0) * item.quantity).toLocaleString('vi-VN')}đ</span>
+                                 )}
+                              </div>
                            </div>
                         ))}
+                     </div>
+
+                     <div className="py-4 border-t border-gray-100">
+                        <div className="flex items-center justify-between mb-3">
+                           <div className="flex items-center gap-2">
+                              <Gift className="size-4 text-primary" />
+                              <span className="text-xs font-black uppercase text-gray-900">Voucher</span>
+                           </div>
+                           {selectedVouchers.length > 0 && (
+                              <button
+                                 type="button"
+                                 onClick={() => setSelectedVouchers([])}
+                                 className="text-[10px] font-black text-red-500 hover:text-red-600"
+                              >
+                                 Bỏ tất cả
+                              </button>
+                           )}
+                        </div>
+                        {selectedVoucherApplications.length > 0 && (
+                           <div className="mb-3 space-y-2">
+                              <p className="text-[10px] font-black uppercase tracking-wider text-primary">Đã áp dụng</p>
+                              {selectedVoucherApplications.map(({ item, discount }) => {
+                                 const voucher = item.voucherResponse;
+                                 if (!voucher) return null;
+                                 const voucherKey = getVoucherItemKey(item);
+                                 return (
+                                    <div key={`selected-${voucherKey}`} className="rounded-xl border-2 border-primary bg-primary/5 p-3">
+                                       <div className="flex items-start justify-between gap-2">
+                                          <div>
+                                             <p className="text-[10px] font-black text-primary uppercase">{voucher.voucherCode}</p>
+                                             <p className="mt-0.5 text-xs font-black text-gray-900">
+                                                Đã áp dụng -{discount.toLocaleString('vi-VN')}đ
+                                             </p>
+                                          </div>
+                                          <button
+                                             type="button"
+                                             onClick={() => setSelectedVouchers((prev) => prev.filter((selected) => getVoucherItemKey(selected) !== voucherKey))}
+                                             className="text-[10px] font-black text-red-500"
+                                          >
+                                             Bỏ
+                                          </button>
+                                       </div>
+                                    </div>
+                                 );
+                              })}
+                           </div>
+                        )}
+                        {loadingVouchers ? (
+                           <div className="rounded-xl bg-gray-50 p-3 text-xs font-bold text-gray-400">Đang tải voucher...</div>
+                        ) : voucherError ? (
+                           <div className="rounded-xl bg-red-50 p-3 text-xs font-bold text-red-600">{voucherError}</div>
+                        ) : orderVouchers.length === 0 ? (
+                           <div className="rounded-xl bg-gray-50 p-3 text-xs font-bold text-gray-400">Không có voucher phù hợp cho đơn này.</div>
+                        ) : (
+                           <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+                              {selectedVouchers.length > 0 && (
+                                 <p className="text-[10px] font-black uppercase tracking-wider text-gray-400">Có thể áp dụng thêm</p>
+                              )}
+                              {orderVouchers.map((item) => {
+                                 const voucher = item.voucherResponse;
+                                 if (!voucher) return null;
+                                 const discount = calculateVoucherDiscount(item, voucherCheckAmount);
+                                 const voucherKey = getVoucherItemKey(item);
+                                 return (
+                                    <button
+                                       key={voucherKey}
+                                       type="button"
+                                       onClick={() => setSelectedVouchers((prev) => prev.some((selected) => isSameVoucherItem(selected, item)) ? prev : [...prev, item])}
+                                       className="w-full rounded-xl border border-gray-200 bg-white p-3 text-left transition-all hover:border-primary/40 hover:bg-primary/5"
+                                    >
+                                       <div className="flex items-start justify-between gap-2">
+                                          <div>
+                                             <p className="text-[10px] font-black text-primary uppercase">{voucher.voucherCode}</p>
+                                             <p className="mt-0.5 text-xs font-black text-gray-900">
+                                                Giảm {voucher.discountValue}% tối đa {Number(voucher.maxDiscount).toLocaleString('vi-VN')}đ
+                                             </p>
+                                             <p className="mt-0.5 text-[10px] font-bold text-gray-400">
+                                                Đơn từ {Number(voucher.minOrderValue).toLocaleString('vi-VN')}đ
+                                             </p>
+                                          </div>
+                                          <div className="text-right">
+                                             <span className="block text-xs font-black text-primary whitespace-nowrap">
+                                                -{discount.toLocaleString('vi-VN')}đ
+                                             </span>
+                                             <span className="mt-1 inline-block rounded-lg bg-gray-100 px-2 py-1 text-[9px] font-black text-gray-500">
+                                                Áp dụng thêm
+                                             </span>
+                                          </div>
+                                       </div>
+                                    </button>
+                                 );
+                              })}
+                           </div>
+                        )}
                      </div>
 
                      <div className="space-y-2 py-4 border-t border-gray-100">
@@ -454,6 +622,12 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
                            <span className="text-gray-600 font-medium">Tiền hàng ({cartData?.items?.length || 0})</span>
                            <span className="font-bold text-gray-900">{(cartData?.totalAmount || 0).toLocaleString('vi-VN')}đ</span>
                         </div>
+                        {voucherDiscount > 0 && (
+                           <div className="flex justify-between text-xs">
+                              <span className="text-gray-600 font-medium">Giảm voucher</span>
+                              <span className="font-bold text-primary">-{voucherDiscount.toLocaleString('vi-VN')}đ</span>
+                           </div>
+                        )}
                         {/* ✅ Phí ship động */}
                         <div className="flex justify-between text-xs items-center">
                            <span className="text-gray-600 font-medium flex items-center gap-1">

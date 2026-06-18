@@ -18,12 +18,8 @@ export interface CartItemResponse {
     shopName?: string;
     itemType: 'PRODUCT' | 'MYSTERY_BOX' | 'BUILD_COMBO' | 'COMBO';
     shopOwnerId?: number;
-}
-
-export interface CartResponse {
-    cartId: number;
-    items: CartItemResponse[];
-    totalAmount: number;
+    discountPercent?: number;
+    salePrice?: number;
 }
 
 export const cartService = {
@@ -67,3 +63,8 @@ export const cartService = {
         return await api.post<CartResponse>(`/cart/add-plan/${planId}`);
     }
 };
+
+/** Báo cho Header + trang Cart refetch giỏ hàng ngay lập tức */
+export function notifyCartUpdated() {
+    window.dispatchEvent(new Event('cart-updated'));
+}

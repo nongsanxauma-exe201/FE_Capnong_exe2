@@ -80,6 +80,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, user, currentPath, onNavigate, 
     { name: 'Ghép đơn', icon: ChefHat, id: 'trip-join' },
 
     { name: 'Đánh giá', icon: MessageSquare, id: 'reviews' },
+    { name: 'Voucher', icon: Gift, id: 'vouchers' },
     { name: 'Thông báo', icon: Bell, id: 'notifications' },
     // { name: 'Khiếu nại', icon: Gavel, id: 'farmer-disputes' }, // tạm ẩn
     { name: 'Hồ sơ cá nhân', icon: UserCircle, id: 'profile' },

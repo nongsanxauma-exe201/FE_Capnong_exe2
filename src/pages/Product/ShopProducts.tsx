@@ -19,8 +19,13 @@ import {
   Gift,
   ChefHat,
   Tag,
+  Share2,
+  Copy,
+  Check,
+  X,
+  Facebook,
 } from 'lucide-react';
-import { productService, ProductResponse, userService, UserResponse, cartService, reviewService, ReviewResponse, mysteryBoxService, MysteryBox, comboService, BuildComboResponse } from '../../services';
+import { productService, ProductResponse, userService, UserResponse, cartService, reviewService, ReviewResponse, mysteryBoxService, MysteryBox, comboService, BuildComboResponse, voucherService, VoucherResponse } from '../../services';
 import { globalShowAlert } from '../../contexts/PopupContext';
 
 interface ShopProductsProps {
@@ -49,6 +54,13 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
   const [addingToCart, setAddingToCart] = useState<number | null>(null);
   const [addingBoxToCart, setAddingBoxToCart] = useState<number | null>(null);
   const [addingComboToCart, setAddingComboToCart] = useState<number | null>(null);
+  const [showShareMenu, setShowShareMenu] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [shopVouchers, setShopVouchers] = useState<VoucherResponse[]>([]);
+  const [receivingVoucher, setReceivingVoucher] = useState<string | null>(null);
+  const [canReceiveMap, setCanReceiveMap] = useState<Record<string, boolean>>({});
+  const [voucherLoading, setVoucherLoading] = useState(false);
+  const [voucherError, setVoucherError] = useState<string | null>(null);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
@@ -99,6 +111,44 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
     fetchShopData();
   }, [shopId]);
 
+  useEffect(() => {
+    const fetchShopVouchers = async () => {
+      try {
+        setVoucherLoading(true);
+        setVoucherError(null);
+        const response = await voucherService.getBuyerShopVouchers(shopId, 0, 3);
+        const result = response.result;
+        const vouchers = Array.isArray(result) ? result : result?.content || [];
+        setShopVouchers(vouchers);
+
+        if (isAuthenticated && vouchers.length > 0) {
+          const statuses = await Promise.all(
+            vouchers.map(async (voucher) => {
+              try {
+                const canReceive = await voucherService.canReceiveVoucher(voucher.voucherCode);
+                return [voucher.voucherCode, Boolean(canReceive.result)] as const;
+              } catch {
+                return [voucher.voucherCode, false] as const;
+              }
+            })
+          );
+          setCanReceiveMap(Object.fromEntries(statuses));
+        } else {
+          setCanReceiveMap({});
+        }
+      } catch (err) {
+        console.error('Failed to load shop vouchers', err);
+        setShopVouchers([]);
+        setCanReceiveMap({});
+        setVoucherError('Không tải được voucher của shop.');
+      } finally {
+        setVoucherLoading(false);
+      }
+    };
+
+    fetchShopVouchers();
+  }, [shopId, isAuthenticated]);
+
   const handleAddToCart = async (productId: number) => {
     if (!isAuthenticated) { onOpenLogin(); return; }
     setAddingToCart(productId);
@@ -137,6 +187,25 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
       globalShowAlert('Không thể thêm combo vào giỏ hàng. Vui lòng thử lại.', 'Lỗi', 'error');
     } finally {
       setAddingComboToCart(null);
+    }
+  };
+
+  const handleReceiveVoucher = async (voucherCode: string) => {
+    if (!isAuthenticated) { onOpenLogin(); return; }
+    try {
+      setReceivingVoucher(voucherCode);
+      await voucherService.receiveVoucher(voucherCode);
+      setCanReceiveMap((prev) => ({ ...prev, [voucherCode]: false }));
+      setShopVouchers((prev) => prev.map((voucher) => (
+        voucher.voucherCode === voucherCode
+          ? { ...voucher, claimedCount: (voucher.claimedCount ?? 0) + 1 }
+          : voucher
+      )));
+      globalShowAlert('Đã lưu voucher vào kho của bạn.', 'Thành công', 'success');
+    } catch (err: any) {
+      globalShowAlert(err?.data?.message || 'Không thể nhận voucher. Vui lòng thử lại.', 'Lỗi', 'error');
+    } finally {
+      setReceivingVoucher(null);
     }
   };
 
@@ -248,7 +317,7 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
                   <h2 className="text-2xl font-black text-gray-900 mb-1">{shopName}</h2>
                   <div className="flex flex-wrap items-center gap-3 text-sm">
                     {shopInfo?.status === 'ACTIVE' && (
-                      <span className="flex items-center gap-1 text-green-600 font-bold">
+                      <span className="flex items-center gap-1 text-primary font-bold">
                         <ShieldCheck className="size-3.5" />
                         Đã xác thực
                       </span>
@@ -278,7 +347,7 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
 
                 <div className="bg-white rounded-xl p-3 border border-gray-100 shadow-sm">
                   <div className="flex items-center gap-2 mb-1">
-                    <TrendingUp className="size-4 text-green-600" />
+                    <TrendingUp className="size-4 text-primary" />
                     <span className="text-lg font-black text-gray-900">{activeProducts}</span>
                   </div>
                   <p className="text-[10px] text-gray-500 font-bold uppercase">Đang bán</p>
@@ -306,7 +375,7 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
               </div>
 
               {/* Actions */}
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <button
                   onClick={handleChatNow}
                   className="px-4 py-2 bg-primary text-white font-bold text-xs rounded-xl hover:bg-primary-dark transition-colors flex items-center gap-2 shadow-lg shadow-primary/20"
@@ -318,6 +387,51 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
                   <Heart className="size-3.5" />
                   Theo dõi
                 </button>
+                <div className="relative">
+                  <button
+                    onClick={() => setShowShareMenu(v => !v)}
+                    className="px-4 py-2 bg-white text-gray-700 font-bold text-xs rounded-xl hover:bg-gray-50 transition-colors flex items-center gap-2 border border-gray-200"
+                  >
+                    <Share2 className="size-3.5" />
+                    Chia sẻ
+                  </button>
+                  {showShareMenu && (
+                    <div className="absolute left-0 top-11 z-30 bg-white rounded-2xl shadow-xl border border-gray-100 p-3 w-52 animate-in fade-in slide-in-from-top-2">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Chia sẻ cửa hàng</p>
+                        <button onClick={() => setShowShareMenu(false)} className="size-5 flex items-center justify-center hover:bg-gray-100 rounded-lg">
+                          <X className="size-3 text-gray-400" />
+                        </button>
+                      </div>
+                      <div className="space-y-1">
+                        <button
+                          onClick={async () => {
+                            await navigator.clipboard.writeText(`${window.location.origin}/shop/${shopId}`);
+                            setCopied(true);
+                            setTimeout(() => setCopied(false), 2000);
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-gray-50 text-xs font-bold text-gray-700 transition-colors"
+                        >
+                          {copied ? <Check className="size-3.5 text-green-500" /> : <Copy className="size-3.5 text-gray-400" />}
+                          {copied ? 'Đã sao chép!' : 'Sao chép link'}
+                        </button>
+                        <button
+                          onClick={() => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(`${window.location.origin}/shop/${shopId}`)}`, '_blank', 'width=600,height=400')}
+                          className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-blue-50 text-xs font-bold text-blue-600 transition-colors"
+                        >
+                          <Facebook className="size-3.5" /> Facebook
+                        </button>
+                        <button
+                          onClick={() => window.open(`https://zalo.me/share?url=${encodeURIComponent(`${window.location.origin}/shop/${shopId}`)}`, '_blank', 'width=600,height=400')}
+                          className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-blue-50 text-xs font-bold text-blue-500 transition-colors"
+                        >
+                          <span className="size-3.5 rounded-full bg-blue-500 text-white text-[7px] font-black flex items-center justify-center flex-shrink-0">Z</span>
+                          Zalo
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -328,6 +442,63 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
               <p className="text-sm text-gray-600 font-medium">{shopInfo.description}</p>
             </div>
           )}
+
+          <div className="mt-4 bg-white rounded-2xl border border-emerald-100 p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div className="flex items-center gap-2">
+                <Gift className="size-5 text-primary" />
+                <h3 className="text-sm font-black text-gray-900">Voucher của shop</h3>
+              </div>
+              <button
+                onClick={() => navigate(`/shop/${shopId}/vouchers`)}
+                className="text-xs font-black text-primary hover:text-primary-dark"
+              >
+                Xem tất cả
+              </button>
+            </div>
+
+            {voucherLoading ? (
+              <div className="rounded-2xl bg-gray-50 p-4 text-xs font-bold text-gray-400">
+                Đang tải voucher...
+              </div>
+            ) : voucherError ? (
+              <div className="rounded-2xl bg-red-50 p-4 text-xs font-bold text-red-600">
+                {voucherError}
+              </div>
+            ) : shopVouchers.length === 0 ? (
+              <div className="rounded-2xl bg-gray-50 p-4 text-xs font-bold text-gray-400">
+                Shop hiện chưa có voucher để nhận.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {shopVouchers.map((voucher) => {
+                  const canReceive = canReceiveMap[voucher.voucherCode] !== false;
+                  return (
+                    <div key={voucher.voucherCode} className="rounded-2xl border border-dashed border-primary/30 bg-primary/5 p-4 flex flex-col gap-3">
+                      <div>
+                        <p className="text-xs font-black text-primary">{voucher.voucherCode}</p>
+                        <p className="mt-1 text-lg font-black text-gray-900">Giảm {voucher.discountValue}%</p>
+                        <p className="text-xs text-gray-500 font-bold">
+                          Tối đa {Number(voucher.maxDiscount).toLocaleString('vi-VN')}đ · Đơn từ {Number(voucher.minOrderValue).toLocaleString('vi-VN')}đ
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleReceiveVoucher(voucher.voucherCode)}
+                        disabled={receivingVoucher === voucher.voucherCode || (isAuthenticated && !canReceive)}
+                        className="w-full rounded-xl bg-primary px-3 py-2 text-xs font-black text-white hover:bg-primary-dark disabled:bg-gray-200 disabled:text-gray-500"
+                      >
+                        {receivingVoucher === voucher.voucherCode
+                          ? 'Đang lưu...'
+                          : isAuthenticated && !canReceive
+                            ? 'Đã nhận'
+                            : 'Nhận voucher'}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -439,10 +610,18 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
                         </h4>
                         <p className="text-xs text-gray-500 font-medium mb-2">{product.unit}</p>
 
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-lg font-black text-primary">
-                            {product.sellingPrice.toLocaleString('vi-VN')}đ
-                          </span>
+                        <div className="flex flex-col gap-0.5 mb-2">
+                          {product.salePrice != null && product.salePrice > 0 ? (
+                            <>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs text-red-500 line-through font-semibold">{(product.sellingPrice || 0).toLocaleString('vi-VN')}đ</span>
+                                <span className="bg-primary text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">-{product.discountPercent}%</span>
+                              </div>
+                              <span className="text-lg font-black text-primary">{product.salePrice.toLocaleString('vi-VN')}đ</span>
+                            </>
+                          ) : (
+                            <span className="text-lg font-black text-primary">{(product.sellingPrice || 0).toLocaleString('vi-VN')}đ</span>
+                          )}
                         </div>
 
                         <div className="flex items-center justify-between">
@@ -450,7 +629,7 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
                             Còn: {product.stockQuantity} {product.unit}
                           </span>
                           {product.stockQuantity > 0 ? (
-                            <span className="text-[10px] text-green-600 font-bold">Còn hàng</span>
+                            <span className="text-[10px] text-primary font-bold">Còn hàng</span>
                           ) : (
                             <span className="text-[10px] text-red-600 font-bold">Hết hàng</span>
                           )}
@@ -544,7 +723,7 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
             <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
               <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-100">
                 <div className="size-9 bg-green-100 rounded-xl flex items-center justify-center">
-                  <ChefHat className="size-5 text-green-600" />
+                  <ChefHat className="size-5 text-primary" />
                 </div>
                 <div>
                   <h3 className="text-lg font-black text-gray-900">Combo Nấu Ăn</h3>
@@ -599,7 +778,7 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
                           <div>
                             <span className="text-lg font-black text-primary">{combo.discountPrice.toLocaleString('vi-VN')}đ</span>
                             {savings > 0 && (
-                              <p className="text-[10px] text-green-600 font-bold flex items-center gap-1 mt-0.5">
+                              <p className="text-[10px] text-primary font-bold flex items-center gap-1 mt-0.5">
                                 <Tag className="size-3" /> Tiết kiệm {savings.toLocaleString('vi-VN')}đ
                               </p>
                             )}
