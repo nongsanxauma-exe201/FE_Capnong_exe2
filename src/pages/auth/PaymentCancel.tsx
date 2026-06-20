@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { XCircle, Loader2, Package, ArrowRight, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { paymentService } from '../../services';
-
-const PENDING_PAYOS_PAYMENT_KEY = 'pendingPayOSPayment';
+import { cartService, paymentService } from '../../services';
+import { clearPendingPayOSPayment, saveRestoredPayOSCart } from '../../utils/pendingPayOSPayment';
 
 const PaymentCancel: React.FC = () => {
   const navigate = useNavigate();
@@ -22,7 +21,15 @@ const PaymentCancel: React.FC = () => {
         setIsCancelling(true);
         setCancelError(null);
         await paymentService.cancelPaymentByOrderCode(orderCode);
-        sessionStorage.removeItem(PENDING_PAYOS_PAYMENT_KEY);
+        try {
+          const restoredCart = await cartService.getCart();
+          saveRestoredPayOSCart(restoredCart.result, { orderCode: null, orderId: null });
+        } catch (cartError) {
+          console.warn('Failed to fetch restored cart after PayOS cancel', cartError);
+        }
+        clearPendingPayOSPayment();
+        sessionStorage.removeItem('payOSExternalCheckoutActive');
+        sessionStorage.removeItem('payOSBrowserBackReloaded');
         window.dispatchEvent(new Event('cart-updated'));
       } catch (error: any) {
         setCancelError(error?.data?.message || 'Không thể cập nhật trạng thái hủy thanh toán.');

@@ -2,8 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { CheckCircle2, Loader2, Package, ArrowRight, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { paymentService } from '../../services';
-
-const PENDING_PAYOS_PAYMENT_KEY = 'pendingPayOSPayment';
+import { clearPendingPayOSPayment, clearRestoredPayOSCart } from '../../utils/pendingPayOSPayment';
 
 const PaymentSuccess: React.FC = () => {
   const navigate = useNavigate();
@@ -17,7 +16,10 @@ const PaymentSuccess: React.FC = () => {
   const payosStatus = urlParams.get('status');
 
   useEffect(() => {
-    sessionStorage.removeItem(PENDING_PAYOS_PAYMENT_KEY);
+    clearPendingPayOSPayment();
+    clearRestoredPayOSCart();
+    sessionStorage.removeItem('payOSExternalCheckoutActive');
+    sessionStorage.removeItem('payOSBrowserBackReloaded');
 
     let pollInterval: NodeJS.Timeout;
     let timeoutId: NodeJS.Timeout;

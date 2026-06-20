@@ -5,6 +5,7 @@ import { AppRole, User, KYCStatus } from '../../types/index';
 import { Search, ShoppingCart, Bell, Menu, User as UserIcon, LogOut, Phone, X, CheckCircle2, Trash2, Store, Truck, LayoutDashboard, Package, MessageSquare, RefreshCw, Ticket } from 'lucide-react';
 import { notificationService, NotificationItem, cartService } from '../../services';
 import { useNotificationWebSocket } from '../../services/useNotificationWebSocket';
+import { getRestoredPayOSCartData, hasPendingPayOSRollback, redirectToCartAfterPayOSCancel } from '../../utils/pendingPayOSPayment';
 
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -20,6 +21,14 @@ const Header: React.FC<HeaderProps> = ({
   const { user, isAuthenticated, logout: onLogout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  const handleOpenCart = () => {
+    if (hasPendingPayOSRollback()) {
+      void redirectToCartAfterPayOSCancel();
+      return;
+    }
+    navigate('/cart');
+  };
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -69,10 +78,15 @@ const Header: React.FC<HeaderProps> = ({
     if (!isAuthenticated) return;
     try {
       const res = await cartService.getCart();
-      if (res.result) {
-        setCartCount(res.result.items?.length || 0);
+      if (res.result?.items?.length) {
+        setCartCount(res.result.items.length);
+        return;
       }
+      const snapshot = getRestoredPayOSCartData();
+      setCartCount(snapshot?.items?.length || 0);
     } catch (err) {
+      const snapshot = getRestoredPayOSCartData();
+      setCartCount(snapshot?.items?.length || 0);
       console.error('Failed to fetch cart count', err);
     }
   };
@@ -283,7 +297,7 @@ const Header: React.FC<HeaderProps> = ({
                   )}
                 </div>
 
-                <button onClick={() => navigate('/cart')} className="relative text-white hover:opacity-80 transition-opacity">
+                <button onClick={handleOpenCart} className="relative text-white hover:opacity-80 transition-opacity">
                   <ShoppingCart className="size-6" />
                   {cartCount > 0 && (
                     <span className="absolute -top-1.5 -right-1.5 bg-[#FAD973] text-[#38543a] text-[9px] font-black w-4 h-4 flex items-center justify-center rounded-full border-2 border-[#38543a]">

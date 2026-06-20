@@ -22,9 +22,14 @@ export interface CartItemResponse {
     salePrice?: number;
 }
 
+export interface CartResponse {
+    items: CartItemResponse[];
+    totalAmount: number;
+}
+
 export const cartService = {
     getCart: async (): Promise<ApiResponse<CartResponse>> => {
-        return await api.get<CartResponse>('/cart');
+        return await api.get<CartResponse>(`/cart?_=${Date.now()}`);
     },
 
     addToCart: async (data: AddCartItemRequest): Promise<ApiResponse<CartResponse>> => {
