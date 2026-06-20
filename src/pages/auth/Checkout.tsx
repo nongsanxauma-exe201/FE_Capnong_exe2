@@ -5,6 +5,8 @@ import { orderService, paymentService, authService, cartService, CartResponse, v
 import { httpClient } from '../../services/http.client';
 import { globalShowAlert } from '../../contexts/PopupContext';
 
+const PENDING_PAYOS_PAYMENT_KEY = 'pendingPayOSPayment';
+
 // ✅ Extend CartResponse để có shopOwnerId (BE đã thêm field này)
 type CartItemWithShop = {
    productId?: number;
@@ -43,6 +45,7 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
    const [showQRCode, setShowQRCode] = useState(false);
    const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
    const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
+   const [isRestoringPayOS, setIsRestoringPayOS] = useState(false);
 
    // ✅ Phí ship động
    const [shippingFee, setShippingFee] = useState<number>(15000);
@@ -62,11 +65,59 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
    const [suggestTimer, setSuggestTimer] = useState<NodeJS.Timeout | null>(null);
    const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
 
+   const clearPendingPayOSPayment = () => {
+      try {
+         sessionStorage.removeItem(PENDING_PAYOS_PAYMENT_KEY);
+      } catch {}
+   };
+
+   const getPendingPayOSOrderCode = (): string | null => {
+      try {
+         const raw = sessionStorage.getItem(PENDING_PAYOS_PAYMENT_KEY);
+         if (!raw) return null;
+         const parsed = JSON.parse(raw) as { orderCode?: string; createdAt?: number };
+         if (!parsed?.orderCode) return null;
+
+         // Auto-expire pending marker sau 2 giờ để tránh trạng thái stale.
+         if (parsed.createdAt && Date.now() - parsed.createdAt > 2 * 60 * 60 * 1000) {
+            clearPendingPayOSPayment();
+            return null;
+         }
+
+         return parsed.orderCode;
+      } catch {
+         clearPendingPayOSPayment();
+         return null;
+      }
+   };
+
    useEffect(() => {
       const fetchData = async () => {
          try {
             setLoading(true);
             setError(null);
+
+            const pendingOrderCode = getPendingPayOSOrderCode();
+            if (pendingOrderCode) {
+               const navEntry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+               const isBackForwardNav = navEntry?.type === 'back_forward';
+               const cameFromPayOS = document.referrer?.includes('pay.payos.vn');
+
+               if (isBackForwardNav || cameFromPayOS) {
+                  try {
+                     setIsRestoringPayOS(true);
+                     await paymentService.cancelPaymentByOrderCode(pendingOrderCode);
+                     clearPendingPayOSPayment();
+                     window.dispatchEvent(new Event('cart-updated'));
+                     onBack();
+                     return;
+                  } catch (cancelError) {
+                     console.warn('Failed to auto-cancel pending PayOS payment', cancelError);
+                  } finally {
+                     setIsRestoringPayOS(false);
+                  }
+               }
+            }
 
             const [userRes, cartRes] = await Promise.all([
                authService.getMyInfo(),
@@ -315,7 +366,25 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
                   orderId, amount, method: 'PAYOS', paymentGateway: 'PAYOS'
                });
                if (paymentRes.result) {
-                  if (paymentRes.result.checkoutUrl) { window.location.href = paymentRes.result.checkoutUrl; return; }
+                  if (paymentRes.result.checkoutUrl) {
+                     try {
+                        if (paymentRes.result.payosOrderCode) {
+                           sessionStorage.setItem(
+                              PENDING_PAYOS_PAYMENT_KEY,
+                              JSON.stringify({
+                                 orderCode: paymentRes.result.payosOrderCode,
+                                 orderId,
+                                 createdAt: Date.now(),
+                              })
+                           );
+                        } else {
+                           clearPendingPayOSPayment();
+                        }
+                     } catch {}
+
+                     window.location.href = paymentRes.result.checkoutUrl;
+                     return;
+                  }
                   if (paymentRes.result.qrCodeUrl) {
                      setQrCodeUrl(paymentRes.result.qrCodeUrl);
                      setCheckoutUrl(paymentRes.result.checkoutUrl || null);
@@ -326,6 +395,7 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
                }
             }
 
+            clearPendingPayOSPayment();
             onComplete(orderId);
          }
 
@@ -346,7 +416,9 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
          <div className="min-h-screen bg-background flex items-center justify-center py-20">
             <div className="flex flex-col items-center gap-4">
                <Loader2 className="size-12 animate-spin text-primary" />
-               <p className="text-sm font-bold text-gray-600">Đang tải...</p>
+               <p className="text-sm font-bold text-gray-600">
+                  {isRestoringPayOS ? 'Đang khôi phục giỏ hàng từ phiên PayOS...' : 'Đang tải...'}
+               </p>
             </div>
          </div>
       );
