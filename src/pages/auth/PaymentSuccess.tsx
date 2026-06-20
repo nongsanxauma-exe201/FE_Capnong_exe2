@@ -3,6 +3,8 @@ import { CheckCircle2, Loader2, Package, ArrowRight, RefreshCw } from 'lucide-re
 import { useNavigate } from 'react-router-dom';
 import { paymentService } from '../../services';
 
+const PENDING_PAYOS_PAYMENT_KEY = 'pendingPayOSPayment';
+
 const PaymentSuccess: React.FC = () => {
   const navigate = useNavigate();
   const [countdown, setCountdown] = useState(5);
@@ -15,6 +17,8 @@ const PaymentSuccess: React.FC = () => {
   const payosStatus = urlParams.get('status');
 
   useEffect(() => {
+    sessionStorage.removeItem(PENDING_PAYOS_PAYMENT_KEY);
+
     let pollInterval: NodeJS.Timeout;
     let timeoutId: NodeJS.Timeout;
     let pollCount = 0;

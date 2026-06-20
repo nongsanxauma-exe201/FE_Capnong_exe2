@@ -43,6 +43,10 @@ class PaymentService {
         return httpClient.post<string>(`/payments/${encodeURIComponent(orderCode)}/confirm`, {});
     }
 
+    async cancelPaymentByOrderCode(orderCode: string): Promise<ApiResponse<string>> {
+        return httpClient.post<string>(`/payments/${encodeURIComponent(orderCode)}/cancel`, {});
+    }
+
     async createPaymentPayOS(data: CreatePaymentRequest): Promise<ApiResponse<PaymentResponse>> {
         return httpClient.post<PaymentResponse>('/payments/payos', data);
     }
