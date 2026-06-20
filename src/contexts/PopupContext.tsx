@@ -11,6 +11,13 @@ const PopupContext = createContext<PopupContextProps | undefined>(undefined);
 export let globalShowAlert: (message: string, title?: string, type?: PopupType) => void = () => {};
 export let globalShowConfirm: (message: string, title?: string) => Promise<boolean> = async () => false;
 
+const SUPPRESSED_PAYOS_RESTORE_MESSAGES = new Set([
+  'đã hủy thanh toán payos và khôi phục lại giỏ hàng.',
+  'đã hủy thanh toán payos và khôi phục lại giỏ hàng',
+  'đã huỷ thanh toán payos và khôi phục lại giỏ hàng.',
+  'đã huỷ thanh toán payos và khôi phục lại giỏ hàng',
+]);
+
 export function PopupProvider({ children }: { children: ReactNode }) {
   const [popup, setPopup] = useState<PopupState>({
     isOpen: false,
@@ -20,6 +27,9 @@ export function PopupProvider({ children }: { children: ReactNode }) {
   });
 
   const showAlert = (message: string, title = 'Thông báo', type: PopupType = 'alert') => {
+    const normalizedMessage = (message || '').trim().toLowerCase();
+    if (SUPPRESSED_PAYOS_RESTORE_MESSAGES.has(normalizedMessage)) return;
+
     setPopup({
       isOpen: true,
       type,

@@ -1,14 +1,38 @@
 import React, { useEffect, useState } from 'react';
 import { XCircle, Loader2, Package, ArrowRight, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { paymentService } from '../../services';
+
+const PENDING_PAYOS_PAYMENT_KEY = 'pendingPayOSPayment';
 
 const PaymentCancel: React.FC = () => {
   const navigate = useNavigate();
   const [countdown, setCountdown] = useState(10);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   // Get params from URL
   const urlParams = new URLSearchParams(window.location.search);
   const orderCode = urlParams.get('orderCode');
+
+  useEffect(() => {
+    const cancelPayment = async () => {
+      if (!orderCode) return;
+      try {
+        setIsCancelling(true);
+        setCancelError(null);
+        await paymentService.cancelPaymentByOrderCode(orderCode);
+        sessionStorage.removeItem(PENDING_PAYOS_PAYMENT_KEY);
+        window.dispatchEvent(new Event('cart-updated'));
+      } catch (error: any) {
+        setCancelError(error?.data?.message || 'Không thể cập nhật trạng thái hủy thanh toán.');
+      } finally {
+        setIsCancelling(false);
+      }
+    };
+
+    cancelPayment();
+  }, [orderCode]);
 
   useEffect(() => {
     // Countdown to redirect
@@ -75,6 +99,19 @@ const PaymentCancel: React.FC = () => {
               Lưu ý: Đơn hàng sẽ tự động hủy nếu không được thanh toán trong vòng 24h.
             </p>
           </div>
+
+          {isCancelling && (
+            <div className="w-full mb-4 rounded-2xl bg-blue-50 border border-blue-100 px-4 py-3 flex items-center gap-2">
+              <Loader2 className="size-4 text-blue-600 animate-spin" />
+              <p className="text-xs font-bold text-blue-700">Đang cập nhật trạng thái hủy thanh toán...</p>
+            </div>
+          )}
+
+          {cancelError && (
+            <div className="w-full mb-4 rounded-2xl bg-red-50 border border-red-100 px-4 py-3">
+              <p className="text-xs font-bold text-red-600">{cancelError}</p>
+            </div>
+          )}
 
           {/* Actions */}
           <div className="w-full space-y-3">
