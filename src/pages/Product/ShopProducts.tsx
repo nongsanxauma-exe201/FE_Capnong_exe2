@@ -154,6 +154,7 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
     setAddingToCart(productId);
     try {
       await cartService.addToCart({ productId, quantity: 1 });
+      window.dispatchEvent(new Event('cart-updated'));
       globalShowAlert('Đã thêm vào giỏ hàng!', 'Thành công', 'success');
     } catch (error) {
       globalShowAlert('Không thể thêm vào giỏ hàng. Vui lòng thử lại.', 'Lỗi', 'error');

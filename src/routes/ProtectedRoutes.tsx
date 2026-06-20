@@ -11,14 +11,22 @@ import MyVouchers from '../pages/auth/MyVouchers';
 import MyReturns from '../pages/auth/MyReturns';
 import UserProfile from '../pages/auth/UserProfile';
 import Wallet from '../pages/auth/Wallet';
-// import MealPlan from '../pages/auth/MealPlan';
 import KYC from '../pages/auth/KYC';
 import { AppRole } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { hasPendingPayOSRollback, redirectToCartAfterPayOSCancel } from '../utils/pendingPayOSPayment';
 
 const ProtectedRoutes = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
+
+    const handleCheckoutBack = () => {
+        if (hasPendingPayOSRollback()) {
+            void redirectToCartAfterPayOSCancel();
+            return;
+        }
+        navigate('/cart', { state: { refreshCartAt: Date.now() } });
+    };
 
     return (
         <>
@@ -29,7 +37,10 @@ const ProtectedRoutes = () => {
             } />
             <Route path="/checkout" element={
                 <ProtectedRoute>
-                    <Checkout onComplete={(id) => navigate(`/success?orderId=${id}`)} onBack={() => navigate('/cart')} />
+                    <Checkout
+                        onComplete={(id) => navigate(`/success?orderId=${id}`)}
+                        onBack={handleCheckoutBack}
+                    />
                 </ProtectedRoute>
             } />
             <Route path="/success" element={

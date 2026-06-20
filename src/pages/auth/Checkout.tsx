@@ -3,9 +3,16 @@ import { useLocation } from 'react-router-dom';
 import { MapPin, CreditCard, ChevronRight, Lock, Loader2, ShieldCheck, Wallet, ChevronLeft, AlertCircle, Package, X, Gift, Truck } from 'lucide-react';
 import { orderService, paymentService, authService, cartService, CartResponse, voucherService, VoucherUserResponse } from '../../services';
 import { httpClient } from '../../services/http.client';
+import {
+   clearPendingPayOSPayment,
+   hardReloadCartPage,
+   ensurePendingPayOSRolledBack,
+   hasPendingPayOSRollback,
+   resolvePayOSOrderCode,
+   savePendingPayOSPayment,
+   saveRestoredPayOSCart,
+} from '../../utils/pendingPayOSPayment';
 import { globalShowAlert } from '../../contexts/PopupContext';
-
-const PENDING_PAYOS_PAYMENT_KEY = 'pendingPayOSPayment';
 
 // ✅ Extend CartResponse để có shopOwnerId (BE đã thêm field này)
 type CartItemWithShop = {
@@ -65,59 +72,20 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
    const [suggestTimer, setSuggestTimer] = useState<NodeJS.Timeout | null>(null);
    const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
 
-   const clearPendingPayOSPayment = () => {
-      try {
-         sessionStorage.removeItem(PENDING_PAYOS_PAYMENT_KEY);
-      } catch {}
-   };
-
-   const getPendingPayOSOrderCode = (): string | null => {
-      try {
-         const raw = sessionStorage.getItem(PENDING_PAYOS_PAYMENT_KEY);
-         if (!raw) return null;
-         const parsed = JSON.parse(raw) as { orderCode?: string; createdAt?: number };
-         if (!parsed?.orderCode) return null;
-
-         // Auto-expire pending marker sau 2 giờ để tránh trạng thái stale.
-         if (parsed.createdAt && Date.now() - parsed.createdAt > 2 * 60 * 60 * 1000) {
-            clearPendingPayOSPayment();
-            return null;
-         }
-
-         return parsed.orderCode;
-      } catch {
-         clearPendingPayOSPayment();
-         return null;
+   const returnToCartAfterPayOSRollback = useCallback(async () => {
+      setIsRestoringPayOS(true);
+      if (hasPendingPayOSRollback()) {
+         void ensurePendingPayOSRolledBack();
       }
-   };
+      // Bấm nút là qua /cart ngay; Cart.tsx sẽ gọi window.location.reload() tại đó.
+      hardReloadCartPage();
+   }, []);
 
    useEffect(() => {
       const fetchData = async () => {
          try {
             setLoading(true);
             setError(null);
-
-            const pendingOrderCode = getPendingPayOSOrderCode();
-            if (pendingOrderCode) {
-               const navEntry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
-               const isBackForwardNav = navEntry?.type === 'back_forward';
-               const cameFromPayOS = document.referrer?.includes('pay.payos.vn');
-
-               if (isBackForwardNav || cameFromPayOS) {
-                  try {
-                     setIsRestoringPayOS(true);
-                     await paymentService.cancelPaymentByOrderCode(pendingOrderCode);
-                     clearPendingPayOSPayment();
-                     window.dispatchEvent(new Event('cart-updated'));
-                     onBack();
-                     return;
-                  } catch (cancelError) {
-                     console.warn('Failed to auto-cancel pending PayOS payment', cancelError);
-                  } finally {
-                     setIsRestoringPayOS(false);
-                  }
-               }
-            }
 
             const [userRes, cartRes] = await Promise.all([
                authService.getMyInfo(),
@@ -151,11 +119,17 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
 
                const filteredTotalAmount = items.reduce((sum, item) => sum + ((item.salePrice ?? item.price) * item.quantity), 0);
 
-               setCartData({
+               const checkoutCart = {
                   ...cartRes.result,
                   items: items,
                   totalAmount: filteredTotalAmount
-               });
+               };
+
+               setCartData(checkoutCart);
+
+               if (items.length > 0) {
+                  saveRestoredPayOSCart(checkoutCart);
+               }
 
                if (items.length === 0) {
                   setError('Không có sản phẩm nào được chọn để thanh toán!');
@@ -177,7 +151,7 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
          }
       };
       fetchData();
-   }, []);
+   }, [selectedKeys]);
 
    // ✅ Tính phí ship khi địa chỉ thay đổi (debounce 800ms)
    const fetchShippingFee = useCallback(async (address: string, sId: number, placeId: string | null = null) => {
@@ -353,6 +327,9 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
             })
          };
 
+         // Lưu snapshot trước khi BE xóa giỏ hàng lúc tạo order.
+         saveRestoredPayOSCart(cartData);
+
          const orderRes = await orderService.createOrder(orderData);
 
          if (orderRes.result) {
@@ -367,21 +344,9 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
                });
                if (paymentRes.result) {
                   if (paymentRes.result.checkoutUrl) {
-                     try {
-                        if (paymentRes.result.payosOrderCode) {
-                           sessionStorage.setItem(
-                              PENDING_PAYOS_PAYMENT_KEY,
-                              JSON.stringify({
-                                 orderCode: paymentRes.result.payosOrderCode,
-                                 orderId,
-                                 createdAt: Date.now(),
-                              })
-                           );
-                        } else {
-                           clearPendingPayOSPayment();
-                        }
-                     } catch {}
-
+                     const orderCode = resolvePayOSOrderCode(paymentRes.result);
+                     saveRestoredPayOSCart(cartData, { orderCode, orderId });
+                     savePendingPayOSPayment(paymentRes.result, orderId);
                      window.location.href = paymentRes.result.checkoutUrl;
                      return;
                   }
@@ -431,7 +396,12 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
                <AlertCircle className="size-16 text-red-500 mx-auto mb-4" />
                <h3 className="text-xl font-black text-gray-900 mb-2">Không thể thanh toán</h3>
                <p className="text-gray-600 font-medium mb-6">{error}</p>
-               <button onClick={onBack} className="w-full py-3 bg-primary text-white font-black rounded-2xl">Quay lại giỏ hàng</button>
+               <button
+                  onClick={() => void returnToCartAfterPayOSRollback()}
+                  className="w-full py-3 bg-primary text-white font-black rounded-2xl"
+               >
+                  {isRestoringPayOS ? 'Đang khôi phục giỏ hàng...' : 'Quay lại giỏ hàng'}
+               </button>
             </div>
          </div>
       );

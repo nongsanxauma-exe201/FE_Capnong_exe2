@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ShoppingCart, Trash2, Plus, Minus, Info, ArrowRight, ArrowLeft, Loader2, Package, Gift, ChefHat, AlertCircle } from 'lucide-react';
 import { cartService, CartResponse, CartItemResponse } from '../../services/cart.service';
 import { globalShowConfirm, globalShowAlert } from '../../contexts/PopupContext';
+import { clearRestoredPayOSCart, consumeRestoredPayOSCart, ensurePendingPayOSRolledBack, getRestoredPayOSCartData, buildGroupedCartItems, hasPayOSCartRecovery, saveRestoredPayOSCart, PAYOS_RELOAD_CART_ON_ARRIVAL_KEY } from '../../utils/pendingPayOSPayment';
 
 interface CartProps {
   onProceedToCheckout: (selectedKeys?: string[]) => void;
@@ -16,50 +17,196 @@ interface CartState {
 }
 
 const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) => {
-  const [cartState, setCartState] = useState<CartState>({ cart: null, groupedItems: {} });
-  const [loading, setLoading] = useState(true);
-  const [updatingKey, setUpdatingKey] = useState<string | null>(null);
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const snapshotHoldUntilRef = useRef(0);
+  const hasVisibleItemsRef = useRef(false);
 
-  const fetchCart = async (isSilent = false) => {
+  const [cartState, setCartState] = useState<CartState>(() => {
+    const snapshot = getRestoredPayOSCartData();
+    if (snapshot?.items?.length) {
+      snapshotHoldUntilRef.current = Date.now() + 60000;
+      hasVisibleItemsRef.current = true;
+      return {
+        cart: snapshot,
+        groupedItems: buildGroupedCartItems(snapshot.items),
+      };
+    }
+    return { cart: null, groupedItems: {} };
+  });
+  const [loading, setLoading] = useState(() => !getRestoredPayOSCartData()?.items?.length);
+  const [updatingKey, setUpdatingKey] = useState<string | null>(null);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => {
+    const snapshot = getRestoredPayOSCartData();
+    if (!snapshot?.items?.length) return new Set();
+    return new Set(snapshot.items.map((item) => {
+      const type = item.itemType || '';
+      let id: any = null;
+      if (type === 'MYSTERY_BOX') id = item.mysteryBoxId || (item as any).id;
+      else if (type === 'BUILD_COMBO' || type === 'COMBO') id = item.buildComboId || (item as any).comboId || (item as any).id;
+      else id = item.productId || (item as any).id;
+      if (type === 'MYSTERY_BOX') return `b-${id}`;
+      if (type === 'BUILD_COMBO' || type === 'COMBO') return `c-${id}`;
+      return `p-${id}`;
+    }));
+  });
+
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem(PAYOS_RELOAD_CART_ON_ARRIVAL_KEY) !== '1') return;
+      sessionStorage.removeItem(PAYOS_RELOAD_CART_ON_ARRIVAL_KEY);
+      window.location.reload();
+    } catch {}
+  }, []);
+
+  const buildItemKey = (item: CartItemResponse) => {
+    const type = item.itemType || '';
+    let id: any = null;
+    if (type === 'MYSTERY_BOX') id = item.mysteryBoxId || (item as any).id;
+    else if (type === 'BUILD_COMBO' || type === 'COMBO') id = item.buildComboId || (item as any).comboId || (item as any).id;
+    else id = item.productId || (item as any).id;
+    if (type === 'MYSTERY_BOX') return `b-${id}`;
+    if (type === 'BUILD_COMBO' || type === 'COMBO') return `c-${id}`;
+    return `p-${id}`;
+  };
+
+  const applyCartData = (cartData: CartResponse, autoSelect: boolean) => {
+    const grouped = cartData.items.reduce((acc: GroupedCart, item) => {
+      const key = item.shopName || 'Nông Trại Khác';
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(item);
+      return acc;
+    }, {});
+    hasVisibleItemsRef.current = cartData.items.length > 0;
+    setCartState({ cart: cartData, groupedItems: grouped });
+    if (autoSelect) {
+      setSelectedKeys(new Set(cartData.items.map(buildItemKey)));
+    }
+  };
+
+  const fetchCart = async (isSilent = false, keepSnapshot = false) => {
     if (!isSilent) setLoading(true);
     try {
       const resp = await cartService.getCart();
       const cartData = resp.result;
-      if (!cartData) { setCartState({ cart: null, groupedItems: {} }); return; }
-      const grouped = cartData.items.reduce((acc: GroupedCart, item) => {
-        const key = item.shopName || 'Nông Trại Khác';
-        if (!acc[key]) acc[key] = [];
-        acc[key].push(item);
-        return acc;
-      }, {});
-      setCartState({ cart: cartData, groupedItems: grouped });
-      // Auto-select tất cả khi load lần đầu
-      if (!isSilent) {
-        const allKeys = cartData.items.map(item => {
-          const type = item.itemType || '';
-          let id: any = null;
-          if (type === 'MYSTERY_BOX') id = item.mysteryBoxId || (item as any).id;
-          else if (type === 'BUILD_COMBO' || type === 'COMBO') id = item.buildComboId || (item as any).comboId || (item as any).id;
-          else id = item.productId || (item as any).id;
-          if (type === 'MYSTERY_BOX') return `b-${id}`;
-          if (type === 'BUILD_COMBO' || type === 'COMBO') return `c-${id}`;
-          return `p-${id}`;
-        });
-        setSelectedKeys(new Set(allKeys));
+      const snapshot = getRestoredPayOSCartData();
+
+      if (!cartData || !cartData.items) {
+        if (snapshot?.items?.length) {
+          snapshotHoldUntilRef.current = Date.now() + 60000;
+          applyCartData(snapshot, !isSilent);
+          return;
+        }
+        if (!hasVisibleItemsRef.current) {
+          setCartState({ cart: null, groupedItems: {} });
+        }
+        return;
       }
+
+      if (cartData.items.length === 0 && snapshot?.items?.length) {
+        snapshotHoldUntilRef.current = Date.now() + 60000;
+        applyCartData(snapshot, !isSilent);
+        return;
+      }
+
+      if (
+        keepSnapshot
+        && hasVisibleItemsRef.current
+        && cartData.items.length === 0
+        && Date.now() < snapshotHoldUntilRef.current
+      ) {
+        return;
+      }
+
+      if (cartData.items.length > 0) {
+        clearRestoredPayOSCart();
+      }
+
+      applyCartData(cartData, !isSilent);
     } catch (error) {
       console.error('Failed to load cart', error);
+      const snapshot = getRestoredPayOSCartData();
+      if (snapshot?.items?.length) {
+        applyCartData(snapshot, !isSilent);
+      }
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchCart();
-    const handleCartUpdate = () => fetchCart(true);
+    let cancelled = false;
+
+    const syncCartAfterPayOS = async () => {
+      const snapshot = consumeRestoredPayOSCart();
+      if (snapshot?.items?.length) {
+        snapshotHoldUntilRef.current = Date.now() + 60000;
+        applyCartData(snapshot, true);
+        setLoading(false);
+      }
+
+      if (hasPayOSCartRecovery()) {
+        await ensurePendingPayOSRolledBack();
+      }
+      if (cancelled) return;
+
+      await fetchCart(!!snapshot?.items?.length, true);
+
+      // Tiếp tục poll BE trong nền nếu vẫn đang hiển thị snapshot.
+      if (!getRestoredPayOSCartData()?.items?.length) return;
+
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        if (cancelled) return;
+        await new Promise((resolve) => window.setTimeout(resolve, 500));
+        try {
+          const resp = await cartService.getCart();
+          if (resp.result?.items?.length) {
+            clearRestoredPayOSCart();
+            applyCartData(resp.result, false);
+            window.dispatchEvent(new Event('cart-updated'));
+            return;
+          }
+        } catch (error) {
+          console.warn('Background cart restore poll failed', error);
+        }
+      }
+    };
+
+    void syncCartAfterPayOS();
+
+    const handleCartUpdate = () => fetchCart(true, true);
     window.addEventListener('cart-updated', handleCartUpdate);
-    return () => window.removeEventListener('cart-updated', handleCartUpdate);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('cart-updated', handleCartUpdate);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleReturnToCart = async () => {
+      const snapshot = getRestoredPayOSCartData();
+      if (snapshot?.items?.length) {
+        snapshotHoldUntilRef.current = Date.now() + 60000;
+        applyCartData(snapshot, true);
+      }
+      if (hasPayOSCartRecovery()) {
+        await ensurePendingPayOSRolledBack();
+      }
+      void fetchCart(true, true);
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void handleReturnToCart();
+      }
+    };
+
+    window.addEventListener('pageshow', handleReturnToCart);
+    window.addEventListener('focus', handleReturnToCart);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('pageshow', handleReturnToCart);
+      window.removeEventListener('focus', handleReturnToCart);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   const itemKey = (item: CartItemResponse) => {
@@ -117,6 +264,7 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
         const id = item.productId || (item as any).id;
         if (id) await cartService.updateQuantity(Number(id), newQty);
       }
+      clearRestoredPayOSCart();
       await fetchCart(true);
       window.dispatchEvent(new Event('cart-updated'));
     } catch (error) {
@@ -142,6 +290,7 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
       } else if (productId) {
         await cartService.removeItem(productId);
       }
+      clearRestoredPayOSCart();
       await fetchCart(true);
       window.dispatchEvent(new Event('cart-updated'));
     } catch (error) {
@@ -156,6 +305,7 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
     setLoading(true);
     try {
       await cartService.clearCart();
+      clearRestoredPayOSCart();
       setSelectedKeys(new Set());
       await fetchCart();
       window.dispatchEvent(new Event('cart-updated'));
@@ -195,7 +345,16 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
       globalShowAlert('Hệ thống hiện tại chưa hỗ trợ gộp đơn từ nhiều nhà vườn. Vui lòng chỉ chọn sản phẩm từ một nhà vườn để thanh toán.', 'Không thể gộp đơn', 'warning');
       return;
     }
-    // Chuyển sang checkout với các key đã chọn
+    if (cart?.items?.length) {
+      const selectedItems = cart.items.filter((it) => selectedKeys.has(itemKey(it)));
+      if (selectedItems.length > 0) {
+        const selectedTotal = selectedItems.reduce((sum, it) => sum + ((it.salePrice ?? it.price) * it.quantity), 0);
+        saveRestoredPayOSCart({
+          items: selectedItems,
+          totalAmount: selectedTotal,
+        });
+      }
+    }
     onProceedToCheckout(Array.from(selectedKeys));
   };
 
