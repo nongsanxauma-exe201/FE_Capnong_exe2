@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ChatBotProvider, ChatBot } from './components/ChatBot';
 import ChatWidget from './components/chat/ChatWidget';
@@ -8,6 +8,7 @@ import ScrollToTop from './components/layout/ScrollToTop';
 import { PopupProvider } from './contexts/PopupContext';
 import './App.css';
 import { useNotificationWebSocket } from './services/useNotificationWebSocket';
+import { ensurePendingPayOSRolledBack, hasPendingPayOSRollback } from './utils/pendingPayOSPayment';
 
 const ChatBotWrapper: React.FC = () => {
   const { user, isAuthenticated } = useAuth();
@@ -56,6 +57,48 @@ const NotificationWebSocketWrapper: React.FC = () => {
   return null;
 };
 
+const PendingPayOSRollbackGuard: React.FC = () => {
+  const location = useLocation();
+  const isRedirectingToCartRef = React.useRef(false);
+
+  const cancelPendingPayOS = React.useCallback(async () => {
+    if (location.pathname.startsWith('/payment/') || isRedirectingToCartRef.current) return;
+
+    const hadPending = hasPendingPayOSRollback();
+    const restored = await ensurePendingPayOSRolledBack();
+
+    if ((restored || hadPending) && !location.pathname.startsWith('/cart')) {
+      isRedirectingToCartRef.current = true;
+      window.location.replace(`/cart?payosReload=${Date.now()}`);
+    }
+  }, [location.pathname]);
+
+  React.useEffect(() => {
+    void cancelPendingPayOS();
+
+    const handleReturn = () => {
+      void cancelPendingPayOS();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void cancelPendingPayOS();
+      }
+    };
+
+    window.addEventListener('pageshow', handleReturn);
+    window.addEventListener('focus', handleReturn);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('pageshow', handleReturn);
+      window.removeEventListener('focus', handleReturn);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [cancelPendingPayOS]);
+
+  return null;
+};
+
 const App: React.FC = () => {
   return (
     <BrowserRouter basename="/">
@@ -63,6 +106,7 @@ const App: React.FC = () => {
       <PopupProvider>
         <AuthProvider>
           <NotificationWebSocketWrapper />
+          <PendingPayOSRollbackGuard />
           <AppRouter />
           <ChatBotWrapper />
           <ChatWidgetWrapper />
