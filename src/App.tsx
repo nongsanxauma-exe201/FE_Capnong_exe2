@@ -59,9 +59,11 @@ const NotificationWebSocketWrapper: React.FC = () => {
 
 const PendingPayOSRollbackGuard: React.FC = () => {
   const location = useLocation();
+  const { isAuthenticated, loading } = useAuth();
   const isRedirectingToCartRef = React.useRef(false);
 
   const cancelPendingPayOS = React.useCallback(async () => {
+    if (loading || !isAuthenticated) return;
     if (location.pathname.startsWith('/payment/') || isRedirectingToCartRef.current) return;
 
     const hadPending = hasPendingPayOSRollback();
@@ -71,7 +73,7 @@ const PendingPayOSRollbackGuard: React.FC = () => {
       isRedirectingToCartRef.current = true;
       window.location.replace(`/cart?payosReload=${Date.now()}`);
     }
-  }, [location.pathname]);
+  }, [isAuthenticated, loading, location.pathname]);
 
   React.useEffect(() => {
     void cancelPendingPayOS();
