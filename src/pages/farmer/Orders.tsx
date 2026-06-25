@@ -36,6 +36,16 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancellingOrderId, setCancellingOrderId] = useState<number | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [confirmedWeightAgreement, setConfirmedWeightAgreement] = useState<Set<number>>(new Set());
+
+  const toggleWeightAgreement = (orderId: number) => {
+    setConfirmedWeightAgreement(prev => {
+      const next = new Set(prev);
+      if (next.has(orderId)) next.delete(orderId);
+      else next.add(orderId);
+      return next;
+    });
+  };
 
   // Tracking modal
   const [trackingOrderId, setTrackingOrderId] = useState<number | null>(null);
@@ -129,10 +139,19 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
     }
   };
   const handleConfirmOrder = async (orderId: number) => {
+    if (!confirmedWeightAgreement.has(orderId)) {
+      globalShowAlert('Vui lòng đồng ý với cam kết đảm bảo cân nặng trước khi xác nhận đơn.', 'Chưa xác nhận', 'warning');
+      return;
+    }
     try {
       setIsProcessing(true);
       await orderService.updateOrder(orderId, { status: 'CONFIRMED' });
       globalShowAlert(`Đã xác nhận đơn hàng #${orderId}`, 'Thành công', 'success');
+      setConfirmedWeightAgreement(prev => {
+        const next = new Set(prev);
+        next.delete(orderId);
+        return next;
+      });
       fetchOrders();
     } catch (err: any) {
       globalShowAlert(err?.data?.message || 'Có lỗi khi xác nhận đơn hàng', 'Lỗi', 'error');
@@ -386,10 +405,55 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
                             <p className="text-[10px] text-blue-500 font-bold mt-0.5">Hãy xác nhận và bắt đầu chuẩn bị hàng</p>
                           </div>
                         )}
-                        <button disabled={isProcessing} onClick={() => handleConfirmOrder(order.id)}
-                          className="w-full py-4 bg-primary text-white font-black rounded-2xl flex items-center justify-center gap-2 shadow-xl shadow-primary/20 hover:bg-primary-dark transition-all transform active:scale-95 disabled:opacity-50">
+
+                        {/* Ô tích cam kết cân nặng */}
+                        <label
+                          htmlFor={`weight-agreement-${order.id}`}
+                          className={`flex items-start gap-3 p-4 rounded-2xl border cursor-pointer transition-all select-none ${
+                            confirmedWeightAgreement.has(order.id)
+                              ? 'bg-green-50 border-green-200'
+                              : 'bg-amber-50 border-amber-200 hover:border-amber-300'
+                          }`}
+                        >
+                          <div className="relative mt-0.5 shrink-0">
+                            <input
+                              id={`weight-agreement-${order.id}`}
+                              type="checkbox"
+                              checked={confirmedWeightAgreement.has(order.id)}
+                              onChange={() => toggleWeightAgreement(order.id)}
+                              className="sr-only"
+                            />
+                            <div
+                              className={`size-5 rounded flex items-center justify-center border-2 transition-all ${
+                                confirmedWeightAgreement.has(order.id)
+                                  ? 'bg-green-500 border-green-500'
+                                  : 'bg-white border-amber-400'
+                              }`}
+                            >
+                              {confirmedWeightAgreement.has(order.id) && (
+                                <CheckCircle className="size-3 text-white" />
+                              )}
+                            </div>
+                          </div>
+                          <p className="text-[11px] font-medium leading-relaxed text-gray-700">
+                            <span className="font-black text-gray-900">Tôi đồng ý — </span>
+                            Vì tính chất của trái cây, củ quả sẽ bị hao hụt nước, tôi cam kết đảm bảo
+                            giao đúng cân khi đến tay khách hàng.
+                          </p>
+                        </label>
+
+                        <button
+                          disabled={isProcessing || !confirmedWeightAgreement.has(order.id)}
+                          onClick={() => handleConfirmOrder(order.id)}
+                          className={`w-full py-4 font-black rounded-2xl flex items-center justify-center gap-2 shadow-xl transition-all transform active:scale-95 ${
+                            confirmedWeightAgreement.has(order.id)
+                              ? 'bg-primary text-white shadow-primary/20 hover:bg-primary-dark'
+                              : 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none'
+                          } disabled:opacity-70`}
+                        >
                           <CheckCircle2 className="size-5" /> Chuẩn bị hàng
                         </button>
+
                         <div id={filteredOrders.indexOf(order) === 0 ? 'tour-orders-contact-btns' : undefined} className="grid grid-cols-2 gap-3">
                           <button
                             onClick={() => navigate(`/farmer/messages?userId=${order.buyerId}&userName=${order.recipientName}`)}
