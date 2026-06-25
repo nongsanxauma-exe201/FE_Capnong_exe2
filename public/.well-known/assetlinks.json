@@ -5,7 +5,8 @@
       "namespace": "android_app",
       "package_name": "com.nongsanxauma",
       "sha256_cert_fingerprints": [
-        "79:19:85:0E:FE:F3:CF:5C:86:A3:5B:51:F9:5F:48:E3:53:D9:54:EA:91:6C:1A:C4:80:B5:43:F6:C3:E9:49:EA"
+        "79:19:85:0E:FE:F3:CF:5C:86:A3:5B:51:F9:5F:48:E3:53:D9:54:EA:91:6C:1A:C4:80:B5:43:F6:C3:E9:49:EA",
+        "3F:BE:58:56:43:F1:EE:FD:4B:75:C0:BF:8E:F2:C1:12:CE:B1:64:8D:67:1C:03:29:F5:68:97:CB:6B:89:E5:B2"
       ]
     }
   }
