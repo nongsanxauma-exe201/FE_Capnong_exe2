@@ -354,9 +354,9 @@ useEffect(() => {
 
   if (product) {
     const shop = product.shopName || `Cửa hàng #${product.shopId}`;
-    const price = product.salePrice ?? product.sellingPrice ?? 0;
+    const price = product.salePrice ?? product.pricePerKg ?? product.sellingPrice ?? 0;
     const priceStr = price.toLocaleString('vi-VN') + 'đ';
-    const desc = `${priceStr}/${product.unit || 'kg'} tại ${shop} · ${product.description?.slice(0, 80) || 'Nông sản sạch, tươi ngon'}`;
+    const desc = `${priceStr}/kg tại ${shop} · ${product.description?.slice(0, 80) || 'Nông sản sạch, tươi ngon'}`;
 
     document.title = `${product.productName} - ${shop} | Nông Sản Xấu Mã`;
     setMeta('og:title',       `${product.productName} - ${shop}`);
@@ -404,7 +404,9 @@ if (error || !product) {
 }
 
 const farmName = product.shopName || (product.shopId ? `Nông trại #${product.shopId}` : 'Nông trại đối tác');
-const isOutOfStock = product.stockQuantity <= 0;
+const stockKg = product.stockKg ?? product.stockQuantity ?? 0;
+const basePricePerKg = product.pricePerKg ?? product.sellingPrice ?? 0;
+const isOutOfStock = stockKg <= 0;
 
 const productUrl = `${window.location.origin}/san-pham/${product.id}`;
 const shopUrl = product.shopId ? `${window.location.origin}/cua-hang/${product.shopId}` : null;
@@ -416,7 +418,7 @@ const handleShare = async (type: 'product' | 'shop') => {
   const title = type === 'shop' ? `Cửa hàng ${farmName} trên Nông Sản Xấu Mã` : `${product.productName} - ${farmName}`;
   const text = type === 'shop'
     ? `Xem cửa hàng ${farmName} trên Nông Sản Xấu Mã - nông sản sạch tươi mới mỗi ngày!`
-    : `${product.productName}${product.salePrice ? ` chỉ còn ${product.salePrice.toLocaleString('vi-VN')}đ` : ` - ${(product.sellingPrice || 0).toLocaleString('vi-VN')}đ`} tại ${farmName} trên Nông Sản Xấu Mã!`;
+    : `${product.productName}${product.salePrice ? ` chỉ còn ${product.salePrice.toLocaleString('vi-VN')}đ/kg` : ` - ${basePricePerKg.toLocaleString('vi-VN')}đ/kg`} tại ${farmName} trên Nông Sản Xấu Mã!`;
   if (isMobileBrowser && navigator.share) {
     try { await navigator.share({ title, text, url }); return; } catch { /* user cancelled */ }
   }
@@ -568,22 +570,22 @@ return (
           {hasActiveDiscount ? (
             <div className="flex flex-col gap-1">
               <div className="flex items-center gap-3">
-                <span className="text-red-500 text-lg line-through font-semibold">{(product.sellingPrice || 0).toLocaleString('vi-VN')}đ</span>
+                <span className="text-red-500 text-lg line-through font-semibold">{basePricePerKg.toLocaleString('vi-VN')}đ/kg</span>
                 <span className="bg-primary text-white text-xs font-black px-2.5 py-1 rounded-full">-{product.discountPercent}%</span>
               </div>
               <div className="flex items-center gap-3">
                 <span className="text-primary font-black text-4xl">{(product.salePrice!).toLocaleString('vi-VN')}đ</span>
-                <span className="text-gray-400 font-bold uppercase text-xs mt-2">/ {product.unit || 'KG'}</span>
+                <span className="text-gray-400 font-bold uppercase text-xs mt-2">/ kg</span>
               </div>
               <p className="text-xs text-primary font-bold mt-1">
-                Tiết kiệm {((product.sellingPrice || 0) - product.salePrice!).toLocaleString('vi-VN')}đ
+                Tiết kiệm {(basePricePerKg - product.salePrice!).toLocaleString('vi-VN')}đ/kg
                 {product.discountEndDate && ` · Còn đến ${new Date(product.discountEndDate).toLocaleDateString('vi-VN')}`}
               </p>
             </div>
           ) : (
             <div className="flex items-center gap-3">
-              <span className="text-primary font-black text-4xl">{(product.sellingPrice || 0).toLocaleString('vi-VN')}đ</span>
-              <span className="text-gray-400 font-bold uppercase text-xs mt-2">/ {product.unit || 'KG'}</span>
+              <span className="text-primary font-black text-4xl">{basePricePerKg.toLocaleString('vi-VN')}đ</span>
+              <span className="text-gray-400 font-bold uppercase text-xs mt-2">/ kg</span>
             </div>
           )}
           <p className="text-gray-500 text-sm leading-relaxed mt-6 whitespace-pre-wrap">
@@ -593,16 +595,16 @@ return (
 
         <div className="space-y-3 pt-6">
           <p className="text-[10px] font-black uppercase text-gray-700 tracking-widest flex items-center justify-between">
-            <span>Số lượng</span>
-            <span className={`lowercase font-medium ${isOutOfStock ? 'text-red-500' : 'text-gray-500'}`}>{product.stockQuantity} {product.unit} có sẵn</span>
+            <span>Khối lượng mua</span>
+            <span className={`lowercase font-medium ${isOutOfStock ? 'text-red-500' : 'text-gray-500'}`}>{stockKg.toLocaleString('vi-VN', { maximumFractionDigits: 2 })} kg có sẵn</span>
           </p>
         </div>
 
         <div className="flex items-center gap-4 pt-4">
           <div className="flex items-center border border-gray-200 rounded-xl bg-gray-50 overflow-hidden h-14">
             <button disabled={isOutOfStock} onClick={() => setQuantity(Math.max(1, quantity - 1))} className="w-12 h-full flex items-center justify-center hover:bg-gray-200 transition-colors text-gray-600 disabled:opacity-50"><Minus className="size-4" /></button>
-            <input type="text" value={isOutOfStock ? 0 : quantity} readOnly className="w-12 text-center font-black bg-transparent outline-none text-gray-800" />
-            <button disabled={isOutOfStock || quantity >= product.stockQuantity} onClick={() => setQuantity(quantity + 1)} className="w-12 h-full flex items-center justify-center hover:bg-gray-200 transition-colors text-gray-600 disabled:opacity-50"><Plus className="size-4" /></button>
+            <input type="text" value={isOutOfStock ? '0 kg' : `${quantity} kg`} readOnly className="w-16 text-center font-black bg-transparent outline-none text-gray-800" />
+            <button disabled={isOutOfStock || quantity >= stockKg} onClick={() => setQuantity(quantity + 1)} className="w-12 h-full flex items-center justify-center hover:bg-gray-200 transition-colors text-gray-600 disabled:opacity-50"><Plus className="size-4" /></button>
           </div>
           <button
             disabled={isOutOfStock || isAdding}
@@ -611,9 +613,9 @@ return (
               else {
                 try {
                   setIsAdding(true);
-                  await cartService.addToCart({ productId: Number(productId), quantity });
+                  await cartService.addToCart({ productId: Number(productId), quantity, quantityKg: quantity });
                   window.dispatchEvent(new Event('cart-updated'));
-                  globalShowAlert(`Đã thêm ${quantity} ${product.unit} ${product.productName} vào giỏ hàng`, 'Thành công', 'success');
+                  globalShowAlert(`Đã thêm ${quantity} kg ${product.productName} vào giỏ hàng`, 'Thành công', 'success');
                 } catch (e) {
                   console.error('Failed to add to cart', e);
                   globalShowAlert('Không thể thêm vào giỏ hàng. Vui lòng thử lại.', 'Lỗi', 'error');

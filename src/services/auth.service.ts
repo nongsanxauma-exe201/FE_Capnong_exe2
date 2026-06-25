@@ -51,6 +51,10 @@ export interface UserResponse {
   description?: string;
   logoUrl?: string;
   achievement?: string;
+  totalRescuedWeight?: number;
+  loyaltyPoints?: number;
+  totalRescuedKg?: number;
+  rewardPoints?: number;
   // Shipper specific
   license?: string;
   vehicleNumber?: string;

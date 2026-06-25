@@ -12,7 +12,7 @@ import {
    savePendingPayOSPayment,
    saveRestoredPayOSCart,
 } from '../../utils/pendingPayOSPayment';
-import { globalShowAlert } from '../../contexts/PopupContext';
+import { globalShowAlert, globalShowConfirm } from '../../contexts/PopupContext';
 
 // ✅ Extend CartResponse để có shopOwnerId (BE đã thêm field này)
 type CartItemWithShop = {
@@ -34,6 +34,11 @@ interface CheckoutProps {
    onComplete: (orderId: number) => void;
    onBack: () => void;
 }
+
+const getQuantityKg = (item: CartItemResponse) => Number(item.quantityKg ?? item.quantity ?? 0);
+const getPricePerKg = (item: CartItemResponse) => Number(item.salePrice ?? item.pricePerKg ?? item.price ?? 0);
+const getItemTotal = (item: CartItemResponse) => Number(item.itemTotal ?? getPricePerKg(item) * getQuantityKg(item));
+const formatKg = (value: number) => value.toLocaleString('vi-VN', { maximumFractionDigits: 2 });
 
 const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
    const location = useLocation();
@@ -117,7 +122,7 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
                   });
                }
 
-               const filteredTotalAmount = items.reduce((sum, item) => sum + ((item.salePrice ?? item.price) * item.quantity), 0);
+              const filteredTotalAmount = items.reduce((sum, item) => sum + getItemTotal(item), 0);
 
                const checkoutCart = {
                   ...cartRes.result,
@@ -303,6 +308,12 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
          return;
       }
 
+      const acceptedRefundPolicy = await globalShowConfirm(
+         'Hoàn tiền 100% ngay lập tức nếu phát hiện nông sản bị dập nát, hư hỏng khi giao hàng.',
+         'Cam kết hoàn tiền'
+      );
+      if (!acceptedRefundPolicy) return;
+
       try {
          setIsProcessing(true);
          setError(null);
@@ -317,13 +328,13 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
             voucherUserIds: selectedVouchers.map((voucher) => voucher.voucherUserId).filter(Boolean),
             items: cartData.items.map(item => {
                if (item.itemType === 'MYSTERY_BOX') {
-                  return { mysteryBoxId: item.mysteryBoxId, quantity: item.quantity };
+                  return { mysteryBoxId: item.mysteryBoxId, quantity: item.quantity, quantityKg: getQuantityKg(item) };
                }
                if (item.itemType === 'BUILD_COMBO') {
                   const comboId = item.buildComboId ?? (item as any).comboId ?? (item as any).id;
-                  return { buildComboId: comboId, quantity: item.quantity };
+                  return { buildComboId: comboId, quantity: item.quantity, quantityKg: getQuantityKg(item) };
                }
-               return { productId: item.productId, quantity: item.quantity };
+               return { productId: item.productId, quantity: item.quantity, quantityKg: getQuantityKg(item) };
             })
          };
 
@@ -549,16 +560,16 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
                                     {item.itemType === 'MYSTERY_BOX' && <Gift className="size-3 text-primary shrink-0" />}
                                     <p className="font-bold text-gray-900 truncate">{item.productName}</p>
                                  </div>
-                                 <p className="text-gray-500 font-medium">SL: {item.quantity}</p>
+                                 <p className="text-gray-500 font-medium">Khối lượng: {formatKg(getQuantityKg(item))} kg</p>
                               </div>
                               <div className="text-right">
                                  {item.salePrice != null && item.discountPercent ? (
                                    <div>
-                                     <span className="text-[9px] font-bold text-red-400 line-through block">{((item.price || 0) * item.quantity).toLocaleString('vi-VN')}đ</span>
-                                     <span className="font-black text-primary whitespace-nowrap">{(item.salePrice * item.quantity).toLocaleString('vi-VN')}đ</span>
+                                     <span className="text-[9px] font-bold text-red-400 line-through block">{((item.price || 0) * getQuantityKg(item)).toLocaleString('vi-VN')}đ</span>
+                                     <span className="font-black text-primary whitespace-nowrap">{getItemTotal(item).toLocaleString('vi-VN')}đ</span>
                                    </div>
                                  ) : (
-                                   <span className="font-black text-gray-900 whitespace-nowrap">{((item.price || 0) * item.quantity).toLocaleString('vi-VN')}đ</span>
+                                   <span className="font-black text-gray-900 whitespace-nowrap">{getItemTotal(item).toLocaleString('vi-VN')}đ</span>
                                  )}
                               </div>
                            </div>

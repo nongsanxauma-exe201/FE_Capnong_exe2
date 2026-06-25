@@ -18,6 +18,7 @@ export interface OrderItemRequest {
     mysteryBoxId?: number;
     buildComboId?: number;
     quantity: number;
+    quantityKg?: number;
 }
 
 export interface OrderCreationRequest {
@@ -43,8 +44,12 @@ export interface OrderItemResponse {
     productName?: string;
     mysteryBoxType?: string;
     quantity: number;
+    quantityKg?: number;
     unit?: string;
     unitPrice: number;
+    pricePerKg?: number;
+    unitWeightKg?: number;
+    rescuedWeightKg?: number;
     itemType: 'PRODUCT' | 'MYSTERY_BOX';
     category?: string;
     imageUrl?: string;
@@ -108,6 +113,11 @@ export interface OrderResponse {
     note: string;
     shippingFee: number;
     totalAmount: number;
+    totalKg?: number;
+    rescuedKg?: number;
+    rescuedWeight?: number;
+    rewardPoints?: number;
+    rewardApplied?: boolean;
     status: string;
     createdAt: string;
     items: OrderItemResponse[];

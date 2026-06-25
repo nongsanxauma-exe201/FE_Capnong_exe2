@@ -146,6 +146,7 @@ const QualityInspection: React.FC = () => {
   const [detailRejectedWeights, setDetailRejectedWeights] = useState<Record<string, number>>({});
   const [qualityResult, setQualityResult] = useState<Record<string, 'APPROVED' | 'REJECTED' | null>>({});
   const [inspectionNotes, setInspectionNotes] = useState<Record<string, string>>({});
+  const [damageNotes, setDamageNotes] = useState<Record<string, string>>({});
   const [criteriaPage, setCriteriaPage] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [inspectionError, setInspectionError] = useState<string | null>(null);
@@ -284,6 +285,13 @@ const QualityInspection: React.FC = () => {
       }) as Record<string, string>);
     }
 
+    if (existing.damageNote != null) {
+      setDamageNotes((prev) => ({
+        ...prev,
+        [detailId]: existing.damageNote || '',
+      }));
+    }
+
     if (existing.rejectedWeight != null && existing.qualityResult === 'REJECTED') {
       setDetailRejectedWeights((prev) => ({
         ...prev,
@@ -395,24 +403,23 @@ const QualityInspection: React.FC = () => {
       return;
     }
 
-    const currentQualityResult = qualityResult[detailId];
-    if (!currentQualityResult) {
-      setInspectionError('Vui lòng chọn kết quả cuối cùng.');
-      return;
-    }
-
     const rejectedWeight = detailRejectedWeights[detailId];
-    if (currentQualityResult === 'REJECTED') {
-      if (rejectedWeight === undefined || rejectedWeight === null || Number.isNaN(rejectedWeight) || rejectedWeight <= 0) {
-        setInspectionError('Vui lòng nhập số lượng không đạt chuẩn hợp lệ.');
+    if (rejectedWeight !== undefined && rejectedWeight !== null) {
+      if (Number.isNaN(rejectedWeight) || rejectedWeight < 0) {
+        setInspectionError('Vui lòng nhập khối lượng không đạt chuẩn hợp lệ.');
         return;
       }
-      const itemQuantity = selectedRow.item.quantity ?? 0;
-      if (itemQuantity > 0 && rejectedWeight >= itemQuantity) {
-        setInspectionError('Số lượng không đạt chuẩn phải nhỏ hơn số lượng của đơn hàng.');
+      const itemQuantity = selectedRow.item.quantityKg ?? selectedRow.item.quantity ?? 0;
+      if (itemQuantity > 0 && rejectedWeight > itemQuantity) {
+        setInspectionError('Khối lượng không đạt chuẩn không được lớn hơn khối lượng của đơn hàng.');
         return;
       }
     }
+    const currentDamageNote = damageNotes[detailId]?.trim();
+    const inferredQualityResult: 'APPROVED' | 'REJECTED' =
+      criteriaPayload.some((c) => !c.passed) || (rejectedWeight ?? 0) > 0 || Boolean(currentDamageNote)
+        ? 'REJECTED'
+        : 'APPROVED';
 
     const item = selectedRow.item;
     const isMysteryBox = isMysteryBoxOrderItem(item);
@@ -428,10 +435,11 @@ const QualityInspection: React.FC = () => {
       }
       requestBody = {
         orderMysteryBoxId,
-        qualityResult: currentQualityResult,
         qualityChecks: criteriaPayload,
         note: inspectionNotes[detailId]?.trim() || undefined,
-        rejectedWeight: currentQualityResult === 'REJECTED' ? rejectedWeight : undefined,
+        rejectedWeight: rejectedWeight && rejectedWeight > 0 ? rejectedWeight : undefined,
+        rejectedKg: rejectedWeight && rejectedWeight > 0 ? rejectedWeight : undefined,
+        damageNote: currentDamageNote || undefined,
       };
     } else {
       const orderDetailId = item.orderDetailId;
@@ -441,10 +449,11 @@ const QualityInspection: React.FC = () => {
       }
       requestBody = {
         orderDetailId,
-        qualityResult: currentQualityResult,
         qualityChecks: criteriaPayload,
         note: inspectionNotes[detailId]?.trim() || undefined,
-        rejectedWeight: currentQualityResult === 'REJECTED' ? rejectedWeight : undefined,
+        rejectedWeight: rejectedWeight && rejectedWeight > 0 ? rejectedWeight : undefined,
+        rejectedKg: rejectedWeight && rejectedWeight > 0 ? rejectedWeight : undefined,
+        damageNote: currentDamageNote || undefined,
       };
     }
 
@@ -463,7 +472,7 @@ const QualityInspection: React.FC = () => {
       await qualityService.checkQuality(request, fileMap);
       setDetailResults((prev) => ({
         ...prev,
-        [detailId]: currentQualityResult === 'APPROVED' ? 'pass' : 'fail',
+        [detailId]: inferredQualityResult === 'APPROVED' ? 'pass' : 'fail',
       }));
       setInspectionError(null);
       setView('detail-list');
@@ -830,7 +839,7 @@ const QualityInspection: React.FC = () => {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-black text-gray-900 truncate">{productLabel}</p>
                   <p className="text-[11px] text-gray-500 font-bold">
-                    {lineTypeLabel} · SL {qty}{item.unit ? ` ${item.unit}` : ''} · Tiêu chí {inspected}/{criteria.length}
+                    {lineTypeLabel} · Khối lượng {Number(item.quantityKg ?? qty).toLocaleString('vi-VN', { maximumFractionDigits: 2 })} kg · Tiêu chí {inspected}/{criteria.length}
                   </p>
                 </div>
                 <div className="shrink-0 text-right">
@@ -869,12 +878,17 @@ const QualityInspection: React.FC = () => {
     const fCount = failCount(detailId);
     const inspected = pCount + fCount;
     const result = detailResults[detailId];
-    const qty = item.quantity ?? 0;
+    const qty = item.quantityKg ?? item.quantity ?? 0;
     const thumb = item.imageUrl || 'https://picsum.photos/seed/qc/80/80';
     const productLabel = item.productName || item.mysteryBoxType || 'Sản phẩm';
     const lineTypeLabel = isMysteryBoxOrderItem(item) ? 'Hộp mù' : 'Nông sản';
-    const unitPrice = item.unitPrice != null ? `${Number(item.unitPrice).toLocaleString('vi-VN')} ₫` : '—';
-    const qtyLabel = item.unit ? `${qty} ${item.unit}` : String(qty);
+    const unitPrice = item.unitPrice != null ? `${Number(item.pricePerKg ?? item.unitPrice).toLocaleString('vi-VN')} ₫/kg` : '—';
+    const qtyLabel = `${Number(qty).toLocaleString('vi-VN', { maximumFractionDigits: 2 })} kg`;
+    const inferredResult = criteria.some((c) => getCriteria(detailId, c.key) === 'fail')
+      || (detailRejectedWeights[detailId] ?? 0) > 0
+      || Boolean(damageNotes[detailId]?.trim())
+      ? 'REJECTED'
+      : 'APPROVED';
 
     return (
       <div className="flex flex-col gap-6 p-8 animate-in fade-in duration-300 max-w-2xl mx-auto w-full">
@@ -1071,73 +1085,61 @@ const QualityInspection: React.FC = () => {
                   Khối lượng không đạt: <span className="text-red-600">{item.qualityResult.rejectedWeight} kg</span>
                 </div>
               )}
+              {item.qualityResult?.damageNote && (
+                <div className="mt-2 text-sm font-bold text-orange-700">
+                  Mô tả hàng hư: <span className="text-orange-600">{item.qualityResult.damageNote}</span>
+                </div>
+              )}
             </div>
           )}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-            <div className="flex items-center justify-between gap-4 flex-wrap">
-              <div>
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Kết quả kiểm định</p>
-                <p className="text-sm font-medium text-gray-600 mt-1">Chọn kết quả cuối cùng trước khi gửi.</p>
-              </div>
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  disabled={isAlreadyChecked}
-                  onClick={() => setQualityResult((prev) => ({ ...prev, [detailId]: 'APPROVED' }))}
-                  className={`px-4 py-2 rounded-full text-sm font-black transition ${selectedQualityResult === 'APPROVED'
-                      ? 'bg-emerald-600 text-white'
-                      : isAlreadyChecked
-                        ? 'bg-gray-100 border border-gray-200 text-gray-400 cursor-not-allowed'
-                        : 'bg-white border border-gray-200 text-gray-600 hover:bg-emerald-50'
-                    }`}
-                >
-                  Đạt
-                </button>
-                <button
-                  type="button"
-                  disabled={isAlreadyChecked}
-                  onClick={() => setQualityResult((prev) => ({ ...prev, [detailId]: 'REJECTED' }))}
-                  className={`px-4 py-2 rounded-full text-sm font-black transition ${selectedQualityResult === 'REJECTED'
-                      ? 'bg-red-500 text-white'
-                      : isAlreadyChecked
-                        ? 'bg-gray-100 border border-gray-200 text-gray-400 cursor-not-allowed'
-                        : 'bg-white border border-gray-200 text-gray-600 hover:bg-red-50'
-                    }`}
-                >
-                  Không đạt
-                </button>
-              </div>
-            </div>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Kết quả kiểm định</p>
+            <p className="text-sm font-medium text-gray-600 mt-1">
+              Hệ thống tự suy ra kết quả từ tiêu chí, khối lượng lỗi và mô tả hàng hư.
+            </p>
           </div>
 
-          {selectedQualityResult === 'REJECTED' && !isAlreadyChecked && (
-            <div className="bg-red-50 border border-red-200 rounded-2xl shadow-sm p-4">
-              <label className="text-[10px] font-black text-red-700 uppercase tracking-widest">Số lượng không đạt chuẩn</label>
-              <input
-                type="number"
-                min="0"
-                max={item.quantity ?? undefined}
-                step="0.1"
-                value={detailRejectedWeights[detailId] ?? ''}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  if (val) {
-                    setDetailRejectedWeights((prev) => ({
-                      ...prev,
-                      [detailId]: parseFloat(val),
-                    }));
-                  } else {
-                    setDetailRejectedWeights((prev) => {
-                      const updated = { ...prev };
-                      delete updated[detailId];
-                      return updated;
-                    });
-                  }
-                }}
-                placeholder="Nhập khối lượng bị lỗi"
-                className="w-full mt-2 px-3 py-2 bg-white rounded-xl text-sm font-bold text-red-700 border border-red-200 outline-none placeholder:text-red-300"
-              />
-            </div>
+          {!isAlreadyChecked && (
+            <>
+              <div className="bg-red-50 border border-red-200 rounded-2xl shadow-sm p-4">
+                <label className="text-[10px] font-black text-red-700 uppercase tracking-widest">Khối lượng không đạt chuẩn (kg)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max={item.quantityKg ?? item.quantity ?? undefined}
+                  step="0.1"
+                  value={detailRejectedWeights[detailId] ?? ''}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val) {
+                      setDetailRejectedWeights((prev) => ({
+                        ...prev,
+                        [detailId]: parseFloat(val),
+                      }));
+                    } else {
+                      setDetailRejectedWeights((prev) => {
+                        const updated = { ...prev };
+                        delete updated[detailId];
+                        return updated;
+                      });
+                    }
+                  }}
+                  placeholder="Không bắt buộc, nhập nếu có khối lượng bị lỗi"
+                  className="w-full mt-2 px-3 py-2 bg-white rounded-xl text-sm font-bold text-red-700 border border-red-200 outline-none placeholder:text-red-300"
+                />
+              </div>
+
+              <div className="bg-orange-50 border border-orange-200 rounded-2xl shadow-sm p-4">
+                <label className="text-[10px] font-black text-orange-700 uppercase tracking-widest">Mô tả hàng hư</label>
+                <textarea
+                  rows={2}
+                  value={damageNotes[detailId] ?? ''}
+                  onChange={(event) => setDamageNotes((prev) => ({ ...prev, [detailId]: event.target.value }))}
+                  placeholder="Ví dụ: Hàng bị nước đọng, dập nát, cần gửi voucher xin lỗi..."
+                  className="w-full mt-2 px-3 py-2 bg-white rounded-xl text-sm font-bold text-orange-700 border border-orange-200 outline-none placeholder:text-orange-300 resize-none"
+                />
+              </div>
+            </>
           )}
 
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
@@ -1153,7 +1155,7 @@ const QualityInspection: React.FC = () => {
           </div>
 
           <div className="text-sm font-black text-gray-600">
-            Kết quả cuối cùng: <span className="text-base text-black">{selectedQualityResult === 'APPROVED' ? 'Đạt' : selectedQualityResult === 'REJECTED' ? 'Không đạt' : 'Chưa chọn'}</span>
+            Kết quả dự kiến: <span className="text-base text-black">{(selectedQualityResult ?? inferredResult) === 'APPROVED' ? 'Đạt' : 'Không đạt'}</span>
           </div>
         </div>
 

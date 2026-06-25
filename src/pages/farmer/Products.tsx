@@ -458,7 +458,7 @@ const Products: React.FC<{ onNavigate: (id: string) => void }> = ({ onNavigate }
                 <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">{activeTab === 'NONG_SAN' ? 'Sản phẩm' : 'Tên Combo / Hộp mù'}</th>
                 {activeTab === 'NONG_SAN' && <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Unit / DVT</th>}
                 <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Giá bán</th>
-                {activeTab === 'NONG_SAN' && <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Tồn kho</th>}
+                {activeTab === 'NONG_SAN' && <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Tồn kho (kg)</th>}
                 <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Trạng thái</th>
                 <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Thao tác</th>
               </tr>
@@ -470,7 +470,8 @@ const Products: React.FC<{ onNavigate: (id: string) => void }> = ({ onNavigate }
                 </tr>
               )}
               {activeTab === 'NONG_SAN' && currentPageData.map((p, idx) => {
-                const isOut = p.stockQuantity <= 0;
+                const stockKg = p.stockKg ?? p.stockQuantity ?? 0;
+                const isOut = stockKg <= 0;
                 return (
                   <tr
                     key={p.id}
@@ -500,24 +501,24 @@ const Products: React.FC<{ onNavigate: (id: string) => void }> = ({ onNavigate }
                       </div>
                     </td>
                     <td className="px-6 py-5 text-center">
-                      <span className="px-3 py-1 bg-green-50 text-green-600 text-[10px] font-black rounded-full uppercase">{p.unit || 'KG'}</span>
+                      <span className="px-3 py-1 bg-green-50 text-green-600 text-[10px] font-black rounded-full uppercase">kg</span>
                     </td>
                     <td className="px-6 py-5 text-center">
                       {p.salePrice != null && p.salePrice > 0 ? (
                         <div className="flex flex-col items-center gap-0.5">
                           <div className="flex items-center gap-1">
-                            <span className="text-xs text-red-500 line-through font-semibold">{(p.sellingPrice || 0).toLocaleString('vi-VN')}đ</span>
+                            <span className="text-xs text-red-500 line-through font-semibold">{((p.pricePerKg ?? p.sellingPrice) || 0).toLocaleString('vi-VN')}đ/kg</span>
                             <span className="bg-primary text-white text-[8px] font-black px-1 py-0.5 rounded-full">-{p.discountPercent}%</span>
                           </div>
-                          <span className="text-sm font-black text-primary">{p.salePrice.toLocaleString('vi-VN')}đ</span>
+                          <span className="text-sm font-black text-primary">{p.salePrice.toLocaleString('vi-VN')}đ/kg</span>
                         </div>
                       ) : (
-                        <span className="text-sm font-black text-primary">{(p.sellingPrice || 0).toLocaleString('vi-VN')}đ</span>
+                        <span className="text-sm font-black text-primary">{((p.pricePerKg ?? p.sellingPrice) || 0).toLocaleString('vi-VN')}đ/kg</span>
                       )}
                     </td>
                     <td className="px-6 py-5 text-center">
                       <div className="flex flex-col items-center gap-1.5">
-                        <span className={`text-sm font-black ${isOut ? 'text-red-500' : 'text-gray-800'}`}>{p.stockQuantity || 0}</span>
+                        <span className={`text-sm font-black ${isOut ? 'text-red-500' : 'text-gray-800'}`}>{stockKg.toLocaleString('vi-VN', { maximumFractionDigits: 2 })}</span>
                         <div className="w-12 h-1 bg-gray-100 rounded-full overflow-hidden">
                           <div className={`h-full ${isOut ? 'bg-red-500' : 'bg-primary'}`} style={{ width: isOut ? '0%' : '60%' }} />
                         </div>

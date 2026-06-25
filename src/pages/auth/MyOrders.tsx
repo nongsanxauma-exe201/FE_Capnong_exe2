@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Package, Clock, Truck, CheckCircle2, XCircle, Eye,
-  ArrowLeft, RefreshCw, AlertCircle, Search
+  ArrowLeft, RefreshCw, AlertCircle, Search, Sprout, Award
 } from 'lucide-react';
 import { orderService, OrderResponse, OrderItemResponse } from '../../services/order.service';
 import { authService } from '../../services/auth.service';
@@ -82,6 +82,8 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
   const [orderReturnReason, setOrderReturnReason] = useState('');
   const [orderReturnEvidence, setOrderReturnEvidence] = useState<File | null>(null);
   const [submittingOrderReturn, setSubmittingOrderReturn] = useState(false);
+  const formatImpactNumber = (value?: number | null) =>
+    Number(value ?? 0).toLocaleString('vi-VN', { maximumFractionDigits: 2 });
 
   const fetchOrders = async () => {
     try {
@@ -557,9 +559,11 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
                         <div className="space-y-2">
                           {order.items?.slice(0, 3).map((item, idx) => (
                             <div key={idx} className="flex justify-between items-center text-sm py-1">
-                              <span className="text-gray-600">{item.productName} x{item.quantity}</span>
+                              <span className="text-gray-600">
+                                {item.productName} - {(item.quantityKg ?? item.quantity).toLocaleString('vi-VN', { maximumFractionDigits: 2 })} kg
+                              </span>
                               <div className="flex items-center gap-4">
-                                <span className="font-bold text-gray-900">{item.unitPrice.toLocaleString('vi-VN')}đ</span>
+                                <span className="font-bold text-gray-900">{(item.pricePerKg ?? item.unitPrice).toLocaleString('vi-VN')}đ/kg</span>
                                 {order.status === 'DELIVERED' && (
                                   <div className="flex gap-3">
                                     <button
@@ -607,6 +611,28 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
                       <div className="mb-6 p-4 bg-blue-50/50 rounded-2xl border border-blue-100">
                         <p className="text-xs font-black text-blue-600 uppercase tracking-widest mb-1">Ghi chú</p>
                         <p className="text-sm text-gray-700">{order.note}</p>
+                      </div>
+                    )}
+
+                    {order.rewardApplied && Number(order.rescuedWeight ?? 0) > 0 && (
+                      <div className="mb-6 p-5 bg-gradient-to-r from-green-50 to-emerald-50 rounded-3xl border border-green-100">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <div className="flex items-start gap-3">
+                            <div className="size-11 bg-white rounded-2xl flex items-center justify-center shadow-sm text-primary shrink-0">
+                              <Sprout className="size-5" />
+                            </div>
+                            <div>
+                              <p className="text-xs font-black text-primary uppercase tracking-widest mb-1">Đóng góp từ đơn hàng</p>
+                              <p className="text-sm font-bold text-green-800 leading-relaxed">
+                                Bạn đã góp phần giải cứu {formatImpactNumber(order.rescuedWeight)} kg nông sản giúp người nông dân.
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 rounded-2xl bg-white/80 px-4 py-3 text-sm font-black text-amber-600">
+                            <Award className="size-5" />
+                            +{formatImpactNumber(order.rewardPoints)} điểm
+                          </div>
+                        </div>
                       </div>
                     )}
 

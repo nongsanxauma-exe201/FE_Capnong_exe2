@@ -11,6 +11,11 @@ interface CartProps {
 
 type GroupedCart = Record<string, CartItemResponse[]>;
 
+const getQuantityKg = (item: CartItemResponse) => Number(item.quantityKg ?? item.quantity ?? 0);
+const getPricePerKg = (item: CartItemResponse) => Number(item.salePrice ?? item.pricePerKg ?? item.price ?? 0);
+const getItemTotal = (item: CartItemResponse) => Number(item.itemTotal ?? getPricePerKg(item) * getQuantityKg(item));
+const formatKg = (value: number) => value.toLocaleString('vi-VN', { maximumFractionDigits: 2 });
+
 interface CartState {
   cart: CartResponse | null;
   groupedItems: GroupedCart;
@@ -245,7 +250,7 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
   };
 
   const handleUpdateQuantity = async (item: CartItemResponse, change: number) => {
-    const currentQty = Number(item.quantity) || 0;
+    const currentQty = getQuantityKg(item);
     const newQty = currentQty + change;
     if (newQty < 1) return;
 
@@ -331,7 +336,7 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
   const totalItems = cart?.items.length || 0;
   
   const selectedItems = cart?.items.filter(it => selectedKeys.has(itemKey(it))) || [];
-  const selectedTotal = selectedItems.reduce((sum, it) => sum + ((it.salePrice ?? it.price) * it.quantity), 0);
+  const selectedTotal = selectedItems.reduce((sum, it) => sum + getItemTotal(it), 0);
   const selectedShops = Array.from(new Set(selectedItems.map(it => it.shopName)));
   const isMultiShop = selectedShops.length > 1;
   const shopsCount = Object.keys(groupedItems).length;
@@ -348,7 +353,7 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
     if (cart?.items?.length) {
       const selectedItems = cart.items.filter((it) => selectedKeys.has(itemKey(it)));
       if (selectedItems.length > 0) {
-        const selectedTotal = selectedItems.reduce((sum, it) => sum + ((it.salePrice ?? it.price) * it.quantity), 0);
+        const selectedTotal = selectedItems.reduce((sum, it) => sum + getItemTotal(it), 0);
         saveRestoredPayOSCart({
           items: selectedItems,
           totalAmount: selectedTotal,
@@ -494,25 +499,23 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
                                   ) : (
                                     <p className="text-lg font-black text-primary">{(item.price || 0).toLocaleString('vi-VN')}đ</p>
                                   )}
-                                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
-                                    {isMysteryBox ? 'Mỗi túi' : isCombo ? 'Mỗi combo' : 'Mỗi đơn vị'}
-                                  </p>
+                                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">VNĐ/kg</p>
                                 </div>
                               </div>
                               <div className="flex items-center justify-between mt-4">
                                 <div className="flex items-center gap-4 bg-gray-50 p-1.5 rounded-xl border border-gray-100">
-                                  <button disabled={isUpdating || item.quantity <= 1} onClick={() => handleUpdateQuantity(item, -1)} className="size-8 flex items-center justify-center text-gray-400 hover:text-primary disabled:opacity-50">
+                                  <button disabled={isUpdating || getQuantityKg(item) <= 1} onClick={() => handleUpdateQuantity(item, -1)} className="size-8 flex items-center justify-center text-gray-400 hover:text-primary disabled:opacity-50">
                                     <Minus className="size-3" />
                                   </button>
                                   <span className="text-sm font-black text-gray-900 w-4 text-center">
-                                    {isUpdating ? <Loader2 className="size-3 animate-spin mx-auto text-primary" /> : item.quantity}
+                                    {isUpdating ? <Loader2 className="size-3 animate-spin mx-auto text-primary" /> : formatKg(getQuantityKg(item))}
                                   </span>
                                   <button disabled={isUpdating} onClick={() => handleUpdateQuantity(item, 1)} className="size-8 flex items-center justify-center text-gray-400 hover:text-primary disabled:opacity-50">
                                     <Plus className="size-3" />
                                   </button>
                                 </div>
                                 <div className="flex items-center gap-4">
-                                  <span className="text-xl font-black text-primary">{(((item.salePrice ?? item.price) || 0) * item.quantity).toLocaleString('vi-VN')}đ</span>
+                                  <span className="text-xl font-black text-primary">{getItemTotal(item).toLocaleString('vi-VN')}đ</span>
                                   <button disabled={isUpdating} onClick={() => handleRemoveItem(item)} className="size-10 bg-red-50 rounded-2xl flex items-center justify-center text-red-400 hover:bg-red-500 hover:text-white transition-colors disabled:opacity-50">
                                     <Trash2 className="size-4" />
                                   </button>
