@@ -48,6 +48,7 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
   const [ordersError, setOrdersError] = useState<string | null>(null);
   const [acceptingOrderId, setAcceptingOrderId] = useState<number | null>(null);
   const [acceptSuccess, setAcceptSuccess] = useState<number | null>(null);
+  const [codAcceptOrder, setCodAcceptOrder] = useState<AvailableOrderResponse | null>(null);
   const [trackingStatus, setTrackingStatus] = useState<TrackingStatus>('off');
   const [trackingOrderId, setTrackingOrderId] = useState<number | null>(null);
   // ✅ Fake GPS: orderId đang mở panel fake GPS
@@ -170,15 +171,26 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
     } finally { setLoadingOrders(false); }
   };
 
-  const handleAcceptOrder = async (orderId: number) => {
+  const handleAcceptOrder = async (order: AvailableOrderResponse, codPaymentOption?: 'CASH' | 'WALLET') => {
+    if ((order.paymentMethod ?? '').toUpperCase() === 'COD' && !codPaymentOption) {
+      setCodAcceptOrder(order);
+      return;
+    }
+    const orderId = order.orderId;
     setAcceptingOrderId(orderId);
     try {
-      await shipperService.acceptOrder(orderId);
+      await shipperService.acceptOrder(orderId, codPaymentOption);
       setAcceptSuccess(orderId);
+      setCodAcceptOrder(null);
       setAvailableOrders(prev => prev.filter(o => o.orderId !== orderId));
       setTimeout(() => setAcceptSuccess(null), 3000);
     } catch (err: any) {
-      globalShowAlert(err?.data?.message === 'ORDER_ALREADY_TAKEN' ? 'Đơn đã được nhận!' : 'Không thể nhận đơn.', 'Lỗi', 'error');
+      const message = err?.data?.message === 'ORDER_ALREADY_TAKEN'
+        ? 'Đơn đã được nhận!'
+        : err?.data?.message === 'INSUFFICIENT_BALANCE'
+          ? 'Số dư ví shipper không đủ để ứng tiền hàng COD.'
+          : 'Không thể nhận đơn.';
+      globalShowAlert(message, 'Lỗi', 'error');
     } finally { setAcceptingOrderId(null); }
   };
 
@@ -405,7 +417,10 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
                 <RefreshCw className="size-4" /> Tải lại
               </button>
             </div>
-          ) : ordersToShow.map((order) => (
+          ) : ordersToShow.map((order) => {
+            const codOrder = (order.paymentMethod ?? '').toUpperCase() === 'COD';
+            const prepaidAmount = order.codPrepaidAmount ?? Math.max((order.totalAmount ?? 0) - (order.shippingFee ?? 0), 0);
+            return (
             <div key={order.orderId} className="bg-white rounded-[40px] border border-gray-100 shadow-sm hover:shadow-xl transition-all p-8 flex flex-col group relative overflow-hidden">
               {/* Header */}
               <div className="flex justify-between items-start mb-6">
@@ -469,10 +484,17 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
                   }
                 </span>
               </div>
+              {codOrder && (
+                <div className="bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3 mb-4">
+                  <p className="text-[10px] font-black text-amber-700 uppercase tracking-widest">Đơn COD cần ứng trước</p>
+                  <p className="text-lg font-black text-amber-800 mt-1">{fmtCur(prepaidAmount)}</p>
+                  <p className="text-[11px] text-amber-700 font-semibold mt-1">Chọn trả tiền mặt cho admin hoặc trừ trực tiếp từ ví shipper.</p>
+                </div>
+              )}
 
               {/* Nút nhận đơn */}
               <button
-                onClick={() => handleAcceptOrder(order.orderId)}
+                onClick={() => handleAcceptOrder(order)}
                 disabled={acceptingOrderId === order.orderId}
                 className={`w-full py-4 font-black rounded-2xl flex items-center justify-center gap-2 shadow-xl transition-all transform active:scale-95
               ${acceptSuccess === order.orderId ? 'bg-green-500 text-white' : 'bg-primary text-white hover:bg-primary-dark'}
@@ -485,7 +507,8 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
 
               <div className="absolute top-0 right-0 size-32 bg-primary/5 rounded-full translate-x-1/2 -translate-y-1/2 blur-2xl group-hover:bg-primary/10 transition-colors" />
             </div>
-          ))}
+            );
+          })}
         </div>
         {/* Pagination controls when using paged API */}
         {ordersPage && (
@@ -657,6 +680,45 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+      {codAcceptOrder && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => setCodAcceptOrder(null)} />
+          <div className="bg-white w-full max-w-xl rounded-[36px] shadow-2xl relative z-10 p-8">
+            <h3 className="text-2xl font-black text-gray-900 uppercase">Chọn cách ứng tiền COD</h3>
+            <p className="text-sm text-gray-500 font-semibold mt-2">
+              Đơn #{codAcceptOrder.orderId} cần ứng trước{' '}
+              <span className="font-black text-amber-700">
+                {fmtCur(codAcceptOrder.codPrepaidAmount ?? Math.max((codAcceptOrder.totalAmount ?? 0) - (codAcceptOrder.shippingFee ?? 0), 0))}
+              </span>
+              {' '}trước khi giao.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-8">
+              <button
+                onClick={() => handleAcceptOrder(codAcceptOrder, 'CASH')}
+                disabled={acceptingOrderId === codAcceptOrder.orderId}
+                className="p-5 rounded-3xl border-2 border-amber-200 bg-amber-50 text-left hover:bg-amber-100 transition-all disabled:opacity-60"
+              >
+                <p className="text-sm font-black text-amber-800 uppercase">Trả tiền mặt</p>
+                <p className="text-xs text-amber-700 font-semibold mt-2">Shipper đưa tiền mặt, admin xác nhận đã nhận tiền rồi mới giao.</p>
+              </button>
+              <button
+                onClick={() => handleAcceptOrder(codAcceptOrder, 'WALLET')}
+                disabled={acceptingOrderId === codAcceptOrder.orderId}
+                className="p-5 rounded-3xl border-2 border-emerald-200 bg-emerald-50 text-left hover:bg-emerald-100 transition-all disabled:opacity-60"
+              >
+                <p className="text-sm font-black text-emerald-800 uppercase">Trừ ví shipper</p>
+                <p className="text-xs text-emerald-700 font-semibold mt-2">Hệ thống trừ ví ngay. Nếu không đủ số dư, đơn sẽ không được nhận.</p>
+              </button>
+            </div>
+            <button
+              onClick={() => setCodAcceptOrder(null)}
+              className="w-full mt-4 py-3 rounded-2xl bg-gray-100 text-gray-500 text-xs font-black uppercase hover:bg-gray-200"
+            >
+              Hủy
+            </button>
           </div>
         </div>
       )}

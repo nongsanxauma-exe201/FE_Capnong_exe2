@@ -197,6 +197,28 @@ const AddProduct: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-primary/10 transition-all" />
                 </div>
               </div>
+              {/* Banner phí nền tảng 10% */}
+              <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 flex items-start gap-3">
+                <div className="size-8 bg-blue-100 rounded-xl flex items-center justify-center shrink-0 mt-0.5">
+                  <Info className="size-4 text-blue-600" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs font-black text-blue-800 mb-1">💡 Phí nền tảng 10%</p>
+                  <p className="text-[11px] text-blue-700 font-medium leading-relaxed">
+                    Hệ thống thu <span className="font-black">10%</span> trên doanh thu thuần (tiền hàng,
+                    không tính phí ship) của mỗi đơn thành công. Hãy cộng thêm khoảng{' '}
+                    <span className="font-black">10–15%</span> vào giá bán để đảm bảo lợi nhuận.
+                  </p>
+                  {parseWholeNumber(price) > 0 && (
+                    <p className="text-[10px] font-bold text-blue-600 mt-1.5">
+                      Ví dụ với giá {parseWholeNumber(price).toLocaleString('vi-VN')}đ →
+                      phí sàn ~{Math.round(parseWholeNumber(price) * 0.1).toLocaleString('vi-VN')}đ →
+                      bạn nhận ~{Math.round(parseWholeNumber(price) * 0.9).toLocaleString('vi-VN')}đ/{unit}
+                    </p>
+                  )}
+                </div>
+              </div>
+
               <div className="flex flex-col gap-4">
                 <label className="text-sm font-bold text-gray-700">Hạn sử dụng</label>
                 <input type="date" value={expiryDate} min={minExpiryDate}

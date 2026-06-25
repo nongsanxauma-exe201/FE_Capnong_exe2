@@ -10,6 +10,7 @@ import {
   codSettlementService,
   CodPendingOrderResponse,
   getCodCollectAmount,
+  getCodPrepaidAmount,
 } from '../../services/codSettlement.service';
 import { globalShowAlert, globalShowConfirm } from '../../contexts/PopupContext';
 
@@ -85,6 +86,44 @@ const CodSettlement: React.FC = () => {
     }
   };
 
+  const handleConfirmCash = async (order: CodPendingOrderResponse) => {
+    const amount = getCodPrepaidAmount(order);
+    if (!await globalShowConfirm(
+      `Xác nhận đã nhận ${fmtCur(amount)} tiền mặt từ shipper cho đơn #${order.id}?`,
+      'Xác nhận tiền mặt COD'
+    )) return;
+
+    try {
+      setSettlingId(order.id);
+      await codSettlementService.confirmShipperCashPayment(order.id);
+      globalShowAlert('Đã xác nhận tiền mặt COD', 'Thành công', 'success');
+      fetchPending();
+    } catch (err: any) {
+      globalShowAlert(err?.data?.message || 'Xác nhận tiền mặt thất bại', 'Lỗi', 'error');
+    } finally {
+      setSettlingId(null);
+    }
+  };
+
+  const handleRefundShipper = async (order: CodPendingOrderResponse) => {
+    const amount = getCodPrepaidAmount(order);
+    if (!await globalShowConfirm(
+      `Hoàn ${fmtCur(amount)} tiền hàng cho shipper đơn #${order.id}? Phí ship không hoàn.`,
+      'Hoàn tiền shipper COD'
+    )) return;
+
+    try {
+      setSettlingId(order.id);
+      await codSettlementService.refundCodPrepaymentToShipper(order.id);
+      globalShowAlert('Đã hoàn tiền hàng cho shipper', 'Thành công', 'success');
+      fetchPending();
+    } catch (err: any) {
+      globalShowAlert(err?.data?.message || 'Hoàn tiền thất bại', 'Lỗi', 'error');
+    } finally {
+      setSettlingId(null);
+    }
+  };
+
   const buyerLabel = (order: CodPendingOrderResponse) =>
     order.buyer?.fullName || order.recipientName || (order.buyerId ? `Buyer #${order.buyerId}` : '—');
 
@@ -146,7 +185,10 @@ const CodSettlement: React.FC = () => {
               <tbody className="divide-y divide-gray-50">
                 {orders.map((order) => {
                   const codAmount = getCodCollectAmount(order);
+                  const prepaidAmount = getCodPrepaidAmount(order);
                   const hasRefund = (order.refundAmount ?? 0) > 0;
+                  const isCashPending = order.codPaymentStatus === 'PENDING_ADMIN_CONFIRM';
+                  const isRefundPending = order.codPaymentStatus === 'REFUND_PENDING';
                   return (
                     <tr key={order.id} className="hover:bg-gray-50/50 transition-colors">
                       <td className="px-6 py-5">
@@ -170,6 +212,11 @@ const CodSettlement: React.FC = () => {
                         <p className="text-[10px] text-gray-400 font-bold mt-0.5">
                           Tổng đơn: {fmtCur(order.totalAmount ?? 0)}
                         </p>
+                        {(isCashPending || isRefundPending || order.codPrepaidAmount != null) && (
+                          <p className="text-[10px] text-amber-600 font-black mt-0.5">
+                            Tiền hàng ứng: {fmtCur(prepaidAmount)}
+                          </p>
+                        )}
                       </td>
                       <td className="px-6 py-5 text-right">
                         {hasRefund ? (
@@ -192,20 +239,39 @@ const CodSettlement: React.FC = () => {
                         {order.codSettled === false && (
                           <p className="text-[9px] text-gray-400 font-bold mt-1 uppercase">Chưa đối soát</p>
                         )}
+                        {order.codPaymentStatus && (
+                          <p className="text-[9px] text-amber-600 font-bold mt-1 uppercase">{order.codPaymentStatus}</p>
+                        )}
                       </td>
                       <td className="px-6 py-5 text-right">
-                        <button
-                          onClick={() => handleSettle(order)}
-                          disabled={settlingId === order.id}
-                          className="px-4 py-2.5 bg-emerald-50 text-emerald-600 text-[10px] font-black rounded-xl uppercase hover:bg-emerald-100 transition-colors flex items-center gap-1.5 ml-auto disabled:opacity-50"
-                        >
-                          {settlingId === order.id ? (
-                            <Loader2 className="size-3.5 animate-spin" />
-                          ) : (
-                            <CheckCircle2 className="size-3.5" />
-                          )}
-                          Xác nhận đã nhận tiền
-                        </button>
+                        {isCashPending ? (
+                          <button
+                            onClick={() => handleConfirmCash(order)}
+                            disabled={settlingId === order.id}
+                            className="px-4 py-2.5 bg-amber-50 text-amber-700 text-[10px] font-black rounded-xl uppercase hover:bg-amber-100 transition-colors flex items-center gap-1.5 ml-auto disabled:opacity-50"
+                          >
+                            {settlingId === order.id ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
+                            Xác nhận tiền mặt
+                          </button>
+                        ) : isRefundPending ? (
+                          <button
+                            onClick={() => handleRefundShipper(order)}
+                            disabled={settlingId === order.id}
+                            className="px-4 py-2.5 bg-orange-50 text-orange-700 text-[10px] font-black rounded-xl uppercase hover:bg-orange-100 transition-colors flex items-center gap-1.5 ml-auto disabled:opacity-50"
+                          >
+                            {settlingId === order.id ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
+                            Hoàn shipper
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleSettle(order)}
+                            disabled={settlingId === order.id}
+                            className="px-4 py-2.5 bg-emerald-50 text-emerald-600 text-[10px] font-black rounded-xl uppercase hover:bg-emerald-100 transition-colors flex items-center gap-1.5 ml-auto disabled:opacity-50"
+                          >
+                            {settlingId === order.id ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
+                            Xác nhận đã nhận tiền
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );

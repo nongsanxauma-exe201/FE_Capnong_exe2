@@ -7,10 +7,12 @@ import { orderService, OrderResponse, OrderItemResponse } from '../../services/o
 import { authService } from '../../services/auth.service';
 import { reviewService } from '../../services/review.service';
 import { returnService } from '../../services/return.service';
+import { paymentService } from '../../services/payment.service';
 import { Star, Camera, X, Loader2 } from 'lucide-react';
 import Pagination, { PageInfo } from '../../components/ui/Pagination';
 import { globalShowAlert, globalShowConfirm } from '../../contexts/PopupContext';
 import ReturnRequestModal from '../../components/ReturnRequestModal';
+import { savePendingPayOSPayment } from '../../utils/pendingPayOSPayment';
 
 import { useSearchParams } from 'react-router-dom';
 
@@ -31,7 +33,7 @@ type OrderStatusFilter =
 
 const BUYER_STATUS_GROUPS: Record<OrderStatusFilter, string[]> = {
   ALL: [],
-  PENDING: ['PENDING', 'PAID'],
+  PENDING: ['PENDING', 'PAID', 'AWAITING_PAYMENT'],
   SHIPPING: [
     'CONFIRMED',
     'READY_FOR_PICKUP',
@@ -77,6 +79,8 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
   const [comment, setComment] = useState('');
   const [evidence, setEvidence] = useState<File | null>(null);
   const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewedOrderDetailIds, setReviewedOrderDetailIds] = useState<Set<number>>(new Set());
+  const [reviewedMysteryBoxIds, setReviewedMysteryBoxIds] = useState<Set<number>>(new Set());
   const [selectedReturnItem, setSelectedReturnItem] = useState<OrderItemResponse | null>(null);
   const [orderReturnModal, setOrderReturnModal] = useState<{ orderId: number; orderNum: number } | null>(null);
   const [orderReturnReason, setOrderReturnReason] = useState('');
@@ -84,6 +88,19 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
   const [submittingOrderReturn, setSubmittingOrderReturn] = useState(false);
   const formatImpactNumber = (value?: number | null) =>
     Number(value ?? 0).toLocaleString('vi-VN', { maximumFractionDigits: 2 });
+
+  const loadReviewedIds = async () => {
+    try {
+      const res = await reviewService.getMyReviews();
+      const reviews = res.result ?? [];
+      setReviewedOrderDetailIds(new Set(
+        reviews.filter(r => r.orderDetailId != null).map(r => r.orderDetailId!)
+      ));
+      setReviewedMysteryBoxIds(new Set(
+        reviews.filter(r => r.mysteryBoxId != null && r.orderDetailId == null).map(r => r.mysteryBoxId!)
+      ));
+    } catch { }
+  };
 
   const fetchOrders = async () => {
     try {
@@ -143,37 +160,35 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
         comment: comment.trim()
       };
 
-      console.log('Selected item for review:', selectedItem);
-
       if (selectedItem.itemType === 'MYSTERY_BOX') {
         if (!selectedItem.mysteryBoxId) {
-          console.error('Mystery box item missing mysteryBoxId:', selectedItem);
           globalShowAlert('Lỗi: Không tìm thấy ID hộp mù để đánh giá. Vui lòng liên hệ hỗ trợ.', 'Lỗi hệ thống', 'error');
           return;
         }
         reviewData.mysteryBoxId = selectedItem.mysteryBoxId;
-        console.log('Creating mystery box review with mysteryBoxId:', selectedItem.mysteryBoxId);
       } else {
         if (!selectedItem.orderDetailId) {
-          console.error('Product item missing orderDetailId:', selectedItem);
           globalShowAlert('Lỗi: Không tìm thấy ID chi tiết đơn hàng để đánh giá. Vui lòng liên hệ hỗ trợ.', 'Lỗi hệ thống', 'error');
           return;
         }
         reviewData.orderDetailId = selectedItem.orderDetailId;
-        console.log('Creating product review with orderDetailId:', selectedItem.orderDetailId);
       }
 
-      console.log('Review data being sent:', reviewData);
       const res = await reviewService.createReview(reviewData, evidence || undefined);
 
       if (res.result) {
         globalShowAlert(`Cảm ơn bạn đã đánh giá ${selectedItem.itemType === 'MYSTERY_BOX' ? 'hộp mù' : 'sản phẩm'}!`, 'Thành công', 'success');
+        // Đánh dấu item đã review
+        if (selectedItem.itemType === 'MYSTERY_BOX' && selectedItem.mysteryBoxId) {
+          setReviewedMysteryBoxIds(prev => new Set([...prev, selectedItem.mysteryBoxId!]));
+        } else if (selectedItem.orderDetailId) {
+          setReviewedOrderDetailIds(prev => new Set([...prev, selectedItem.orderDetailId!]));
+        }
         setShowReviewModal(false);
         setSelectedItem(null);
         setRating(5);
         setComment('');
         setEvidence(null);
-        fetchOrders(); // Refresh to update UI if needed
       }
     } catch (err: any) {
       console.error('Failed to submit review:', err);
@@ -249,6 +264,7 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
   // Fetch tất cả đơn 1 lần khi mount (hoặc khi orderId URL thay đổi)
   useEffect(() => {
     fetchOrders();
+    loadReviewedIds();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderIdFromUrl]);
 
@@ -264,6 +280,12 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
         color: 'text-blue-600',
         icon: Clock,
         bg: 'bg-blue-50',
+      },
+      AWAITING_PAYMENT: {
+        label: 'Đang thanh toán',
+        color: 'text-amber-600',
+        icon: Clock,
+        bg: 'bg-amber-50',
       },
       PAID: {
         label: 'Đã thanh toán',
@@ -566,12 +588,21 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
                                 <span className="font-bold text-gray-900">{(item.pricePerKg ?? item.unitPrice).toLocaleString('vi-VN')}đ/kg</span>
                                 {order.status === 'DELIVERED' && (
                                   <div className="flex gap-3">
-                                    <button
-                                      onClick={() => { setSelectedItem(item); setShowReviewModal(true); }}
-                                      className="text-primary font-black text-[10px] uppercase tracking-wider hover:underline"
-                                    >
-                                      Đánh giá
-                                    </button>
+                                    {(() => {
+                                      const alreadyReviewed =
+                                        (item.itemType === 'MYSTERY_BOX' && item.mysteryBoxId && reviewedMysteryBoxIds.has(item.mysteryBoxId)) ||
+                                        (item.itemType !== 'MYSTERY_BOX' && item.orderDetailId && reviewedOrderDetailIds.has(item.orderDetailId));
+                                      return alreadyReviewed ? (
+                                        <span className="text-green-600 font-black text-[10px] uppercase tracking-wider">✓ Đã đánh giá</span>
+                                      ) : (
+                                        <button
+                                          onClick={() => { setSelectedItem(item); setShowReviewModal(true); }}
+                                          className="text-primary font-black text-[10px] uppercase tracking-wider hover:underline"
+                                        >
+                                          Đánh giá
+                                        </button>
+                                      );
+                                    })()}
                                     {item.isRequestedReturn ? (
                                       <span className={`font-black text-[10px] uppercase tracking-wider italic ${item.returnStatus === 'REJECTED' ? 'text-red-500' :
                                         item.returnStatus === 'COMPLETED' ? 'text-green-500' : 'text-orange-500'
@@ -670,6 +701,32 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
                           <Eye className="size-4" />
                           Theo dõi đơn hàng
                         </button>
+                      ) : order.status === 'AWAITING_PAYMENT' ? (
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={async () => {
+                              try {
+                                const res = await paymentService.getLatestPendingByOrderId(order.id);
+                                const payment = res?.result;
+                                if (payment?.checkoutUrl) {
+                                  savePendingPayOSPayment(payment, order.id);
+                                  window.location.href = payment.checkoutUrl;
+                                } else {
+                                  globalShowAlert('Không tìm thấy link thanh toán. Vui lòng thử lại.', 'Thông báo', 'warning');
+                                }
+                              } catch (e: any) {
+                                globalShowAlert(e?.data?.message ?? 'Không thể tiếp tục thanh toán.', 'Lỗi', 'error');
+                              }
+                            }}
+                            className="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-2xl flex items-center gap-2 shadow-lg shadow-amber-500/20 transition-all"
+                          >
+                            💳 Tiếp tục thanh toán
+                          </button>
+                          <div className="flex items-center gap-2 px-6 py-3 bg-amber-50 text-amber-700 rounded-2xl border border-amber-100">
+                            <AlertCircle className="size-4" />
+                            <span className="text-sm font-bold">Chờ thanh toán</span>
+                          </div>
+                        </div>
                       ) : order.status === 'PENDING' || order.status === 'PAID' ? (
                         <div className="flex items-center gap-3">
                           <button

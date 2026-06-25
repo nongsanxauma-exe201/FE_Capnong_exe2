@@ -17,7 +17,9 @@ import {
   Share2,
   Copy,
   Check,
-  Facebook
+  Facebook,
+  ThumbsUp,
+  ThumbsDown
 } from 'lucide-react';
 import { productService, ProductResponse, ProductImageResponse, cartService, reviewService, ReviewResponse, comboService, BuildComboResponse } from '../../services';
 import { userService } from '../../services';
@@ -177,6 +179,7 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId: propProductId,
   const [showShareMenu,     setShowShareMenu]     = useState(false);
   const [showShopShareMenu, setShowShopShareMenu] = useState(false);
   const [copied,            setCopied]            = useState(false);
+  const [reactingReviewId,  setReactingReviewId]  = useState<number | null>(null);
   const [shopCopied,        setShopCopied]        = useState(false);
 
   const handleBack = () => {
@@ -252,57 +255,17 @@ useEffect(() => {
     if (!product?.id) return;
     try {
       setIsReviewsLoading(true);
-      console.log('[ProductDetail] Fetching reviews for product ID:', product.id);
-
-      // Try to fetch reviews for this specific product
-      try {
-        const res = await reviewService.getByProductId(product.id);
-        console.log('[ProductDetail] Product reviews response:', res);
-        if (res.result) {
-          console.log('[ProductDetail] Product reviews found:', res.result.length, res.result);
-          console.log('[ProductDetail] Setting reviews to state:', res.result);
-          setReviews(res.result);
-          console.log('[ProductDetail] Reviews state should be updated');
-          return;
-        }
-      } catch (productErr) {
-        console.warn('[ProductDetail] getByProductId not available, falling back to shop reviews:', productErr);
-      }
-
-      // Fallback: Get all shop reviews and filter by productId
-      if (product.shopId) {
-        console.log('[ProductDetail] Fetching shop reviews and filtering...');
-        const shopRes = await reviewService.getByShopId(product.shopId);
-        console.log('[ProductDetail] Shop reviews response:', shopRes);
-        if (shopRes.result) {
-          console.log('[ProductDetail] All shop reviews:', shopRes.result);
-          console.log('[ProductDetail] Looking for reviews with productId:', product.id);
-
-          // Log each review to see what fields it has
-          shopRes.result.forEach((r, idx) => {
-            console.log(`[ProductDetail] Review ${idx}:`, {
-              id: r.id,
-              productId: r.productId,
-              orderDetailId: r.orderDetailId,
-              allFields: Object.keys(r)
-            });
-          });
-
-          // Filter reviews that have productId matching current product
-          const productReviews = shopRes.result.filter(r => r.productId === product.id);
-          console.log('[ProductDetail] Filtered product reviews:', productReviews.length, productReviews);
-          setReviews(productReviews);
-        }
-      }
-    } catch (err) {
-      console.error('[ProductDetail] Failed to fetch reviews:', err);
+      const res = await reviewService.getByProductId(product.id);
+      setReviews(res.result ?? []);
+    } catch {
+      setReviews([]);
     } finally {
       setIsReviewsLoading(false);
     }
   };
 
   if (product?.id) fetchReviews();
-}, [product?.id, product?.shopId]);
+}, [product?.id]);
 
 // Fetch shop reviews for shop rating display
 useEffect(() => {
@@ -377,6 +340,20 @@ useEffect(() => {
     setMeta('og:site_name',   'Nông Sản Xấu Mã');
   };
 }, [product]);
+
+const handleReact = async (reviewId: number, reactionType: 'LIKE' | 'DISLIKE') => {
+  if (!isAuthenticated) { navigate('/login'); return; }
+  if (reactingReviewId === reviewId) return;
+  try {
+    setReactingReviewId(reviewId);
+    const res = await reviewService.reactToReview(reviewId, reactionType);
+    if (res.result) {
+      setReviews(prev => prev.map(r => r.id === reviewId ? res.result! : r));
+    }
+  } catch { /* silent */ } finally {
+    setReactingReviewId(null);
+  }
+};
 
 if (viewShopMode && selectedShopId) {
   return <ShopProducts shopId={selectedShopId} onBack={() => setViewShopMode(false)} isAuthenticated={isAuthenticated} onOpenLogin={() => navigate('/login')} />;
@@ -749,15 +726,13 @@ return (
 
         {activeTab.startsWith('Đánh giá') && (
           <div className="space-y-8">
-            {(() => {
-              console.log('[ProductDetail] Rendering reviews tab. isReviewsLoading:', isReviewsLoading, 'reviews.length:', reviews.length, 'reviews:', reviews);
-              return null;
-            })()}
             {isReviewsLoading ? (
               <div className="flex justify-center py-10"><Loader2 className="animate-spin text-primary" /></div>
             ) : reviews.length > 0 ? (
               reviews.map((review) => {
-                console.log('[ProductDetail] Rendering review:', review);
+                const isLiked    = review.currentUserReaction === 'LIKE';
+                const isDisliked = review.currentUserReaction === 'DISLIKE';
+                const isReacting = reactingReviewId === review.id;
                 return (
                   <div key={review.id} className="bg-gray-50 p-8 rounded-[32px] border border-gray-100 animate-in fade-in slide-in-from-bottom-2">
                     <div className="flex justify-between items-start mb-4">
@@ -767,6 +742,9 @@ return (
                         </div>
                         <div>
                           <p className="font-black text-gray-900 text-sm">{review.fullName || `Người dùng #${review.buyerId}`}</p>
+                          <p className="text-[10px] text-gray-400 mt-0.5">
+                            {review.createAt ? new Date(review.createAt).toLocaleDateString('vi-VN') : 'Gần đây'}
+                          </p>
                           <div className="flex text-yellow-400 mt-1">
                             {[...Array(5)].map((_, i) => (
                               <Star key={i} className={`size-3 ${i < review.ratingStar ? 'fill-yellow-400' : ''}`} />
@@ -774,16 +752,42 @@ return (
                           </div>
                         </div>
                       </div>
-                      <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Gần đây</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Hữu ích?</span>
+                        <button
+                          onClick={() => handleReact(review.id, 'LIKE')}
+                          disabled={isReacting}
+                          className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold transition-all border ${
+                            isLiked
+                              ? 'bg-green-500 text-white border-green-500'
+                              : 'bg-white text-gray-500 border-gray-200 hover:border-green-400 hover:text-green-600'
+                          } disabled:opacity-50`}
+                        >
+                          <ThumbsUp className="size-3" />
+                          ({review.likeCount ?? 0})
+                        </button>
+                        <button
+                          onClick={() => handleReact(review.id, 'DISLIKE')}
+                          disabled={isReacting}
+                          className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold transition-all border ${
+                            isDisliked
+                              ? 'bg-red-500 text-white border-red-500'
+                              : 'bg-white text-gray-500 border-gray-200 hover:border-red-400 hover:text-red-500'
+                          } disabled:opacity-50`}
+                        >
+                          <ThumbsDown className="size-3" />
+                          ({review.dislikeCount ?? 0})
+                        </button>
+                      </div>
                     </div>
-                    <p className="text-gray-600 text-sm leading-relaxed mb-6">{review.comment}</p>
+                    <p className="text-gray-600 text-sm leading-relaxed mb-4">{review.comment}</p>
                     {review.evidence && (
-                      <div className="mb-6 rounded-xl overflow-hidden border border-gray-200 w-32 aspect-square">
+                      <div className="mb-4 rounded-xl overflow-hidden border border-gray-200 w-32 aspect-square">
                         <img src={review.evidence} alt="Bằng chứng" className="w-full h-full object-cover" />
                       </div>
                     )}
                     {review.replyFromShop && (
-                      <div className="bg-white p-6 rounded-2xl border border-primary/10 relative">
+                      <div className="bg-white p-6 rounded-2xl border border-primary/10 relative mb-4">
                         <div className="absolute -top-3 left-6 bg-primary text-white text-[8px] font-black px-3 py-1 rounded-full uppercase tracking-widest shadow-lg shadow-primary/20">Phản hồi từ Nhà vườn</div>
                         <p className="text-gray-600 text-sm italic">{review.replyFromShop}</p>
                       </div>

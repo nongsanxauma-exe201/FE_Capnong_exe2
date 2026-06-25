@@ -127,6 +127,9 @@ export interface OrderResponse {
     refundAmount?: number | null;
     refundReason?: string | null;
     codAmount?: number | null;
+    codPrepaidAmount?: number | null;
+    codPaymentOption?: 'CASH' | 'WALLET' | null;
+    codPaymentStatus?: string | null;
     codSettled?: boolean | null;
     codSettledAt?: string | null;
 }

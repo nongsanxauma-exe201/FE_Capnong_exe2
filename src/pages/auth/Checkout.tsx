@@ -11,6 +11,7 @@ import {
    resolvePayOSOrderCode,
    savePendingPayOSPayment,
    saveRestoredPayOSCart,
+   getPendingPayOSPayment,
 } from '../../utils/pendingPayOSPayment';
 import { globalShowAlert, globalShowConfirm } from '../../contexts/PopupContext';
 
@@ -300,6 +301,21 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
       if (!recipientAddress.trim()) { globalShowAlert('Vui lòng nhập địa chỉ nhận hàng', 'Lỗi', 'error'); return false; }
       return true;
    };
+
+   // When inline QR is shown, notify-pending if user hides the tab (close/switch)
+   useEffect(() => {
+      if (!showQRCode) return;
+      const handleHidden = () => {
+         if (document.visibilityState === 'hidden') {
+            const pending = getPendingPayOSPayment();
+            if (pending?.orderCode) {
+               paymentService.notifyPendingPayment(pending.orderCode).catch(() => {});
+            }
+         }
+      };
+      document.addEventListener('visibilitychange', handleHidden);
+      return () => document.removeEventListener('visibilitychange', handleHidden);
+   }, [showQRCode]);
 
    const handleConfirmPayment = async () => {
       if (!validateForm()) return;

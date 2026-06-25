@@ -35,6 +35,10 @@ export interface AvailableOrderResponse {
   recipientPhone: string;
   shippingFee: number;
   totalAmount: number;
+  paymentMethod?: string;
+  codPrepaidAmount?: number | null;
+  codPaymentOption?: 'CASH' | 'WALLET' | null;
+  codPaymentStatus?: string | null;
   status: string;
   createdAt: string;
   estimatedDeliveryDate: string | null;
@@ -67,6 +71,9 @@ export interface ShipperOrderResponse {
   codAmount?: number | null;
   refundAmount?: number | null;
   refundReason?: string | null;
+  codPrepaidAmount?: number | null;
+  codPaymentOption?: 'CASH' | 'WALLET' | null;
+  codPaymentStatus?: string | null;
   // ✅ Tọa độ thật để FakeGPS dùng đúng điểm
   shopLatitude?: number | null;
   shopLongitude?: number | null;
@@ -125,8 +132,8 @@ class ShipperService {
     return httpClient.get<PageResponse<AvailableOrderResponse>>(`/shipper/orders?page=${page}&size=${size}`);
   }
 
-  async acceptOrder(orderId: number): Promise<ApiResponse<ShipperOrderResponse>> {
-    return httpClient.post<ShipperOrderResponse>(`/shipper/orders/${orderId}/accept`, {});
+  async acceptOrder(orderId: number, codPaymentOption?: 'CASH' | 'WALLET'): Promise<ApiResponse<ShipperOrderResponse>> {
+    return httpClient.post<ShipperOrderResponse>(`/shipper/orders/${orderId}/accept`, codPaymentOption ? { codPaymentOption } : {});
   }
 
   async updateOrderStatus(orderId: number, request: UpdateOrderStatusRequest): Promise<ApiResponse<ShipperOrderResponse>> {
