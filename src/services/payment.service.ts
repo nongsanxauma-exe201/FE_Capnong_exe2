@@ -50,6 +50,14 @@ class PaymentService {
     async createPaymentPayOS(data: CreatePaymentRequest): Promise<ApiResponse<PaymentResponse>> {
         return httpClient.post<PaymentResponse>('/payments/payos', data);
     }
+
+    async notifyPendingPayment(orderCode: string): Promise<ApiResponse<string>> {
+        return httpClient.post<string>(`/payments/${encodeURIComponent(orderCode)}/notify-pending`, {});
+    }
+
+    async getLatestPendingByOrderId(orderId: number): Promise<ApiResponse<PaymentResponse>> {
+        return httpClient.get<PaymentResponse>(`/payments/order/${orderId}/latest-pending`);
+    }
 }
 
 export const paymentService = new PaymentService();

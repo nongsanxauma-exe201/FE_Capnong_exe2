@@ -11,7 +11,7 @@ const getStatusLabel = (status: string) => {
     SHIPPING_TO_WAREHOUSE: 'Đang giao tới kho', ARRIVED_AT_WAREHOUSE: 'Đã tới kho',
     QUALITY_CHECKING: 'Đang kiểm định', QUALITY_APPROVED: 'Đạt chất lượng',
     QUALITY_CHECKED: 'Đã kiểm tra', QUALITY_REJECTED: 'Không đạt chất lượng',
-    PENDING: 'Chờ xác nhận', CONFIRMED: 'Đã xác nhận', SHIPPING: 'Đang giao',
+    PENDING: 'Chờ xác nhận', AWAITING_PAYMENT: 'Đang chờ thanh toán', CONFIRMED: 'Đã xác nhận', SHIPPING: 'Đang giao',
     DELIVERED: 'Đã giao', CANCELLED: 'Đã hủy', FAILED: 'Thất bại', PAID: 'Đã thanh toán',
     READY_FOR_PICKUP: 'Đã sẵn sàng để lấy hàng',
   };
@@ -145,7 +145,7 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
     { label: 'Tất cả', statuses: [] },
 
     // Chờ nông dân xác nhận
-    { label: 'Chờ xác nhận', statuses: ['PENDING', 'PAID'] },
+    { label: 'Chờ xác nhận', statuses: ['PENDING', 'PAID', 'AWAITING_PAYMENT'] },
 
      { label: 'Đã sẵn sàng', statuses: ['READY_FOR_PICKUP'] },
 
@@ -252,6 +252,7 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
             const isQualityChecked = order.status === 'QUALITY_CHECKED';
             const isQualityApproved = order.status === 'QUALITY_APPROVED';
             const isQualityRejected = order.status === 'QUALITY_REJECTED';
+            const isAwaitingPayment = order.status === 'AWAITING_PAYMENT';
             const needsFarmerConfirm = isPending || isPaid;
 
             return (
@@ -263,6 +264,7 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
                     <span className="text-[11px] text-gray-400 font-bold">Ngày đặt: {new Date(order.createdAt).toLocaleString('vi-VN')}</span>
                     {isPending && <span className="px-2 py-0.5 bg-yellow-50 text-yellow-600 text-[10px] font-black uppercase rounded-md">Chờ xác nhận</span>}
                     {isPaid && <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[10px] font-black uppercase rounded-md">✅ Đã thanh toán QR</span>}
+                    {isAwaitingPayment && <span className="px-2 py-0.5 bg-amber-50 text-amber-600 text-[10px] font-black uppercase rounded-md">⏳ Đang chờ thanh toán</span>}
                     {isConfirmed && <span className="px-2 py-0.5 bg-purple-50 text-purple-700 text-[10px] font-black uppercase rounded-md">🔄 Đang chuẩn bị</span>}
                     {isShipping && <span className="px-2 py-0.5 bg-blue-50 text-blue-500 text-[10px] font-black uppercase rounded-md">🚚 Đang giao</span>}
                     {isDelivered && <span className="px-2 py-0.5 bg-green-50 text-emerald-600 text-[10px] font-black uppercase rounded-md">✅ Đã giao</span>}
@@ -368,6 +370,14 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
 
                   {/* Right: action panel */}
                   <div id={filteredOrders.indexOf(order) === 0 ? 'tour-orders-action-panel' : undefined} className="w-full md:w-80 flex flex-col gap-3 justify-center">
+                    {isAwaitingPayment && (
+                      <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 text-center">
+                        <p className="text-xs font-black text-amber-700">⏳ Khách đang trong quá trình thanh toán</p>
+                        <p className="text-[10px] text-amber-500 font-bold mt-0.5">
+                          Đơn hàng sẽ được xác nhận sau khi thanh toán hoàn tất
+                        </p>
+                      </div>
+                    )}
                     {needsFarmerConfirm && (
                       <>
                         {isPaid && (

@@ -1,6 +1,7 @@
 /** Khớp com.swd301.foodmarket.enums.OrderStatus + alias legacy FE */
 export const ORDER_STATUS_LABELS: Record<string, string> = {
   PENDING: 'Chờ xử lý',
+  AWAITING_PAYMENT: 'Đang thanh toán',
   PAID: 'Đã thanh toán',
   CONFIRMED: 'Đã xác nhận',
   READY_FOR_PICKUP: 'Chờ lấy hàng',
@@ -43,6 +44,7 @@ export function getOrderStatusBadgeTone(status?: string | null): OrderStatusBadg
   if (status === 'DELIVERED' || status === 'COMPLETED') return 'success';
   if (status === 'CANCELLED' || status === 'FAILED') return 'danger';
   if (status === 'PENDING' || status === 'PAID') return 'warning';
+  if (status === 'AWAITING_PAYMENT') return 'warning';
   return 'warning';
 }
 
