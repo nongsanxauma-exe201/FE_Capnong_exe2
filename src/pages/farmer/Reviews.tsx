@@ -186,6 +186,9 @@ const Reviews: React.FC = () => {
                     <div className="flex justify-between items-start mb-2">
                       <div>
                         <h4 className="font-black text-gray-900 text-sm">{review.fullName || `Khách hàng #${review.buyerId}`}</h4>
+                        <p className="text-[10px] text-gray-400 mt-0.5">
+                          {review.createAt ? new Date(review.createAt).toLocaleDateString('vi-VN') : 'Gần đây'}
+                        </p>
                         <div className="flex text-yellow-400 mt-1">
                           {[...Array(5)].map((_, i) => (
                             <Star key={i} className={`size-3.5 ${i < review.ratingStar ? 'fill-yellow-400' : 'text-gray-200'}`} />
@@ -194,7 +197,9 @@ const Reviews: React.FC = () => {
                       </div>
                       <div className="text-right">
                         <span className="px-3 py-1 bg-gray-100 text-gray-500 text-[10px] font-bold rounded-lg whitespace-nowrap">
-                          Đơn hàng chi tiết #{review.orderDetailId}
+                          {review.productName || review.boxType
+                            ? (review.productName ? `SP: ${review.productName}` : `Túi mù: ${review.boxType}`)
+                            : `Đơn #${review.orderDetailId}`}
                         </span>
                       </div>
                     </div>
