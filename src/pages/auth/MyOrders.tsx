@@ -77,11 +77,26 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
   const [comment, setComment] = useState('');
   const [evidence, setEvidence] = useState<File | null>(null);
   const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewedOrderDetailIds, setReviewedOrderDetailIds] = useState<Set<number>>(new Set());
+  const [reviewedMysteryBoxIds, setReviewedMysteryBoxIds] = useState<Set<number>>(new Set());
   const [selectedReturnItem, setSelectedReturnItem] = useState<OrderItemResponse | null>(null);
   const [orderReturnModal, setOrderReturnModal] = useState<{ orderId: number; orderNum: number } | null>(null);
   const [orderReturnReason, setOrderReturnReason] = useState('');
   const [orderReturnEvidence, setOrderReturnEvidence] = useState<File | null>(null);
   const [submittingOrderReturn, setSubmittingOrderReturn] = useState(false);
+
+  const loadReviewedIds = async () => {
+    try {
+      const res = await reviewService.getMyReviews();
+      const reviews = res.result ?? [];
+      setReviewedOrderDetailIds(new Set(
+        reviews.filter(r => r.orderDetailId != null).map(r => r.orderDetailId!)
+      ));
+      setReviewedMysteryBoxIds(new Set(
+        reviews.filter(r => r.mysteryBoxId != null && r.orderDetailId == null).map(r => r.mysteryBoxId!)
+      ));
+    } catch { }
+  };
 
   const fetchOrders = async () => {
     try {
@@ -141,37 +156,35 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
         comment: comment.trim()
       };
 
-      console.log('Selected item for review:', selectedItem);
-
       if (selectedItem.itemType === 'MYSTERY_BOX') {
         if (!selectedItem.mysteryBoxId) {
-          console.error('Mystery box item missing mysteryBoxId:', selectedItem);
           globalShowAlert('Lỗi: Không tìm thấy ID hộp mù để đánh giá. Vui lòng liên hệ hỗ trợ.', 'Lỗi hệ thống', 'error');
           return;
         }
         reviewData.mysteryBoxId = selectedItem.mysteryBoxId;
-        console.log('Creating mystery box review with mysteryBoxId:', selectedItem.mysteryBoxId);
       } else {
         if (!selectedItem.orderDetailId) {
-          console.error('Product item missing orderDetailId:', selectedItem);
           globalShowAlert('Lỗi: Không tìm thấy ID chi tiết đơn hàng để đánh giá. Vui lòng liên hệ hỗ trợ.', 'Lỗi hệ thống', 'error');
           return;
         }
         reviewData.orderDetailId = selectedItem.orderDetailId;
-        console.log('Creating product review with orderDetailId:', selectedItem.orderDetailId);
       }
 
-      console.log('Review data being sent:', reviewData);
       const res = await reviewService.createReview(reviewData, evidence || undefined);
 
       if (res.result) {
         globalShowAlert(`Cảm ơn bạn đã đánh giá ${selectedItem.itemType === 'MYSTERY_BOX' ? 'hộp mù' : 'sản phẩm'}!`, 'Thành công', 'success');
+        // Đánh dấu item đã review
+        if (selectedItem.itemType === 'MYSTERY_BOX' && selectedItem.mysteryBoxId) {
+          setReviewedMysteryBoxIds(prev => new Set([...prev, selectedItem.mysteryBoxId!]));
+        } else if (selectedItem.orderDetailId) {
+          setReviewedOrderDetailIds(prev => new Set([...prev, selectedItem.orderDetailId!]));
+        }
         setShowReviewModal(false);
         setSelectedItem(null);
         setRating(5);
         setComment('');
         setEvidence(null);
-        fetchOrders(); // Refresh to update UI if needed
       }
     } catch (err: any) {
       console.error('Failed to submit review:', err);
@@ -247,6 +260,7 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
   // Fetch tất cả đơn 1 lần khi mount (hoặc khi orderId URL thay đổi)
   useEffect(() => {
     fetchOrders();
+    loadReviewedIds();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderIdFromUrl]);
 
@@ -562,12 +576,21 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
                                 <span className="font-bold text-gray-900">{item.unitPrice.toLocaleString('vi-VN')}đ</span>
                                 {order.status === 'DELIVERED' && (
                                   <div className="flex gap-3">
-                                    <button
-                                      onClick={() => { setSelectedItem(item); setShowReviewModal(true); }}
-                                      className="text-primary font-black text-[10px] uppercase tracking-wider hover:underline"
-                                    >
-                                      Đánh giá
-                                    </button>
+                                    {(() => {
+                                      const alreadyReviewed =
+                                        (item.itemType === 'MYSTERY_BOX' && item.mysteryBoxId && reviewedMysteryBoxIds.has(item.mysteryBoxId)) ||
+                                        (item.itemType !== 'MYSTERY_BOX' && item.orderDetailId && reviewedOrderDetailIds.has(item.orderDetailId));
+                                      return alreadyReviewed ? (
+                                        <span className="text-green-600 font-black text-[10px] uppercase tracking-wider">✓ Đã đánh giá</span>
+                                      ) : (
+                                        <button
+                                          onClick={() => { setSelectedItem(item); setShowReviewModal(true); }}
+                                          className="text-primary font-black text-[10px] uppercase tracking-wider hover:underline"
+                                        >
+                                          Đánh giá
+                                        </button>
+                                      );
+                                    })()}
                                     {item.isRequestedReturn ? (
                                       <span className={`font-black text-[10px] uppercase tracking-wider italic ${item.returnStatus === 'REJECTED' ? 'text-red-500' :
                                         item.returnStatus === 'COMPLETED' ? 'text-green-500' : 'text-orange-500'

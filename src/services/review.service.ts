@@ -6,13 +6,19 @@ export interface ReviewResponse {
     buyerId: number;
     fullName?: string;
     shopOwnerId: number;
-    orderDetailId: number;
+    orderDetailId?: number;
+    mysteryBoxId?: number;
+    boxType?: string;
     productId?: number;
     productName?: string;
     ratingStar: number;
     comment: string;
     evidence?: string;
     replyFromShop?: string;
+    createAt?: string;
+    likeCount?: number;
+    dislikeCount?: number;
+    currentUserReaction?: 'LIKE' | 'DISLIKE' | null;
 }
 
 export interface ReviewCreateRequest {
@@ -26,6 +32,10 @@ export interface ReviewReplyRequest {
     replyFromShop: string;
 }
 
+export interface ReviewReactionRequest {
+    reactionType: 'LIKE' | 'DISLIKE';
+}
+
 class ReviewService {
     async getAll(): Promise<ApiResponse<ReviewResponse[]>> {
         return httpClient.get<ReviewResponse[]>('/reviews');
@@ -36,8 +46,6 @@ class ReviewService {
     }
 
     async getByShopId(shopId: number): Promise<ApiResponse<ReviewResponse[]>> {
-        // Get all reviews for all products in a shop
-        // Used to calculate shop's overall rating (average of all product ratings)
         return httpClient.get<ReviewResponse[]>(`/reviews/shop/${shopId}`);
     }
 
@@ -46,9 +54,11 @@ class ReviewService {
     }
 
     async getByProductId(productId: number): Promise<ApiResponse<ReviewResponse[]>> {
-        // Get reviews for a specific product only
-        // Used to display product-specific ratings on product cards
         return httpClient.get<ReviewResponse[]>(`/reviews/product/${productId}`);
+    }
+
+    async getByMysteryBoxId(mysteryBoxId: number): Promise<ApiResponse<ReviewResponse[]>> {
+        return httpClient.get<ReviewResponse[]>(`/reviews/mystery-box/${mysteryBoxId}`);
     }
 
     async createReview(data: ReviewCreateRequest, evidence?: File): Promise<ApiResponse<ReviewResponse>> {
@@ -71,6 +81,14 @@ class ReviewService {
 
     async replyReview(id: number, request: ReviewReplyRequest): Promise<ApiResponse<ReviewResponse>> {
         return httpClient.post<ReviewResponse>(`/reviews/${id}/reply`, request);
+    }
+
+    async reactToReview(id: number, reactionType: 'LIKE' | 'DISLIKE'): Promise<ApiResponse<ReviewResponse>> {
+        return httpClient.post<ReviewResponse>(`/reviews/${id}/react`, { reactionType });
+    }
+
+    async getMyReviews(): Promise<ApiResponse<ReviewResponse[]>> {
+        return httpClient.get<ReviewResponse[]>('/reviews/my');
     }
 }
 

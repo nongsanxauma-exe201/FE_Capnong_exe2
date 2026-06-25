@@ -24,6 +24,8 @@ import {
   Check,
   X,
   Facebook,
+  ThumbsUp,
+  ThumbsDown,
 } from 'lucide-react';
 import { productService, ProductResponse, userService, UserResponse, cartService, reviewService, ReviewResponse, mysteryBoxService, MysteryBox, comboService, BuildComboResponse, voucherService, VoucherResponse } from '../../services';
 import { globalShowAlert } from '../../contexts/PopupContext';
@@ -61,6 +63,7 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
   const [canReceiveMap, setCanReceiveMap] = useState<Record<string, boolean>>({});
   const [voucherLoading, setVoucherLoading] = useState(false);
   const [voucherError, setVoucherError] = useState<string | null>(null);
+  const [reactingReviewId, setReactingReviewId] = useState<number | null>(null);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
@@ -69,7 +72,6 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
   useEffect(() => {
     const fetchShopData = async () => {
       setLoading(true);
-      console.log('[ShopProducts] Fetching data for shopId:', shopId);
       try {
         const [productsRes, shopRes, reviewsRes, boxesRes, combosRes] = await Promise.all([
           productService.getForBuyer().catch(() => ({ result: [] })),
@@ -210,6 +212,16 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
     }
   };
 
+  const handleReact = async (reviewId: number, reactionType: 'LIKE' | 'DISLIKE') => {
+    if (!isAuthenticated) { onOpenLogin(); return; }
+    if (reactingReviewId === reviewId) return;
+    try {
+      setReactingReviewId(reviewId);
+      const res = await reviewService.reactToReview(reviewId, reactionType);
+      if (res.result) setReviews(prev => prev.map(r => r.id === reviewId ? res.result! : r));
+    } catch { } finally { setReactingReviewId(null); }
+  };
+
   const handleChatNow = () => {
     if (!isAuthenticated) { onOpenLogin(); return; }
     window.dispatchEvent(new CustomEvent('open-chat-with-user', {
@@ -249,11 +261,6 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
     || (products.length > 0 ? products[0].shopName : null)
     || 'Cửa hàng';
 
-  console.log('[ShopProducts] Display shopName:', shopName, {
-    fromShopInfo: shopInfo?.shopName || shopInfo?.fullName,
-    fromProduct: products.length > 0 ? products[0].shopName : null,
-    productsCount: products.length
-  });
 
   if (loading) {
     return (
@@ -848,56 +855,81 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
               </div>
 
               <div className="space-y-6">
-                {reviews.slice(0, 5).map((review) => (
-                  <div key={review.id} className="flex gap-4 pb-6 border-b border-gray-50 last:border-0 last:pb-0">
-                    {/* Avatar */}
-                    <div className="size-10 rounded-full bg-primary/10 flex items-center justify-center font-black text-primary text-sm border border-primary/20 shrink-0">
-                      {review.fullName ? review.fullName.charAt(0).toUpperCase() : 'U'}
-                    </div>
-
-                    <div className="flex-1">
-                      <div className="flex items-start justify-between mb-2">
-                        <div>
-                          <h4 className="font-bold text-gray-900 text-sm">
-                            {review.fullName || `Khách hàng #${review.buyerId}`}
-                          </h4>
-                          <div className="flex text-yellow-400 mt-1">
-                            {[...Array(5)].map((_, i) => (
-                              <Star key={i} className={`size-3 ${i < review.ratingStar ? 'fill-yellow-400' : 'text-gray-200'}`} />
-                            ))}
-                          </div>
-                        </div>
-                        <span className="text-xs text-gray-400 font-medium">
-                          Đơn #{review.orderDetailId}
-                        </span>
+                {reviews.map((review) => {
+                  const isLiked    = review.currentUserReaction === 'LIKE';
+                  const isDisliked = review.currentUserReaction === 'DISLIKE';
+                  const isReacting = reactingReviewId === review.id;
+                  return (
+                    <div key={review.id} className="flex gap-4 pb-6 border-b border-gray-50 last:border-0 last:pb-0">
+                      {/* Avatar */}
+                      <div className="size-10 rounded-full bg-primary/10 flex items-center justify-center font-black text-primary text-sm border border-primary/20 shrink-0">
+                        {review.fullName ? review.fullName.charAt(0).toUpperCase() : 'U'}
                       </div>
 
-                      <p className="text-gray-700 text-sm leading-relaxed mb-3">{review.comment}</p>
-
-                      {/* Shop Reply */}
-                      {review.replyFromShop && (
-                        <div className="mt-3 p-4 bg-gray-50 rounded-xl border border-gray-100">
-                          <div className="flex items-center gap-2 mb-2">
-                            <div className="size-5 bg-primary rounded-full flex items-center justify-center text-white">
-                              <MessageCircle className="size-3" />
+                      <div className="flex-1">
+                        <div className="flex items-start justify-between mb-2">
+                          <div>
+                            <h4 className="font-bold text-gray-900 text-sm">
+                              {review.fullName || `Khách hàng #${review.buyerId}`}
+                            </h4>
+                            <p className="text-[10px] text-gray-400 mt-0.5">
+                              {review.createAt ? new Date(review.createAt).toLocaleDateString('vi-VN') : 'Gần đây'}
+                            </p>
+                            <div className="flex text-yellow-400 mt-1">
+                              {[...Array(5)].map((_, i) => (
+                                <Star key={i} className={`size-3 ${i < review.ratingStar ? 'fill-yellow-400' : 'text-gray-200'}`} />
+                              ))}
                             </div>
-                            <span className="text-xs font-black text-gray-900">Phản hồi từ Shop</span>
+                            {(review.productName || review.boxType) && (
+                              <p className="text-[10px] text-gray-400 mt-0.5 italic">
+                                {review.productName ? `SP: ${review.productName}` : `Túi mù: ${review.boxType}`}
+                              </p>
+                            )}
                           </div>
-                          <p className="text-gray-600 text-sm pl-7 italic">{review.replyFromShop}</p>
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Hữu ích?</span>
+                            <button
+                              onClick={() => handleReact(review.id, 'LIKE')}
+                              disabled={isReacting}
+                              className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold transition-all border ${isLiked ? 'bg-green-500 text-white border-green-500' : 'bg-white text-gray-500 border-gray-200 hover:border-green-400 hover:text-green-600'} disabled:opacity-50`}
+                            >
+                              <ThumbsUp className="size-3" />({review.likeCount ?? 0})
+                            </button>
+                            <button
+                              onClick={() => handleReact(review.id, 'DISLIKE')}
+                              disabled={isReacting}
+                              className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold transition-all border ${isDisliked ? 'bg-red-500 text-white border-red-500' : 'bg-white text-gray-500 border-gray-200 hover:border-red-400 hover:text-red-500'} disabled:opacity-50`}
+                            >
+                              <ThumbsDown className="size-3" />({review.dislikeCount ?? 0})
+                            </button>
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
 
-              {reviews.length > 5 && (
-                <div className="mt-6 pt-4 border-t border-gray-100 text-center">
-                  <p className="text-sm text-gray-500 font-medium">
-                    Hiển thị 5/{reviews.length} đánh giá
-                  </p>
-                </div>
-              )}
+                        <p className="text-gray-700 text-sm leading-relaxed mb-3">{review.comment}</p>
+
+                        {review.evidence && (
+                          <div className="mb-3 rounded-xl overflow-hidden border border-gray-200 w-24 aspect-square">
+                            <img src={review.evidence} alt="Bằng chứng" className="w-full h-full object-cover" />
+                          </div>
+                        )}
+
+                        {/* Shop Reply */}
+                        {review.replyFromShop && (
+                          <div className="mt-3 p-4 bg-gray-50 rounded-xl border border-gray-100">
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="size-5 bg-primary rounded-full flex items-center justify-center text-white">
+                                <MessageCircle className="size-3" />
+                              </div>
+                              <span className="text-xs font-black text-gray-900">Phản hồi từ Shop</span>
+                            </div>
+                            <p className="text-gray-600 text-sm pl-7 italic">{review.replyFromShop}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}
