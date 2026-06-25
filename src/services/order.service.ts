@@ -144,16 +144,22 @@ class OrderService {
         return httpClient.get<OrderResponse[]>('/orders');
     }
 
-    async getAllOrdersPaged(page = 0, size = 10): Promise<ApiResponse<PageResponse<OrderResponse>>> {
-        return httpClient.get<PageResponse<OrderResponse>>(`/orders/paged?page=${page}&size=${size}`);
+    async getAllOrdersPaged(page = 0, size = 10, statuses?: string[]): Promise<ApiResponse<PageResponse<OrderResponse>>> {
+        const statusParam = statuses && statuses.length > 0
+            ? `&${statuses.map(s => `statuses=${s}`).join('&')}`
+            : '';
+        return httpClient.get<PageResponse<OrderResponse>>(`/orders/paged?page=${page}&size=${size}${statusParam}`);
     }
 
     async getOrdersByUserId(userId: number): Promise<ApiResponse<OrderResponse[]>> {
         return httpClient.get<OrderResponse[]>(`/orders/user/${userId}`);
     }
 
-    async getOrdersByUserIdPaged(userId: number, page = 0, size = 10): Promise<ApiResponse<PageResponse<OrderResponse>>> {
-        return httpClient.get<PageResponse<OrderResponse>>(`/orders/user/${userId}/paged?page=${page}&size=${size}`);
+    async getOrdersByUserIdPaged(userId: number, page = 0, size = 10, statuses?: string[]): Promise<ApiResponse<PageResponse<OrderResponse>>> {
+        const statusParam = statuses && statuses.length > 0
+            ? `&${statuses.map(s => `statuses=${s}`).join('&')}`
+            : '';
+        return httpClient.get<PageResponse<OrderResponse>>(`/orders/user/${userId}/paged?page=${page}&size=${size}${statusParam}`);
     }
 
     async getOrdersForStaff(page = 0, size = 10, status?: string): Promise<ApiResponse<PageResponse<OrderResponse>>> {
