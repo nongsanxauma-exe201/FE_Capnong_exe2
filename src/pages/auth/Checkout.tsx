@@ -197,10 +197,16 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
       }
    }, [shopId]);
 
-   const calculateVoucherDiscount = (voucherItem: VoucherUserResponse | null, amount: number) => {
+   const isWelcomeVoucher = (voucherItem: VoucherUserResponse | null) =>
+      voucherItem?.voucherResponse?.voucherType === 'WELCOME';
+
+   const calculateVoucherDiscount = (voucherItem: VoucherUserResponse | null, amount: number, currentShippingFee = 0) => {
       const voucher = voucherItem?.voucherResponse;
       if (!voucher) return 0;
       if (amount < Number(voucher.minOrderValue ?? 0)) return 0;
+      if (isWelcomeVoucher(voucherItem)) {
+         return Math.min(currentShippingFee, Number(voucher.maxDiscount ?? currentShippingFee));
+      }
       const rawDiscount = amount * (Number(voucher.discountValue ?? 0) / 100);
       return Math.min(rawDiscount, Number(voucher.maxDiscount ?? rawDiscount));
    };
@@ -214,18 +220,29 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
       return Boolean(a.voucherResponse?.voucherCode && a.voucherResponse.voucherCode === b.voucherResponse?.voucherCode);
    };
 
-   const getVoucherApplications = (items: VoucherUserResponse[], amount: number) => {
+   const getVoucherApplications = (items: VoucherUserResponse[], amount: number, currentShippingFee: number) => {
       let remainingAmount = amount;
+      let remainingShippingFee = currentShippingFee;
       return items.map((item) => {
-         const discount = calculateVoucherDiscount(item, remainingAmount);
-         remainingAmount = Math.max(0, remainingAmount - discount);
+         const discount = calculateVoucherDiscount(item, remainingAmount, remainingShippingFee);
+         if (isWelcomeVoucher(item)) {
+            remainingShippingFee = Math.max(0, remainingShippingFee - discount);
+         } else {
+            remainingAmount = Math.max(0, remainingAmount - discount);
+         }
          return { item, discount, remainingAmount };
       });
    };
 
-   const selectedVoucherApplications = getVoucherApplications(selectedVouchers, cartData?.totalAmount || 0);
+   const selectedVoucherApplications = getVoucherApplications(selectedVouchers, cartData?.totalAmount || 0, shippingFee);
    const voucherDiscount = selectedVoucherApplications.reduce((sum, app) => sum + app.discount, 0);
-   const voucherCheckAmount = Math.max(0, (cartData?.totalAmount || 0) - voucherDiscount);
+   const productVoucherDiscount = selectedVoucherApplications
+      .filter((app) => !isWelcomeVoucher(app.item))
+      .reduce((sum, app) => sum + app.discount, 0);
+   const shippingVoucherDiscount = selectedVoucherApplications
+      .filter((app) => isWelcomeVoucher(app.item))
+      .reduce((sum, app) => sum + app.discount, 0);
+   const voucherCheckAmount = Math.max(0, (cartData?.totalAmount || 0) - productVoucherDiscount);
 
    useEffect(() => {
       const fetchOrderVouchers = async () => {
@@ -435,7 +452,7 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
    }
 
    const subtotalAmount = cartData?.totalAmount || 0;
-   const totalAmount = Math.max(0, subtotalAmount - voucherDiscount) + shippingFee;
+   const totalAmount = Math.max(0, subtotalAmount - productVoucherDiscount) + Math.max(0, shippingFee - shippingVoucherDiscount);
 
    return (
       <div className="min-h-screen bg-gray-50 pb-20">
@@ -621,7 +638,7 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
                                           <div>
                                              <p className="text-[10px] font-black text-primary uppercase">{voucher.voucherCode}</p>
                                              <p className="mt-0.5 text-xs font-black text-gray-900">
-                                                Đã áp dụng -{discount.toLocaleString('vi-VN')}đ
+                                                {isWelcomeVoucher(item) ? 'Miễn phí vận chuyển' : 'Đã áp dụng'} -{discount.toLocaleString('vi-VN')}đ
                                              </p>
                                           </div>
                                           <button
@@ -651,7 +668,10 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
                               {orderVouchers.map((item) => {
                                  const voucher = item.voucherResponse;
                                  if (!voucher) return null;
-                                 const discount = calculateVoucherDiscount(item, voucherCheckAmount);
+                                 const discount = calculateVoucherDiscount(item, voucherCheckAmount, shippingFee);
+                                 const maxDiscountText = voucher.maxDiscount == null
+                                    ? 'toàn bộ phí ship'
+                                    : `${Number(voucher.maxDiscount).toLocaleString('vi-VN')}đ`;
                                  const voucherKey = getVoucherItemKey(item);
                                  return (
                                     <button
@@ -664,7 +684,9 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
                                           <div>
                                              <p className="text-[10px] font-black text-primary uppercase">{voucher.voucherCode}</p>
                                              <p className="mt-0.5 text-xs font-black text-gray-900">
-                                                Giảm {voucher.discountValue}% tối đa {Number(voucher.maxDiscount).toLocaleString('vi-VN')}đ
+                                                {isWelcomeVoucher(item)
+                                                   ? `Miễn phí vận chuyển ${maxDiscountText}`
+                                                   : `Giảm ${voucher.discountValue}% tối đa ${maxDiscountText}`}
                                              </p>
                                              <p className="mt-0.5 text-[10px] font-bold text-gray-400">
                                                 Đơn từ {Number(voucher.minOrderValue).toLocaleString('vi-VN')}đ
@@ -691,10 +713,10 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
                            <span className="text-gray-600 font-medium">Tiền hàng ({cartData?.items?.length || 0})</span>
                            <span className="font-bold text-gray-900">{(cartData?.totalAmount || 0).toLocaleString('vi-VN')}đ</span>
                         </div>
-                        {voucherDiscount > 0 && (
+                        {productVoucherDiscount > 0 && (
                            <div className="flex justify-between text-xs">
                               <span className="text-gray-600 font-medium">Giảm voucher</span>
-                              <span className="font-bold text-primary">-{voucherDiscount.toLocaleString('vi-VN')}đ</span>
+                              <span className="font-bold text-primary">-{productVoucherDiscount.toLocaleString('vi-VN')}đ</span>
                            </div>
                         )}
                         {/* ✅ Phí ship động */}
@@ -707,6 +729,12 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
                               {shippingFee.toLocaleString('vi-VN')}đ
                            </span>
                         </div>
+                        {shippingVoucherDiscount > 0 && (
+                           <div className="flex justify-between text-xs">
+                              <span className="text-gray-600 font-medium">Voucher miễn phí vận chuyển</span>
+                              <span className="font-bold text-primary">-{shippingVoucherDiscount.toLocaleString('vi-VN')}đ</span>
+                           </div>
+                        )}
                      </div>
 
                      <div className="pt-4 border-t border-gray-200">

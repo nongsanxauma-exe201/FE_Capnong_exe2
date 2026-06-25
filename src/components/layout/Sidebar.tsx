@@ -97,6 +97,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, user, currentPath, onNavigate, 
     { name: 'Quản lý thông báo', icon: Send, id: 'admin-notifications' },
     { name: 'Giám sát cửa hàng', icon: Store, id: 'admin-stores' },
     { name: 'Duyệt sản phẩm', icon: ClipboardCheck, id: 'admin-product-approval' },
+    { name: 'Voucher nền tảng', icon: Gift, id: 'admin-vouchers' },
     // { name: 'Tranh chấp', icon: Gavel, id: 'admin-disputes' }, // tạm ẩn
     { name: 'Quản lý Shipper', icon: Truck, id: 'admin-shippers' },
     { name: 'COD cần đối soát', icon: Banknote, id: 'admin-cod-settlement' },

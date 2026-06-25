@@ -112,6 +112,7 @@ export interface OrderResponse {
     paymentMethod: string;
     note: string;
     shippingFee: number;
+  shippingDiscountAmount?: number;
     totalAmount: number;
     totalKg?: number;
     rescuedKg?: number;

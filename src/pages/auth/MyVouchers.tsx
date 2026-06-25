@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, Clock, Gift, Loader2, Ticket } from 'lucide-react';
+import { ArrowLeft, Clock, Gift, Loader2, Ticket, PlusCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { voucherService, VoucherUserResponse } from '../../services';
+import { globalShowAlert } from '../../contexts/PopupContext';
 
 const PAGE_SIZE = 10;
 
@@ -20,6 +21,8 @@ const MyVouchers: React.FC = () => {
   const [totalPages, setTotalPages] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [voucherCode, setVoucherCode] = useState('');
+  const [claiming, setClaiming] = useState(false);
 
   const fetchVouchers = useCallback(async () => {
     try {
@@ -42,6 +45,28 @@ const MyVouchers: React.FC = () => {
     fetchVouchers();
   }, [fetchVouchers]);
 
+  const handleClaimVoucher = async (event?: React.FormEvent) => {
+    event?.preventDefault();
+    const code = voucherCode.trim().toUpperCase();
+    if (!code) {
+      globalShowAlert('Vui lòng nhập mã voucher.', 'Thiếu mã voucher', 'warning');
+      return;
+    }
+
+    try {
+      setClaiming(true);
+      await voucherService.receiveVoucher(code);
+      setVoucherCode('');
+      setPage(0);
+      await fetchVouchers();
+      globalShowAlert('Đã nhận voucher vào kho của bạn.', 'Thành công', 'success');
+    } catch (err: any) {
+      globalShowAlert(err?.data?.message || 'Không thể nhận voucher. Vui lòng kiểm tra lại mã.', 'Lỗi', 'error');
+    } finally {
+      setClaiming(false);
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto px-4 py-10 pb-24">
       <button
@@ -59,6 +84,43 @@ const MyVouchers: React.FC = () => {
         </h1>
         <p className="mt-2 text-sm font-medium text-gray-500">Các voucher bạn đã nhận và có thể dùng khi đặt hàng.</p>
       </div>
+
+      <form
+        onSubmit={handleClaimVoucher}
+        className="mb-8 rounded-[32px] border border-primary/10 bg-primary/5 p-5 shadow-sm"
+      >
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <PlusCircle className="size-5 text-primary" />
+              <h2 className="text-lg font-black text-gray-900">Nhập mã để nhận voucher</h2>
+            </div>
+            <p className="mt-1 text-xs font-semibold text-gray-500">
+              Nhập mã voucher từ admin hoặc shop để lưu vào kho voucher của bạn.
+            </p>
+            <input
+              value={voucherCode}
+              onChange={(event) => setVoucherCode(event.target.value.toUpperCase())}
+              placeholder="VD: XUAN2026"
+              className="mt-4 w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-black uppercase tracking-wider text-gray-800 outline-none transition-all focus:border-primary/40 focus:ring-4 focus:ring-primary/10"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={claiming}
+            className="h-12 rounded-2xl bg-primary px-6 text-sm font-black text-white shadow-lg shadow-primary/20 transition-all hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60 md:min-w-[150px]"
+          >
+            {claiming ? (
+              <span className="inline-flex items-center justify-center gap-2">
+                <Loader2 className="size-4 animate-spin" />
+                Đang nhận
+              </span>
+            ) : (
+              'Nhận voucher'
+            )}
+          </button>
+        </div>
+      </form>
 
       {error && <div className="mb-4 rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-600">{error}</div>}
 

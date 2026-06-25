@@ -53,7 +53,12 @@ const toDatetimeLocal = (value?: string) => {
 
 const toApiDateTime = (value: string) => (value ? `${value}:00` : '');
 
-const Vouchers: React.FC = () => {
+interface VouchersProps {
+  mode?: 'shop' | 'platform';
+}
+
+const Vouchers: React.FC<VouchersProps> = ({ mode = 'shop' }) => {
+  const isPlatformMode = mode === 'platform';
   const [vouchers, setVouchers] = useState<VoucherResponse[]>([]);
   const [page, setPage] = useState(0);
   const [pageInfo, setPageInfo] = useState<PageInfo | null>(null);
@@ -70,7 +75,11 @@ const Vouchers: React.FC = () => {
   const fetchVouchers = useCallback(async () => {
     try {
       setIsLoading(true);
-      const response = await voucherService.getShopVouchers(
+      const response = isPlatformMode ? await voucherService.getPlatformVouchers(
+        page,
+        PAGE_SIZE,
+        activeFilter === 'active'
+      ) : await voucherService.getShopVouchers(
         page,
         PAGE_SIZE,
         activeFilter === 'active'
@@ -99,7 +108,7 @@ const Vouchers: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [page, activeFilter]);
+  }, [page, activeFilter, isPlatformMode]);
 
   useEffect(() => {
     fetchVouchers();
@@ -172,8 +181,12 @@ const Vouchers: React.FC = () => {
         await voucherService.update(editingCode, payload as VoucherUpdateRequest);
         globalShowAlert('Cập nhật voucher thành công.', 'Thành công', 'success');
       } else {
-        await voucherService.create(payload);
-        globalShowAlert('Đã tạo voucher mới.', 'Thành công', 'success');
+        if (isPlatformMode) {
+          await voucherService.createPlatform(payload);
+        } else {
+          await voucherService.create(payload);
+        }
+        globalShowAlert(isPlatformMode ? 'Đã tạo voucher nền tảng mới.' : 'Đã tạo voucher mới.', 'Thành công', 'success');
       }
       closeFormModal();
       await fetchVouchers();
@@ -238,16 +251,20 @@ const Vouchers: React.FC = () => {
     <div className="flex flex-col gap-8 p-8 animate-in fade-in duration-500 relative">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h2 className="text-3xl font-black font-display text-gray-900">Quản Lý Voucher</h2>
+          <h2 className="text-3xl font-black font-display text-gray-900">
+            {isPlatformMode ? 'Quản Lý Voucher Nền Tảng' : 'Quản Lý Voucher'}
+          </h2>
           <p className="text-gray-400 font-medium text-sm mt-1">
-            Tạo và quản lý mã giảm giá cho cửa hàng của bạn.
+            {isPlatformMode
+              ? 'Tạo và quản lý mã giảm giá dùng chung trên toàn hệ thống.'
+              : 'Tạo và quản lý mã giảm giá cho cửa hàng của bạn.'}
           </p>
         </div>
         <button
           onClick={openCreateModal}
           className="px-6 py-3 bg-primary text-white rounded-2xl font-bold flex items-center gap-2 shadow-xl shadow-primary/20 hover:bg-primary-dark transition-all"
         >
-          <Plus className="size-5" /> Tạo voucher
+          <Plus className="size-5" /> {isPlatformMode ? 'Tạo voucher nền tảng' : 'Tạo voucher'}
         </button>
       </div>
 
@@ -256,7 +273,7 @@ const Vouchers: React.FC = () => {
           <div>
             <h3 className="text-xl font-black text-gray-900">Danh sách voucher</h3>
             <p className="text-sm text-gray-500 mt-1">
-              {pageInfo ? `${pageInfo.totalElements} voucher trong hệ thống` : 'Đang tải...'}
+              {pageInfo ? `${pageInfo.totalElements} voucher ${isPlatformMode ? 'nền tảng' : 'trong hệ thống'}` : 'Đang tải...'}
             </p>
           </div>
           <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
@@ -441,10 +458,12 @@ const Vouchers: React.FC = () => {
               <div>
                 <h3 className="text-xl font-black text-gray-900 flex items-center gap-2">
                   <Gift className="size-5 text-primary" />
-                  {editingCode ? 'Chỉnh sửa voucher' : 'Tạo voucher mới'}
+                  {editingCode ? 'Chỉnh sửa voucher' : isPlatformMode ? 'Tạo voucher nền tảng' : 'Tạo voucher mới'}
                 </h3>
                 <p className="text-sm text-gray-500 mt-1">
-                  Thiết lập mức giảm, điều kiện áp dụng và thời hạn sử dụng.
+                  {isPlatformMode
+                    ? 'Voucher nền tảng áp dụng cho buyer trên toàn hệ thống.'
+                    : 'Thiết lập mức giảm, điều kiện áp dụng và thời hạn sử dụng.'}
                 </p>
               </div>
               <button
