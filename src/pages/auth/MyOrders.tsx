@@ -23,36 +23,37 @@ interface MyOrdersProps {
 
 type OrderStatusFilter =
   | 'ALL'
-  | 'WAITING'
-  | 'PROCESSING'
+  | 'PENDING'
   | 'SHIPPING'
   | 'DELIVERED'
-  | 'CANCELLED';
+  | 'CANCELLED'
+  | 'FAILED';
 
 const BUYER_STATUS_GROUPS: Record<OrderStatusFilter, string[]> = {
   ALL: [],
-  WAITING: ['PENDING', 'PAID'],
-  PROCESSING: [
+  PENDING: ['PENDING', 'PAID'],
+  SHIPPING: [
     'CONFIRMED',
     'READY_FOR_PICKUP',
+    'SHIPPING',
     'SHIPPING_TO_WAREHOUSE',
     'ARRIVED_AT_WAREHOUSE',
     'QUALITY_CHECKING',
     'QUALITY_CHECKED',
     'READY',
   ],
-  SHIPPING: ['SHIPPING'],
   DELIVERED: ['DELIVERED'],
-  CANCELLED: ['CANCELLED', 'FAILED'],
+  CANCELLED: ['CANCELLED'],
+  FAILED: ['FAILED'],
 };
 
 const BUYER_FILTERS: Array<{ key: OrderStatusFilter; label: string }> = [
   { key: 'ALL', label: 'Tất cả' },
-  { key: 'WAITING', label: 'Chờ xử lý' },
-  { key: 'PROCESSING', label: 'Đang chuẩn bị' },
-  { key: 'SHIPPING', label: 'Đang giao' },
-  { key: 'DELIVERED', label: 'Đã giao' },
-  { key: 'CANCELLED', label: 'Đã hủy / lỗi' },
+  { key: 'PENDING', label: 'Chờ xác nhận' },
+  { key: 'SHIPPING', label: 'Đang vận chuyển' },
+  { key: 'DELIVERED', label: 'Đã nhận' },
+  { key: 'CANCELLED', label: 'Đã hủy' },
+  { key: 'FAILED', label: 'Giao thất bại' },
 ];
 
 const getFilterLabel = (filter: OrderStatusFilter) => {
@@ -62,12 +63,11 @@ const getFilterLabel = (filter: OrderStatusFilter) => {
 const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const orderIdFromUrl = searchParams.get('orderId');
-  const [orders, setOrders] = useState<OrderResponse[]>([]);
+  const [allOrders, setAllOrders] = useState<OrderResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<OrderStatusFilter>('ALL');
   const [searchQuery, setSearchQuery] = useState(orderIdFromUrl || '');
   const [page, setPage] = useState(0);
-  const [pageInfo, setPageInfo] = useState<PageInfo | null>(null);
   const [userId, setUserId] = useState<number | null>(null);
 
   // Review state
@@ -98,31 +98,18 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
       if (orderIdFromUrl) {
         const response = await orderService.getOrderById(parseInt(orderIdFromUrl));
         if (response.result) {
-          setOrders([response.result]);
-          setPageInfo(null);
+          setAllOrders([response.result]);
           return;
         }
       }
-      const response = await orderService.getOrdersByUserIdPaged(uid, page, PAGE_SIZE);
 
+      // Fetch tất cả đơn một lần, filter và phân trang hoàn toàn client-side
+      // để tránh lỗi pagination khi backend không hỗ trợ filter statuses
+      const response = await orderService.getOrdersByUserId(uid);
       if (response.result) {
-        const myOrders = response.result.content;
-
-        myOrders.forEach(order => {
-          console.log(`Order #${order.id} items:`, order.items);
-        });
-
-        setOrders(myOrders.sort((a, b) =>
+        setAllOrders(response.result.sort((a, b) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         ));
-        setPageInfo({
-          page: response.result.page,
-          size: response.result.size,
-          totalElements: response.result.totalElements,
-          totalPages: response.result.totalPages,
-          first: response.result.first,
-          last: response.result.last,
-        });
       }
     } catch (error: any) {
       console.error('Failed to fetch orders:', error);
@@ -257,74 +244,81 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
     }
   };
 
+  // Fetch tất cả đơn 1 lần khi mount (hoặc khi orderId URL thay đổi)
   useEffect(() => {
     fetchOrders();
-  }, [page, orderIdFromUrl]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderIdFromUrl]);
+
+  // Reset về trang đầu khi đổi tab hoặc thay đổi search
+  useEffect(() => {
+    setPage(0);
+  }, [filter, searchQuery]);
 
   const getStatusConfig = (status: string) => {
     const configs: Record<string, { label: string; color: string; icon: any; bg: string }> = {
       PENDING: {
-        label: 'Chờ thanh toán/duyệt',
-        color: 'text-yellow-600',
+        label: 'Chờ xác nhận',
+        color: 'text-blue-600',
         icon: Clock,
-        bg: 'bg-yellow-50',
+        bg: 'bg-blue-50',
       },
       PAID: {
-        label: 'Chờ shop xác nhận',
-        color: 'text-yellow-600',
+        label: 'Đã thanh toán',
+        color: 'text-blue-600',
         icon: Clock,
-        bg: 'bg-yellow-50',
+        bg: 'bg-blue-50',
       },
       CONFIRMED: {
-        label: 'Shop đã xác nhận',
-        color: 'text-blue-600',
+        label: 'Đã xác nhận',
+        color: 'text-yellow-600',
         icon: CheckCircle2,
-        bg: 'bg-blue-50',
+        bg: 'bg-yellow-50',
       },
       READY_FOR_PICKUP: {
-        label: 'Chờ lấy hàng',
-        color: 'text-blue-600',
+        label: 'Sẵn sàng lấy hàng',
+        color: 'text-yellow-600',
         icon: Package,
-        bg: 'bg-blue-50',
+        bg: 'bg-yellow-50',
       },
       SHIPPING_TO_WAREHOUSE: {
-        label: 'Đang gom hàng',
-        color: 'text-blue-600',
+        label: 'Đang vận chuyển kho',
+        color: 'text-yellow-600',
         icon: Truck,
-        bg: 'bg-blue-50',
+        bg: 'bg-yellow-50',
       },
       ARRIVED_AT_WAREHOUSE: {
         label: 'Đã đến kho',
-        color: 'text-indigo-600',
+        color: 'text-yellow-600',
         icon: Package,
-        bg: 'bg-indigo-50',
+        bg: 'bg-yellow-50',
       },
       QUALITY_CHECKING: {
-        label: 'Đang kiểm tra hàng',
-        color: 'text-indigo-600',
+        label: 'Đang kiểm tra',
+        color: 'text-yellow-600',
         icon: Package,
-        bg: 'bg-indigo-50',
+        bg: 'bg-yellow-50',
       },
       QUALITY_CHECKED: {
-        label: 'Đã kiểm tra hàng',
-        color: 'text-indigo-600',
+        label: 'Đã kiểm tra',
+        color: 'text-yellow-600',
         icon: CheckCircle2,
-        bg: 'bg-indigo-50',
+        bg: 'bg-yellow-50',
       },
       READY: {
-        label: 'Chờ giao đến bạn',
-        color: 'text-purple-600',
+        label: 'Sẵn sàng giao',
+        color: 'text-yellow-600',
         icon: Package,
-        bg: 'bg-purple-50',
+        bg: 'bg-yellow-50',
       },
       SHIPPING: {
-        label: 'Đang giao đến bạn',
+        label: 'Đang giao hàng',
         color: 'text-blue-600',
         icon: Truck,
         bg: 'bg-blue-50',
       },
       DELIVERED: {
-        label: 'Đã giao',
+        label: 'Đã nhận hàng',
         color: 'text-green-600',
         icon: CheckCircle2,
         bg: 'bg-green-50',
@@ -341,6 +335,12 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
         icon: XCircle,
         bg: 'bg-red-50',
       },
+      RETURNED: {
+        label: 'Đã hoàn hàng',
+        color: 'text-red-600',
+        icon: XCircle,
+        bg: 'bg-red-50',
+      },
     };
 
     return configs[status] || {
@@ -353,24 +353,42 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
 
   const canTrack = (status: string) => {
     return [
+      'CONFIRMED',
+      'READY_FOR_PICKUP',
+      'SHIPPING_TO_WAREHOUSE',
+      'ARRIVED_AT_WAREHOUSE',
+      'QUALITY_CHECKING',
+      'QUALITY_CHECKED',
+      'READY',
       'SHIPPING',
-      'DELIVERED',
     ].includes(status);
   };
 
-  const filteredOrders = orders.filter(order => {
-    const statuses = BUYER_STATUS_GROUPS[filter];
+  // Lọc theo tab
+  const tabOrders = filter === 'ALL'
+    ? allOrders
+    : allOrders.filter(o => BUYER_STATUS_GROUPS[filter].includes(o.status));
 
-    const matchesFilter =
-      filter === 'ALL' || statuses.includes(order.status);
+  // Lọc theo search
+  const filteredOrders = tabOrders.filter(order =>
+    searchQuery === '' ||
+    order.id.toString().includes(searchQuery) ||
+    order.recipientName.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
-    const matchesSearch =
-      searchQuery === '' ||
-      order.id.toString().includes(searchQuery) ||
-      order.recipientName.toLowerCase().includes(searchQuery.toLowerCase());
-
-    return matchesFilter && matchesSearch;
-  });
+  // Phân trang client-side — chính xác theo số đơn đã lọc
+  const totalElements = filteredOrders.length;
+  const totalPages = Math.max(1, Math.ceil(totalElements / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);
+  const paginatedOrders = filteredOrders.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
+  const clientPageInfo: PageInfo = {
+    page: safePage,
+    size: PAGE_SIZE,
+    totalElements,
+    totalPages,
+    first: safePage === 0,
+    last: safePage >= totalPages - 1,
+  };
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleString('vi-VN', {
@@ -414,7 +432,7 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
             </p>
           </div>
           <button
-            onClick={fetchOrders}
+            onClick={() => fetchOrders()}
             disabled={loading}
             className="px-6 py-3 bg-white border border-gray-100 rounded-2xl flex items-center gap-2 text-sm font-bold text-gray-600 hover:bg-gray-50 transition-all shadow-sm disabled:opacity-50"
           >
@@ -443,7 +461,7 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
               {BUYER_FILTERS.map(({ key, label }) => (
                 <button
                   key={key}
-                  onClick={() => setFilter(key)}
+                  onClick={() => { setFilter(key); setPage(0); }}
                   className={`px-6 py-3 rounded-[18px] text-[11px] font-black uppercase tracking-wider transition-all transform hover:scale-105 active:scale-95 ${
                     filter === key
                       ? 'bg-primary text-white shadow-xl shadow-primary/20 scale-105'
@@ -463,7 +481,7 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
             <div className="size-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
             <p className="text-sm font-bold text-gray-400">Đang tải đơn hàng...</p>
           </div>
-        ) : filteredOrders.length === 0 ? (
+        ) : paginatedOrders.length === 0 ? (
           <div className="bg-white rounded-[40px] border border-gray-100 shadow-sm p-16 text-center">
             <div className="size-24 bg-gray-50 rounded-full flex items-center justify-center text-gray-300 mb-6 mx-auto">
               <Package className="size-12" />
@@ -484,7 +502,7 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
           </div>
         ) : (
           <div className="space-y-6">
-            {filteredOrders.map((order) => {
+            {paginatedOrders.map((order) => {
               const statusConfig = getStatusConfig(order.status);
               const StatusIcon = statusConfig.icon;
               const trackable = canTrack(order.status);
@@ -652,7 +670,7 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
             })}
           </div>
         )}
-        {pageInfo && <Pagination pageInfo={pageInfo} onPageChange={setPage} className="mt-6" />}
+        {totalPages > 1 && <Pagination pageInfo={clientPageInfo} onPageChange={setPage} className="mt-6" />}
       </div>
 
       {/* Review Modal */}

@@ -56,7 +56,9 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
   const fetchOrders = async () => {
     try {
       setIsLoading(true);
-      const res = await orderService.getAllOrdersPaged(page, PAGE_SIZE);
+      const activeTabDef = tabs.find(t => t.label === activeTab);
+      const statuses = activeTabDef?.statuses?.length ? activeTabDef.statuses : undefined;
+      const res = await orderService.getAllOrdersPaged(page, PAGE_SIZE, statuses);
       if (res.result) {
         setOrders(res.result.content.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
         setPageInfo({
@@ -76,7 +78,8 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
     }
   };
 
-  useEffect(() => { fetchOrders(); }, [page]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchOrders(); }, [page, activeTab]);
 
   const handleOpenCancelModal = (orderId: number) => {
     setCancellingOrderId(orderId);
@@ -180,13 +183,7 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
     { label: 'Thất bại', statuses: ['FAILED'] },
   ];
 
-  const getFilteredOrders = () => {
-    const activeTabDef = tabs.find(t => t.label === activeTab);
-    if (!activeTabDef || activeTabDef.statuses.length === 0) return orders;
-    return orders.filter(o => activeTabDef.statuses.includes(o.status));
-  };
-
-  const filteredOrders = getFilteredOrders();
+  const filteredOrders = orders;
 
   if (isLoading) {
     return (
@@ -226,13 +223,11 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
         {/* Tabs */}
         <div id="tour-orders-tabs" className="px-10 py-2 border-b border-gray-50 flex items-center gap-8 overflow-x-auto custom-scrollbar">
           {tabs.map((tab) => {
-            const count = tab.statuses.length === 0
-              ? orders.length
-              : orders.filter(o => tab.statuses.includes(o.status)).length;
+            const isActive = activeTab === tab.label;
             return (
-              <button key={tab.label} onClick={() => setActiveTab(tab.label)}
-                className={`py-5 text-xs font-black whitespace-nowrap transition-all border-b-2 ${activeTab === tab.label ? 'text-primary border-primary' : 'text-gray-400 border-transparent hover:text-gray-600'}`}>
-                {tab.label} ({count})
+              <button key={tab.label} onClick={() => { setActiveTab(tab.label); setPage(0); }}
+                className={`py-5 text-xs font-black whitespace-nowrap transition-all border-b-2 ${isActive ? 'text-primary border-primary' : 'text-gray-400 border-transparent hover:text-gray-600'}`}>
+                {tab.label}{isActive && pageInfo ? ` (${pageInfo.totalElements})` : ''}
               </button>
             );
           })}
