@@ -53,7 +53,7 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
     try {
       if (sessionStorage.getItem(PAYOS_RELOAD_CART_ON_ARRIVAL_KEY) !== '1') return;
       sessionStorage.removeItem(PAYOS_RELOAD_CART_ON_ARRIVAL_KEY);
-      window.location.reload();
+      window.history.replaceState({}, '', window.location.pathname);
     } catch {}
   }, []);
 
