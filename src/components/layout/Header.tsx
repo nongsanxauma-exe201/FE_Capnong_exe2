@@ -5,7 +5,8 @@ import { AppRole, User, KYCStatus } from '../../types/index';
 import { Search, ShoppingCart, Bell, Menu, User as UserIcon, LogOut, Phone, X, CheckCircle2, Trash2, Store, Truck, LayoutDashboard, Package, MessageSquare, RefreshCw, Ticket } from 'lucide-react';
 import { notificationService, NotificationItem, cartService } from '../../services';
 import { useNotificationWebSocket } from '../../services/useNotificationWebSocket';
-import { getRestoredPayOSCartData, hasPendingPayOSRollback, redirectToCartAfterPayOSCancel } from '../../utils/pendingPayOSPayment';
+import { getRestoredPayOSCartData, hasPendingPayOSRollback, redirectToCartAfterPayOSCancel, savePendingPayOSPayment } from '../../utils/pendingPayOSPayment';
+import { paymentService } from '../../services';
 
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -461,6 +462,36 @@ const Header: React.FC<HeaderProps> = ({
                 {selectedNotification.createAt ? new Date(selectedNotification.createAt).toLocaleString('vi-VN') : ''}
               </p>
             </div>
+            {selectedNotification.title === 'Bạn chưa thanh toán' && selectedNotification.evidence && (() => {
+              const orderId = parseInt(selectedNotification.evidence, 10);
+              if (!orderId) return null;
+              return (
+                <div className="px-6 pb-4 flex gap-2">
+                  <button
+                    onClick={async () => {
+                      try {
+                        const res = await paymentService.getLatestPendingByOrderId(orderId);
+                        const payment = res?.result;
+                        if (payment?.checkoutUrl) {
+                          savePendingPayOSPayment(payment, orderId);
+                          setSelectedNotification(null);
+                          window.location.href = payment.checkoutUrl;
+                        }
+                      } catch {}
+                    }}
+                    className="flex-1 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-black rounded-lg transition-colors"
+                  >
+                    💳 Tiếp tục thanh toán
+                  </button>
+                  <button
+                    onClick={() => { setSelectedNotification(null); navigate('/my-orders'); }}
+                    className="flex-1 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition-colors"
+                  >
+                    📋 Xem đơn hàng
+                  </button>
+                </div>
+              );
+            })()}
             <div className="bg-gray-50 px-6 py-4 border-t border-gray-100 flex justify-end">
               <button
                 onClick={() => setSelectedNotification(null)}

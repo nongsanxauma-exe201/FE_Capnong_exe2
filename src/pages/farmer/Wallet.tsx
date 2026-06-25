@@ -397,6 +397,26 @@ const Wallet: React.FC = () => {
             </div>
          </div>
 
+         {/* Banner giải thích phí nền tảng */}
+         <div className="p-5 bg-amber-50 rounded-2xl border border-amber-100 flex items-start gap-4">
+            <div className="size-10 rounded-xl bg-amber-100 flex items-center justify-center text-amber-600 shrink-0">
+               <span className="material-symbols-outlined">info</span>
+            </div>
+            <div>
+               <p className="text-sm font-black text-amber-800 mb-1">
+                  Tại sao số dư thực nhận thấp hơn tổng đơn hàng?
+               </p>
+               <p className="text-xs text-amber-700 font-medium leading-relaxed">
+                  Hệ thống thu <span className="font-black">phí nền tảng 10%</span> trên doanh thu
+                  thuần (tiền hàng, không tính phí vận chuyển) của mỗi đơn sau khi giao thành công.
+                  Số còn lại sẽ được chuyển vào số dư khả dụng của bạn.
+               </p>
+               <p className="text-[11px] text-amber-600 font-bold mt-2">
+                  💡 Ví dụ: Đơn 200.000đ (ship 30.000đ) → doanh thu thuần 170.000đ → phí sàn 17.000đ → bạn nhận 153.000đ
+               </p>
+            </div>
+         </div>
+
          <div id="tour-wallet-history" className="space-y-4">
             <div className="flex items-center justify-between">
                <h2 className="text-xl font-bold text-slate-900">Yêu cầu rút tiền gần đây</h2>

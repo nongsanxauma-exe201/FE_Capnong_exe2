@@ -7,10 +7,12 @@ import { orderService, OrderResponse, OrderItemResponse } from '../../services/o
 import { authService } from '../../services/auth.service';
 import { reviewService } from '../../services/review.service';
 import { returnService } from '../../services/return.service';
+import { paymentService } from '../../services/payment.service';
 import { Star, Camera, X, Loader2 } from 'lucide-react';
 import Pagination, { PageInfo } from '../../components/ui/Pagination';
 import { globalShowAlert, globalShowConfirm } from '../../contexts/PopupContext';
 import ReturnRequestModal from '../../components/ReturnRequestModal';
+import { savePendingPayOSPayment } from '../../utils/pendingPayOSPayment';
 
 import { useSearchParams } from 'react-router-dom';
 
@@ -31,7 +33,7 @@ type OrderStatusFilter =
 
 const BUYER_STATUS_GROUPS: Record<OrderStatusFilter, string[]> = {
   ALL: [],
-  PENDING: ['PENDING', 'PAID'],
+  PENDING: ['PENDING', 'PAID', 'AWAITING_PAYMENT'],
   SHIPPING: [
     'CONFIRMED',
     'READY_FOR_PICKUP',
@@ -276,6 +278,12 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
         color: 'text-blue-600',
         icon: Clock,
         bg: 'bg-blue-50',
+      },
+      AWAITING_PAYMENT: {
+        label: 'Đang thanh toán',
+        color: 'text-amber-600',
+        icon: Clock,
+        bg: 'bg-amber-50',
       },
       PAID: {
         label: 'Đã thanh toán',
@@ -667,6 +675,32 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
                           <Eye className="size-4" />
                           Theo dõi đơn hàng
                         </button>
+                      ) : order.status === 'AWAITING_PAYMENT' ? (
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={async () => {
+                              try {
+                                const res = await paymentService.getLatestPendingByOrderId(order.id);
+                                const payment = res?.result;
+                                if (payment?.checkoutUrl) {
+                                  savePendingPayOSPayment(payment, order.id);
+                                  window.location.href = payment.checkoutUrl;
+                                } else {
+                                  globalShowAlert('Không tìm thấy link thanh toán. Vui lòng thử lại.', 'Thông báo', 'warning');
+                                }
+                              } catch (e: any) {
+                                globalShowAlert(e?.data?.message ?? 'Không thể tiếp tục thanh toán.', 'Lỗi', 'error');
+                              }
+                            }}
+                            className="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-2xl flex items-center gap-2 shadow-lg shadow-amber-500/20 transition-all"
+                          >
+                            💳 Tiếp tục thanh toán
+                          </button>
+                          <div className="flex items-center gap-2 px-6 py-3 bg-amber-50 text-amber-700 rounded-2xl border border-amber-100">
+                            <AlertCircle className="size-4" />
+                            <span className="text-sm font-bold">Chờ thanh toán</span>
+                          </div>
+                        </div>
                       ) : order.status === 'PENDING' || order.status === 'PAID' ? (
                         <div className="flex items-center gap-3">
                           <button
