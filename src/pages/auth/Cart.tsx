@@ -1,8 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ShoppingCart, Trash2, Plus, Minus, Info, ArrowRight, ArrowLeft, Loader2, Package, Gift, ChefHat, AlertCircle } from 'lucide-react';
 import { cartService, CartResponse, CartItemResponse } from '../../services/cart.service';
 import { globalShowConfirm, globalShowAlert } from '../../contexts/PopupContext';
-import { clearRestoredPayOSCart, consumeRestoredPayOSCart, ensurePendingPayOSRolledBack, getRestoredPayOSCartData, buildGroupedCartItems, hasPayOSCartRecovery, saveRestoredPayOSCart, PAYOS_RELOAD_CART_ON_ARRIVAL_KEY } from '../../utils/pendingPayOSPayment';
+import { clearRestoredPayOSCart, buildGroupedCartItems, saveRestoredPayOSCart, PAYOS_RELOAD_CART_ON_ARRIVAL_KEY } from '../../utils/pendingPayOSPayment';
 
 interface CartProps {
   onProceedToCheckout: (selectedKeys?: string[]) => void;
@@ -22,37 +22,10 @@ interface CartState {
 }
 
 const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) => {
-  const snapshotHoldUntilRef = useRef(0);
-  const hasVisibleItemsRef = useRef(false);
-
-  const [cartState, setCartState] = useState<CartState>(() => {
-    const snapshot = getRestoredPayOSCartData();
-    if (snapshot?.items?.length) {
-      snapshotHoldUntilRef.current = Date.now() + 60000;
-      hasVisibleItemsRef.current = true;
-      return {
-        cart: snapshot,
-        groupedItems: buildGroupedCartItems(snapshot.items),
-      };
-    }
-    return { cart: null, groupedItems: {} };
-  });
-  const [loading, setLoading] = useState(() => !getRestoredPayOSCartData()?.items?.length);
+  const [cartState, setCartState] = useState<CartState>({ cart: null, groupedItems: {} });
+  const [loading, setLoading] = useState(true);
   const [updatingKey, setUpdatingKey] = useState<string | null>(null);
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => {
-    const snapshot = getRestoredPayOSCartData();
-    if (!snapshot?.items?.length) return new Set();
-    return new Set(snapshot.items.map((item) => {
-      const type = item.itemType || '';
-      let id: any = null;
-      if (type === 'MYSTERY_BOX') id = item.mysteryBoxId || (item as any).id;
-      else if (type === 'BUILD_COMBO' || type === 'COMBO') id = item.buildComboId || (item as any).comboId || (item as any).id;
-      else id = item.productId || (item as any).id;
-      if (type === 'MYSTERY_BOX') return `b-${id}`;
-      if (type === 'BUILD_COMBO' || type === 'COMBO') return `c-${id}`;
-      return `p-${id}`;
-    }));
-  });
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     try {
@@ -80,44 +53,21 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
       acc[key].push(item);
       return acc;
     }, {});
-    hasVisibleItemsRef.current = cartData.items.length > 0;
     setCartState({ cart: cartData, groupedItems: grouped });
     if (autoSelect) {
       setSelectedKeys(new Set(cartData.items.map(buildItemKey)));
     }
   };
 
-  const fetchCart = async (isSilent = false, keepSnapshot = false) => {
+  const fetchCart = async (isSilent = false) => {
     if (!isSilent) setLoading(true);
     try {
       const resp = await cartService.getCart();
       const cartData = resp.result;
-      const snapshot = getRestoredPayOSCartData();
 
       if (!cartData || !cartData.items) {
-        if (snapshot?.items?.length) {
-          snapshotHoldUntilRef.current = Date.now() + 60000;
-          applyCartData(snapshot, !isSilent);
-          return;
-        }
-        if (!hasVisibleItemsRef.current) {
-          setCartState({ cart: null, groupedItems: {} });
-        }
-        return;
-      }
-
-      if (cartData.items.length === 0 && snapshot?.items?.length) {
-        snapshotHoldUntilRef.current = Date.now() + 60000;
-        applyCartData(snapshot, !isSilent);
-        return;
-      }
-
-      if (
-        keepSnapshot
-        && hasVisibleItemsRef.current
-        && cartData.items.length === 0
-        && Date.now() < snapshotHoldUntilRef.current
-      ) {
+        setCartState({ cart: null, groupedItems: {} });
+        setSelectedKeys(new Set());
         return;
       }
 
@@ -128,10 +78,6 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
       applyCartData(cartData, !isSilent);
     } catch (error) {
       console.error('Failed to load cart', error);
-      const snapshot = getRestoredPayOSCartData();
-      if (snapshot?.items?.length) {
-        applyCartData(snapshot, !isSilent);
-      }
     } finally {
       setLoading(false);
     }
@@ -141,43 +87,14 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
     let cancelled = false;
 
     const syncCartAfterPayOS = async () => {
-      const snapshot = consumeRestoredPayOSCart();
-      if (snapshot?.items?.length) {
-        snapshotHoldUntilRef.current = Date.now() + 60000;
-        applyCartData(snapshot, true);
-        setLoading(false);
-      }
-
-      if (hasPayOSCartRecovery()) {
-        await ensurePendingPayOSRolledBack();
-      }
       if (cancelled) return;
 
-      await fetchCart(!!snapshot?.items?.length, true);
-
-      // Tiếp tục poll BE trong nền nếu vẫn đang hiển thị snapshot.
-      if (!getRestoredPayOSCartData()?.items?.length) return;
-
-      for (let attempt = 0; attempt < 30; attempt += 1) {
-        if (cancelled) return;
-        await new Promise((resolve) => window.setTimeout(resolve, 500));
-        try {
-          const resp = await cartService.getCart();
-          if (resp.result?.items?.length) {
-            clearRestoredPayOSCart();
-            applyCartData(resp.result, false);
-            window.dispatchEvent(new Event('cart-updated'));
-            return;
-          }
-        } catch (error) {
-          console.warn('Background cart restore poll failed', error);
-        }
-      }
+      await fetchCart(false);
     };
 
     void syncCartAfterPayOS();
 
-    const handleCartUpdate = () => fetchCart(true, true);
+    const handleCartUpdate = () => fetchCart(true);
     window.addEventListener('cart-updated', handleCartUpdate);
     return () => {
       cancelled = true;
@@ -187,15 +104,7 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
 
   useEffect(() => {
     const handleReturnToCart = async () => {
-      const snapshot = getRestoredPayOSCartData();
-      if (snapshot?.items?.length) {
-        snapshotHoldUntilRef.current = Date.now() + 60000;
-        applyCartData(snapshot, true);
-      }
-      if (hasPayOSCartRecovery()) {
-        await ensurePendingPayOSRolledBack();
-      }
-      void fetchCart(true, true);
+      void fetchCart(true);
     };
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {

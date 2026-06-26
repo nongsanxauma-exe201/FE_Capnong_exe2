@@ -6,6 +6,12 @@ import { globalShowAlert, globalShowConfirm } from '../../contexts/PopupContext'
 
 const PAGE_SIZE = 10;
 
+const getTodayDateString = () => {
+  const now = new Date();
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+  return now.toISOString().slice(0, 10);
+};
+
 const Products: React.FC<{ onNavigate: (id: string) => void }> = ({ onNavigate }) => {
   const [products, setProducts] = useState<ProductResponse[]>([]);
   const [mysteryBoxes, setMysteryBoxes] = useState<MysteryBox[]>([]);
@@ -147,6 +153,19 @@ const Products: React.FC<{ onNavigate: (id: string) => void }> = ({ onNavigate }
     }
     if (bulkSelectedIds.size === 0) {
       globalShowAlert('Vui lòng chọn ít nhất một sản phẩm.', 'Nhắc nhở', 'warning');
+      return;
+    }
+    const today = getTodayDateString();
+    if (bulkStartDate && bulkStartDate < today) {
+      globalShowAlert('Ngày bắt đầu giảm giá không được chọn trong quá khứ.', 'Nhắc nhở', 'warning');
+      return;
+    }
+    if (bulkEndDate && bulkEndDate < today) {
+      globalShowAlert('Ngày kết thúc giảm giá không được chọn trong quá khứ.', 'Nhắc nhở', 'warning');
+      return;
+    }
+    if (bulkStartDate && bulkEndDate && bulkEndDate < bulkStartDate) {
+      globalShowAlert('Ngày kết thúc giảm giá phải sau ngày bắt đầu.', 'Nhắc nhở', 'warning');
       return;
     }
     const confirmed = await globalShowConfirm(
@@ -358,6 +377,7 @@ const Products: React.FC<{ onNavigate: (id: string) => void }> = ({ onNavigate }
                 <input
                   type="date"
                   value={bulkStartDate}
+                  min={getTodayDateString()}
                   onChange={e => setBulkStartDate(e.target.value)}
                   className="px-4 py-2.5 bg-white border border-orange-200 rounded-xl text-sm font-bold text-orange-800 outline-none focus:ring-2 focus:ring-orange-300"
                 />
@@ -368,7 +388,7 @@ const Products: React.FC<{ onNavigate: (id: string) => void }> = ({ onNavigate }
                   type="date"
                   value={bulkEndDate}
                   onChange={e => setBulkEndDate(e.target.value)}
-                  min={bulkStartDate || undefined}
+                  min={bulkStartDate || getTodayDateString()}
                   className="px-4 py-2.5 bg-white border border-orange-200 rounded-xl text-sm font-bold text-orange-800 outline-none focus:ring-2 focus:ring-orange-300"
                 />
               </div>

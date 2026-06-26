@@ -34,6 +34,7 @@ export interface AvailableOrderResponse {
   recipientName: string;
   recipientPhone: string;
   shippingFee: number;
+  shippingDiscountAmount?: number | null;
   totalAmount: number;
   paymentMethod?: string;
   codPrepaidAmount?: number | null;
@@ -62,6 +63,7 @@ export interface ShipperOrderResponse {
   recipientName: string;
   recipientPhone: string;
   shippingFee: number;
+  shippingDiscountAmount?: number | null;
   status: string;
   createdAt: string;
   estimatedDeliveryDate: string | null;

@@ -120,7 +120,8 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
         setVoucherError(null);
         const response = await voucherService.getBuyerShopVouchers(shopId, 0, 3);
         const result = response.result;
-        const vouchers = Array.isArray(result) ? result : result?.content || [];
+        const vouchers = (Array.isArray(result) ? result : result?.content || [])
+          .filter((voucher) => voucher.voucherType === 'SHOP' && Number(voucher.shopId) === Number(shopId));
         setShopVouchers(vouchers);
 
         if (isAuthenticated && vouchers.length > 0) {

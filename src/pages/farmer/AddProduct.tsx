@@ -21,6 +21,13 @@ const getTodayDateString = () => {
   return now.toISOString().slice(0, 10);
 };
 
+const getCurrentDatetimeLocal = () => {
+  const now = new Date();
+  now.setSeconds(0, 0);
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+  return now.toISOString().slice(0, 16);
+};
+
 const AddProduct: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [productName, setProductName] = useState('');
@@ -77,6 +84,19 @@ const AddProduct: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       setError('Phần trăm giảm giá phải từ 0 đến 99.');
       return;
     }
+    const minDiscountDateTime = getCurrentDatetimeLocal();
+    if (discountStartDate && discountStartDate < minDiscountDateTime) {
+      setError('Ngày bắt đầu giảm giá không được chọn trong quá khứ.');
+      return;
+    }
+    if (discountEndDate && discountEndDate < minDiscountDateTime) {
+      setError('Ngày kết thúc giảm giá không được chọn trong quá khứ.');
+      return;
+    }
+    if (discountStartDate && discountEndDate && discountEndDate < discountStartDate) {
+      setError('Ngày kết thúc giảm giá phải sau ngày bắt đầu.');
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -115,6 +135,7 @@ const AddProduct: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   if (isSubmitted) return <SubmissionSuccess onReturn={onBack} />;
 
   const minExpiryDate = getTodayDateString();
+  const minDiscountDateTime = getCurrentDatetimeLocal();
 
   return (
     <div className="flex flex-col gap-8 p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -270,6 +291,7 @@ const AddProduct: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                   <input
                     type="datetime-local"
                     value={discountStartDate}
+                    min={minDiscountDateTime}
                     onChange={e => setDiscountStartDate(e.target.value)}
                     className="w-full px-5 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-medium text-gray-600 outline-none"
                   />
@@ -280,6 +302,7 @@ const AddProduct: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                   <input
                     type="datetime-local"
                     value={discountEndDate}
+                    min={discountStartDate || minDiscountDateTime}
                     onChange={e => setDiscountEndDate(e.target.value)}
                     className="w-full px-5 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-medium text-gray-600 outline-none"
                   />

@@ -138,6 +138,7 @@ const MyVouchers: React.FC = () => {
           {vouchers.map((item) => {
             const voucher = item.voucherResponse;
             const remaining = Math.max(0, Number(item.quantity ?? 0) - Number(item.quantityUsed ?? 0));
+            const isFreeShipping = voucher?.voucherType === 'WELCOME';
             return (
               <div key={item.voucherUserId} className="rounded-[28px] border border-emerald-100 bg-white p-5 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
@@ -146,11 +147,20 @@ const MyVouchers: React.FC = () => {
                       {voucher?.voucherCode || 'Voucher không còn khả dụng'}
                     </p>
                     <h3 className="mt-1 text-2xl font-black text-gray-900">
-                      {voucher ? `Giảm ${voucher.discountValue}%` : 'Không có thông tin voucher'}
+                      {voucher
+                        ? (isFreeShipping ? 'Miễn phí ship' : `Giảm ${voucher.discountValue}%`)
+                        : 'Không có thông tin voucher'}
                     </h3>
                     <p className="mt-1 text-sm font-bold text-gray-500">
-                      Tối đa {formatMoney(Number(voucher?.maxDiscount ?? 0))} · Đơn từ {formatMoney(Number(voucher?.minOrderValue ?? 0))}
+                      {isFreeShipping
+                        ? 'Miễn phí ship cho đơn hàng đầu tiên'
+                        : `Tối đa ${formatMoney(Number(voucher?.maxDiscount ?? 0))} · Đơn từ ${formatMoney(Number(voucher?.minOrderValue ?? 0))}`}
                     </p>
+                    {isFreeShipping && (
+                      <p className="mt-1 text-xs font-black uppercase tracking-wider text-primary">
+                        Áp dụng cho phí vận chuyển
+                      </p>
+                    )}
                   </div>
                   <div className="rounded-2xl bg-primary/10 px-3 py-2 text-center">
                     <p className="text-[10px] font-black uppercase text-primary">Còn lại</p>

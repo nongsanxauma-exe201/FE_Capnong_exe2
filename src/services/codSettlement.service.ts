@@ -42,9 +42,17 @@ export function getCodPrepaidAmount(order: {
   codPrepaidAmount?: number | null;
   totalAmount?: number | null;
   shippingFee?: number | null;
+  shippingDiscountAmount?: number | null;
   refundAmount?: number | null;
 }): number {
-  return order.codPrepaidAmount ?? Math.max((order.totalAmount ?? 0) - (order.shippingFee ?? 0) - (order.refundAmount ?? 0), 0);
+  return order.codPrepaidAmount
+    ?? Math.max(
+      (order.totalAmount ?? 0)
+      + (order.shippingDiscountAmount ?? 0)
+      - (order.shippingFee ?? 0)
+      - (order.refundAmount ?? 0),
+      0
+    );
 }
 
 export function isCodPayment(paymentMethod?: string | null): boolean {

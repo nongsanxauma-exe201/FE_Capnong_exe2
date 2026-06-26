@@ -1,13 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import { MapPin, CreditCard, ChevronRight, Lock, Loader2, ShieldCheck, Wallet, ChevronLeft, AlertCircle, Package, X, Gift, Truck } from 'lucide-react';
-import { orderService, paymentService, authService, cartService, CartResponse, voucherService, VoucherUserResponse } from '../../services';
+import { orderService, paymentService, authService, cartService, CartResponse, CartItemResponse, voucherService, VoucherUserResponse } from '../../services';
 import { httpClient } from '../../services/http.client';
 import {
    clearPendingPayOSPayment,
    hardReloadCartPage,
-   ensurePendingPayOSRolledBack,
-   hasPendingPayOSRollback,
    resolvePayOSOrderCode,
    savePendingPayOSPayment,
    saveRestoredPayOSCart,
@@ -58,7 +56,7 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
    const [showQRCode, setShowQRCode] = useState(false);
    const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
    const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
-   const [isRestoringPayOS, setIsRestoringPayOS] = useState(false);
+   const [isReturningToCart, setIsReturningToCart] = useState(false);
 
    // ✅ Phí ship động
    const [shippingFee, setShippingFee] = useState<number>(15000);
@@ -79,11 +77,7 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
    const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
 
    const returnToCartAfterPayOSRollback = useCallback(async () => {
-      setIsRestoringPayOS(true);
-      if (hasPendingPayOSRollback()) {
-         void ensurePendingPayOSRolledBack();
-      }
-      // Bấm nút là qua /cart ngay; Cart.tsx sẽ gọi window.location.reload() tại đó.
+      setIsReturningToCart(true);
       hardReloadCartPage();
    }, []);
 
@@ -426,7 +420,7 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
             <div className="flex flex-col items-center gap-4">
                <Loader2 className="size-12 animate-spin text-primary" />
                <p className="text-sm font-bold text-gray-600">
-                  {isRestoringPayOS ? 'Đang khôi phục giỏ hàng từ phiên PayOS...' : 'Đang tải...'}
+                  {isReturningToCart ? 'Đang quay lại giỏ hàng...' : 'Đang tải...'}
                </p>
             </div>
          </div>
@@ -444,7 +438,7 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
                   onClick={() => void returnToCartAfterPayOSRollback()}
                   className="w-full py-3 bg-primary text-white font-black rounded-2xl"
                >
-                  {isRestoringPayOS ? 'Đang khôi phục giỏ hàng...' : 'Quay lại giỏ hàng'}
+                  {isReturningToCart ? 'Đang quay lại...' : 'Quay lại giỏ hàng'}
                </button>
             </div>
          </div>

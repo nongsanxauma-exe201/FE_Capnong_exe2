@@ -116,6 +116,9 @@ const OTPVerification: React.FC<OTPVerificationProps> = ({ email, onVerified, on
             Chúng tôi đã gửi mã OTP đến
           </p>
           <p className="text-[#5c8d5e] font-bold text-sm">{email}</p>
+          <p className="mt-3 text-xs font-semibold text-amber-600 leading-relaxed">
+            Nếu chưa thấy email, bạn hãy kiểm tra thêm mục Spam/Thư rác hoặc Quảng cáo trong Gmail nhé.
+          </p>
         </div>
 
         {/* Messages */}

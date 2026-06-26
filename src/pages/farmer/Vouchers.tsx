@@ -53,6 +53,73 @@ const toDatetimeLocal = (value?: string) => {
 
 const toApiDateTime = (value: string) => (value ? `${value}:00` : '');
 
+const getCurrentDatetimeLocal = () => {
+  const now = new Date();
+  now.setSeconds(0, 0);
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+  return now.toISOString().slice(0, 16);
+};
+
+type VoucherFormErrors = Partial<Record<keyof VoucherCreateRequest, string>>;
+
+const validateVoucherForm = (form: VoucherCreateRequest): VoucherFormErrors => {
+  const errors: VoucherFormErrors = {};
+  const discountValue = Number(form.discountValue);
+  const maxDiscount = Number(form.maxDiscount);
+  const minOrderValue = Number(form.minOrderValue);
+  const claimLimit = Number(form.claimLimit);
+  const usageLimit = Number(form.usageLimit);
+  const perUserLimit = Number(form.perUserLimit);
+
+  if (!discountValue) {
+    errors.discountValue = 'Vui lòng nhập phần trăm giảm.';
+  } else if (Number.isNaN(discountValue) || discountValue <= 0) {
+    errors.discountValue = 'Phần trăm giảm phải lớn hơn 0.';
+  } else if (discountValue > 100) {
+    errors.discountValue = 'Phần trăm giảm không được lớn hơn 100.';
+  }
+
+  if (!maxDiscount) {
+    errors.maxDiscount = 'Vui lòng nhập giảm tối đa.';
+  } else if (Number.isNaN(maxDiscount) || maxDiscount <= 0) {
+    errors.maxDiscount = 'Giảm tối đa phải lớn hơn 0.';
+  }
+
+  if (Number.isNaN(minOrderValue) || minOrderValue < 0) {
+    errors.minOrderValue = 'Đơn tối thiểu phải lớn hơn hoặc bằng 0.';
+  }
+
+  if (!errors.maxDiscount && !errors.minOrderValue && maxDiscount > minOrderValue) {
+    errors.maxDiscount = 'Giảm tối đa không được lớn hơn đơn tối thiểu.';
+  }
+
+  if (!claimLimit || Number.isNaN(claimLimit) || claimLimit < 1) {
+    errors.claimLimit = 'Tổng lượt được nhận phải lớn hơn hoặc bằng 1.';
+  }
+  if (!usageLimit || Number.isNaN(usageLimit) || usageLimit < 1) {
+    errors.usageLimit = 'Tổng lượt sử dụng phải lớn hơn hoặc bằng 1.';
+  }
+  if (!perUserLimit || Number.isNaN(perUserLimit) || perUserLimit < 1) {
+    errors.perUserLimit = 'Số lần mỗi user được dùng phải lớn hơn hoặc bằng 1.';
+  }
+
+  if (!errors.usageLimit && !errors.claimLimit && !errors.perUserLimit) {
+    if (usageLimit > claimLimit * perUserLimit) {
+      errors.usageLimit = 'Tổng lượt sử dụng không được vượt quá tổng lượt nhận × số lần mỗi user được dùng.';
+    } else if (perUserLimit > usageLimit) {
+      errors.perUserLimit = 'Số lần mỗi user được dùng không được lớn hơn tổng lượt sử dụng.';
+    }
+  }
+
+  if (!form.expiryDate) {
+    errors.expiryDate = 'Vui lòng chọn ngày hết hạn.';
+  } else if (form.expiryDate <= getCurrentDatetimeLocal()) {
+    errors.expiryDate = 'Ngày hết hạn phải lớn hơn thời gian hiện tại.';
+  }
+
+  return errors;
+};
+
 interface VouchersProps {
   mode?: 'shop' | 'platform';
 }
@@ -71,6 +138,7 @@ const Vouchers: React.FC<VouchersProps> = ({ mode = 'shop' }) => {
   const [showFormModal, setShowFormModal] = useState(false);
   const [editingCode, setEditingCode] = useState<string | null>(null);
   const [form, setForm] = useState<VoucherCreateRequest>(initialFormState);
+  const [formSubmitted, setFormSubmitted] = useState(false);
 
   const fetchVouchers = useCallback(async () => {
     try {
@@ -122,47 +190,22 @@ const Vouchers: React.FC<VouchersProps> = ({ mode = 'shop' }) => {
     setShowFormModal(false);
     setEditingCode(null);
     setForm(initialFormState);
+    setFormSubmitted(false);
   };
 
   const openCreateModal = () => {
     setEditingCode(null);
     setForm(initialFormState);
+    setFormSubmitted(false);
     setShowFormModal(true);
   };
 
   const validateForm = () => {
-    if (form.discountValue <= 0 || form.discountValue > 100) {
-      globalShowAlert('Phần trăm giảm giá phải từ 1 đến 100.', 'Lỗi', 'warning');
-      return false;
-    }
-    if (form.maxDiscount <= 0) {
-      globalShowAlert('Giảm tối đa phải lớn hơn 0.', 'Lỗi', 'warning');
-      return false;
-    }
-    if (form.minOrderValue < 0) {
-      globalShowAlert('Giá trị đơn tối thiểu không hợp lệ.', 'Lỗi', 'warning');
-      return false;
-    }
-    if (!form.claimLimit || form.claimLimit < 1) {
-      globalShowAlert('Tổng lượt được nhận phải ít nhất là 1.', 'Lỗi', 'warning');
-      return false;
-    }
-    if (!form.usageLimit || form.usageLimit < 1) {
-      globalShowAlert('Số lượt sử dụng phải ít nhất là 1.', 'Lỗi', 'warning');
-      return false;
-    }
-    if (!form.perUserLimit || form.perUserLimit < 1) {
-      globalShowAlert('Giới hạn mỗi user phải ít nhất là 1.', 'Lỗi', 'warning');
-      return false;
-    }
-    if (!form.expiryDate) {
-      globalShowAlert('Vui lòng chọn ngày hết hạn.', 'Lỗi', 'warning');
-      return false;
-    }
-    return true;
+    return Object.keys(validateVoucherForm(form)).length === 0;
   };
 
   const handleSave = async () => {
+    setFormSubmitted(true);
     if (!validateForm()) return;
 
     const payload = {
@@ -208,6 +251,7 @@ const Vouchers: React.FC<VouchersProps> = ({ mode = 'shop' }) => {
       perUserLimit: voucher.perUserLimit,
       expiryDate: toDatetimeLocal(voucher.expiryDate),
     });
+    setFormSubmitted(false);
     setShowFormModal(true);
   };
 
@@ -246,6 +290,36 @@ const Vouchers: React.FC<VouchersProps> = ({ mode = 'shop' }) => {
     return voucher.voucherCode.toLowerCase().includes(query)
       || voucher.voucherId.toLowerCase().includes(query);
   });
+
+  const currentFormErrors = showFormModal ? validateVoucherForm(form) : {};
+  const formErrors = formSubmitted ? currentFormErrors : {};
+  const hasFormErrors = Object.keys(formErrors).length > 0;
+  const discountHighWarning = Number(form.discountValue) > 50
+    ? 'Mức giảm trên 50% khá cao, bạn nên kiểm tra lại trước khi lưu.'
+    : '';
+  const inputClassName = (field: keyof VoucherCreateRequest) =>
+    `mt-2 w-full rounded-3xl border bg-gray-50 px-4 py-3 text-sm outline-none transition-all focus:ring-2 ${
+      formErrors[field]
+        ? 'border-red-300 focus:border-red-400 focus:ring-red-100'
+        : 'border-gray-200 focus:border-primary/40 focus:ring-primary/10'
+    }`;
+  const voucherErrorFields: (keyof VoucherCreateRequest)[] = [
+    'discountValue',
+    'maxDiscount',
+    'minOrderValue',
+    'claimLimit',
+    'usageLimit',
+    'perUserLimit',
+    'expiryDate',
+  ];
+  const formErrorEntries = voucherErrorFields
+    .filter((field) => Boolean(formErrors[field]))
+    .map((field) => ({ field, message: formErrors[field] as string }));
+  const focusVoucherField = (field: keyof VoucherCreateRequest) => {
+    const input = document.getElementById(`voucher-field-${field}`) as HTMLInputElement | null;
+    input?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    window.setTimeout(() => input?.focus(), 250);
+  };
 
   return (
     <div className="flex flex-col gap-8 p-8 animate-in fade-in duration-500 relative">
@@ -358,7 +432,6 @@ const Vouchers: React.FC<VouchersProps> = ({ mode = 'shop' }) => {
                       >
                         <td className="px-4 py-4 align-middle">
                           <p className="font-black text-sm text-primary">{voucher.voucherCode}</p>
-                          <p className="text-[10px] text-gray-400 mt-1">ID: {voucher.voucherId}</p>
                         </td>
                         <td className="px-4 py-4 align-middle text-sm text-gray-700">
                           <p className="font-bold">{voucher.discountValue}%</p>
@@ -479,103 +552,154 @@ const Vouchers: React.FC<VouchersProps> = ({ mode = 'shop' }) => {
               <label className="block">
                 <span className="text-sm font-bold text-gray-800">Giảm giá (%)</span>
                 <input
+                  id="voucher-field-discountValue"
                   type="number"
                   min={1}
                   max={100}
                   value={form.discountValue || ''}
                   onChange={(e) => setForm({ ...form, discountValue: Number(e.target.value) })}
                   placeholder="Ví dụ: 10"
-                  className="mt-2 w-full rounded-3xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10 transition-all"
+                  className={inputClassName('discountValue')}
                 />
+                {formErrors.discountValue && (
+                  <p className="mt-1.5 text-xs font-bold text-red-600">{formErrors.discountValue}</p>
+                )}
+                {!formErrors.discountValue && discountHighWarning && (
+                  <p className="mt-1.5 text-xs font-bold text-amber-600">{discountHighWarning}</p>
+                )}
               </label>
 
               <label className="block">
                 <span className="text-sm font-bold text-gray-800">Giảm tối đa (đ)</span>
                 <input
+                  id="voucher-field-maxDiscount"
                   type="number"
-                  min={0}
+                  min={1}
                   value={form.maxDiscount || ''}
                   onChange={(e) => setForm({ ...form, maxDiscount: Number(e.target.value) })}
                   placeholder="Ví dụ: 50000"
-                  className="mt-2 w-full rounded-3xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10 transition-all"
+                  className={inputClassName('maxDiscount')}
                 />
+                {formErrors.maxDiscount && (
+                  <p className="mt-1.5 text-xs font-bold text-red-600">{formErrors.maxDiscount}</p>
+                )}
               </label>
 
               <label className="block">
                 <span className="text-sm font-bold text-gray-800">Đơn tối thiểu (đ)</span>
                 <input
+                  id="voucher-field-minOrderValue"
                   type="number"
                   min={0}
                   value={form.minOrderValue || ''}
                   onChange={(e) => setForm({ ...form, minOrderValue: Number(e.target.value) })}
                   placeholder="Ví dụ: 200000"
-                  className="mt-2 w-full rounded-3xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10 transition-all"
+                  className={inputClassName('minOrderValue')}
                 />
+                {formErrors.minOrderValue && (
+                  <p className="mt-1.5 text-xs font-bold text-red-600">{formErrors.minOrderValue}</p>
+                )}
               </label>
 
               <label className="block">
                 <span className="text-sm font-bold text-gray-800">Tổng lượt được nhận</span>
                 <input
+                  id="voucher-field-claimLimit"
                   type="number"
                   min={1}
                   value={form.claimLimit || ''}
                   onChange={(e) => setForm({ ...form, claimLimit: Number(e.target.value) })}
                   placeholder="Ví dụ: 100"
-                  className="mt-2 w-full rounded-3xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10 transition-all"
+                  className={inputClassName('claimLimit')}
                 />
+                {formErrors.claimLimit && (
+                  <p className="mt-1.5 text-xs font-bold text-red-600">{formErrors.claimLimit}</p>
+                )}
               </label>
 
               <label className="block">
                 <span className="text-sm font-bold text-gray-800">Tổng lượt sử dụng</span>
                 <input
+                  id="voucher-field-usageLimit"
                   type="number"
                   min={1}
                   value={form.usageLimit || ''}
                   onChange={(e) => setForm({ ...form, usageLimit: Number(e.target.value) })}
                   placeholder="Ví dụ: 100"
-                  className="mt-2 w-full rounded-3xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10 transition-all"
+                  className={inputClassName('usageLimit')}
                 />
+                {formErrors.usageLimit && (
+                  <p className="mt-1.5 text-xs font-bold text-red-600">{formErrors.usageLimit}</p>
+                )}
               </label>
 
               <label className="block">
                 <span className="text-sm font-bold text-gray-800">Mỗi user dùng tối đa</span>
                 <input
+                  id="voucher-field-perUserLimit"
                   type="number"
                   min={1}
                   value={form.perUserLimit || ''}
                   onChange={(e) => setForm({ ...form, perUserLimit: Number(e.target.value) })}
                   placeholder="Ví dụ: 1"
-                  className="mt-2 w-full rounded-3xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10 transition-all"
+                  className={inputClassName('perUserLimit')}
                 />
+                {formErrors.perUserLimit && (
+                  <p className="mt-1.5 text-xs font-bold text-red-600">{formErrors.perUserLimit}</p>
+                )}
               </label>
 
               <label className="block">
                 <span className="text-sm font-bold text-gray-800">Ngày hết hạn</span>
                 <input
+                  id="voucher-field-expiryDate"
                   type="datetime-local"
                   value={form.expiryDate}
+                  min={getCurrentDatetimeLocal()}
                   onChange={(e) => setForm({ ...form, expiryDate: e.target.value })}
-                  className="mt-2 w-full rounded-3xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10 transition-all"
+                  className={inputClassName('expiryDate')}
                 />
+                {formErrors.expiryDate && (
+                  <p className="mt-1.5 text-xs font-bold text-red-600">{formErrors.expiryDate}</p>
+                )}
               </label>
             </div>
 
-            <div className="p-6 border-t border-gray-100 flex flex-col sm:flex-row gap-3 shrink-0">
-              <button
-                onClick={handleSave}
-                disabled={isSaving}
-                className="flex-1 px-6 py-3 rounded-2xl bg-primary text-white font-black flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {isSaving ? <Loader2 className="size-5 animate-spin" /> : <Plus className="size-5" />}
-                {editingCode ? 'Cập nhật' : 'Tạo voucher'}
-              </button>
-              <button
-                onClick={closeFormModal}
-                disabled={isSaving}
-                className="flex-1 px-6 py-3 rounded-2xl border border-gray-200 text-gray-700 font-bold hover:bg-gray-50 transition-all disabled:opacity-60"
-              >
-                Hủy
-              </button>
+            <div className="p-6 border-t border-gray-100 shrink-0">
+              {formSubmitted && formErrorEntries.length > 0 && (
+                <div className="mb-4 rounded-2xl border border-red-100 bg-red-50 p-3">
+                  <p className="text-sm font-black text-red-700">Vui lòng kiểm tra lại thông tin voucher</p>
+                  <div className="mt-2 flex flex-col gap-1">
+                    {formErrorEntries.map(({ field, message }) => (
+                      <button
+                        key={field}
+                        type="button"
+                        onClick={() => focusVoucherField(field)}
+                        className="text-left text-xs font-bold text-red-600 underline-offset-2 hover:underline"
+                      >
+                        {message}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  onClick={handleSave}
+                  disabled={isSaving || hasFormErrors}
+                  className="flex-1 px-6 py-3 rounded-2xl bg-primary text-white font-black flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isSaving ? <Loader2 className="size-5 animate-spin" /> : <Plus className="size-5" />}
+                  {editingCode ? 'Cập nhật' : 'Tạo voucher'}
+                </button>
+                <button
+                  onClick={closeFormModal}
+                  disabled={isSaving}
+                  className="flex-1 px-6 py-3 rounded-2xl border border-gray-200 text-gray-700 font-bold hover:bg-gray-50 transition-all disabled:opacity-60"
+                >
+                  Hủy
+                </button>
+              </div>
             </div>
           </div>
         </div>

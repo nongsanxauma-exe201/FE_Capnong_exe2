@@ -505,6 +505,9 @@ const ShipperRegister: React.FC<ShipperRegisterProps> = ({ onBack }) => {
                 Nhập mã 6 số được gửi đến <br />
                 <strong className="text-gray-900 block mt-1">{formData.email}</strong>
               </p>
+              <p className="mt-3 text-xs font-semibold text-amber-600 leading-relaxed">
+                Nếu chưa thấy email, hãy kiểm tra thêm mục Spam/Thư rác hoặc Quảng cáo trong Gmail nhé.
+              </p>
             </div>
 
             {otpError && (
