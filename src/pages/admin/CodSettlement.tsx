@@ -134,14 +134,14 @@ const CodSettlement: React.FC = () => {
   const handleRefundShipper = async (order: CodPendingOrderResponse) => {
     const amount = getCodPrepaidAmount(order);
     if (!await globalShowConfirm(
-      `Hoàn ${fmtCur(amount)} tiền hàng cho shipper đơn #${order.id}? Phí ship không hoàn.`,
+      `Hoàn ${fmtCur(amount)} tiền COD đã ứng cho shipper đơn #${order.id}? Phí ship không hoàn.`,
       'Hoàn tiền shipper COD'
     )) return;
 
     try {
       setSettlingId(order.id);
       await codSettlementService.refundCodPrepaymentToShipper(order.id);
-      globalShowAlert('Đã hoàn tiền hàng cho shipper', 'Thành công', 'success');
+      globalShowAlert('Đã hoàn tiền COD đã ứng cho shipper', 'Thành công', 'success');
       fetchPending();
     } catch (err: any) {
       globalShowAlert(err?.data?.message || 'Hoàn tiền thất bại', 'Lỗi', 'error');
@@ -249,7 +249,7 @@ const CodSettlement: React.FC = () => {
                         </p>
                         {(isCashPending || isRefundPending || order.codPrepaidAmount != null) && (
                           <p className="text-[10px] text-amber-600 font-black mt-0.5">
-                            Tiền hàng ứng: {fmtCur(prepaidAmount)}
+                            Tiền COD đã ứng: {fmtCur(prepaidAmount)}
                           </p>
                         )}
                       </td>
@@ -386,7 +386,7 @@ const CodSettlement: React.FC = () => {
                     </div>
                     <div className="h-px bg-gray-100" />
                     <div className="flex justify-between gap-4">
-                      <span className="font-black text-amber-700">Tiền hàng shipper cần ứng/xác nhận</span>
+                      <span className="font-black text-amber-700">Tiền COD shipper cần ứng/xác nhận</span>
                       <span className="font-black text-amber-700">{fmtCur(getCodPrepaidAmount(detailOrder))}</span>
                     </div>
                     <div className="flex justify-between gap-4">
