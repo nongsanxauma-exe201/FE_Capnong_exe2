@@ -18,7 +18,7 @@ import {
 import FakeGPS from './Fakegps';
 import { authService } from '../../services/auth.service';
 import type { UserResponse } from '../../services/auth.service';
-import { getCodCollectAmount, isCodOrder } from '../../services/codSettlement.service';
+import { getCodCollectAmount, getCodPrepaidAmount, isCodOrder } from '../../services/codSettlement.service';
 import { globalShowAlert } from '../../contexts/PopupContext';
 
 interface ShipperDashboardProps {
@@ -48,6 +48,7 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
   const [ordersError, setOrdersError] = useState<string | null>(null);
   const [acceptingOrderId, setAcceptingOrderId] = useState<number | null>(null);
   const [acceptSuccess, setAcceptSuccess] = useState<number | null>(null);
+  const [codAcceptOrder, setCodAcceptOrder] = useState<AvailableOrderResponse | null>(null);
   const [trackingStatus, setTrackingStatus] = useState<TrackingStatus>('off');
   const [trackingOrderId, setTrackingOrderId] = useState<number | null>(null);
   // ✅ Fake GPS: orderId đang mở panel fake GPS
@@ -102,6 +103,8 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
                 paymentMethod: detail.result.paymentMethod ?? order.paymentMethod,
                 totalAmount: detail.result.totalAmount ?? order.totalAmount,
                 codAmount: detail.result.codAmount ?? order.codAmount,
+                codPrepaidAmount: detail.result.codPrepaidAmount ?? order.codPrepaidAmount,
+                shippingDiscountAmount: detail.result.shippingDiscountAmount ?? order.shippingDiscountAmount,
                 refundAmount: detail.result.refundAmount ?? order.refundAmount,
                 refundReason: detail.result.refundReason ?? order.refundReason,
               };
@@ -170,15 +173,28 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
     } finally { setLoadingOrders(false); }
   };
 
-  const handleAcceptOrder = async (orderId: number) => {
+  const handleAcceptOrder = async (order: AvailableOrderResponse, codPaymentOption?: 'CASH' | 'WALLET') => {
+    if ((order.paymentMethod ?? '').toUpperCase() === 'COD' && !codPaymentOption) {
+      setCodAcceptOrder(order);
+      return;
+    }
+    const orderId = order.orderId;
     setAcceptingOrderId(orderId);
     try {
-      await shipperService.acceptOrder(orderId);
+      await shipperService.acceptOrder(orderId, codPaymentOption);
       setAcceptSuccess(orderId);
+      setCodAcceptOrder(null);
       setAvailableOrders(prev => prev.filter(o => o.orderId !== orderId));
       setTimeout(() => setAcceptSuccess(null), 3000);
     } catch (err: any) {
-      globalShowAlert(err?.data?.message === 'ORDER_ALREADY_TAKEN' ? 'Đơn đã được nhận!' : 'Không thể nhận đơn.', 'Lỗi', 'error');
+      const errorCode = err?.data?.code;
+      const apiMessage = err?.data?.message || err?.message;
+      const message = errorCode === 4009
+        ? 'Đơn này đã được shipper khác nhận rồi.'
+        : errorCode === 3004
+          ? 'Số dư ví shipper không đủ để ứng COD. Số tiền ứng gồm tiền hàng và phí nền tảng từ phí ship, vui lòng nạp thêm tiền vào ví rồi thử lại.'
+          : apiMessage || 'Không thể nhận đơn. Vui lòng thử lại sau.';
+      globalShowAlert(message, 'Lỗi', 'error');
     } finally { setAcceptingOrderId(null); }
   };
 
@@ -257,7 +273,11 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
     if (!isCodOrder(order)) return null;
 
     const collectAmount = getCodCollectAmount(order);
+    const prepaidAmount = getCodPrepaidAmount(order);
     const refundAmount = order.refundAmount ?? 0;
+    const prepaidLabel = order.codPaymentOption === 'CASH'
+      ? 'Tiền hàng + phí nền tảng đã chọn nộp tiền mặt cho admin'
+      : 'Tiền hàng + phí nền tảng đã ứng từ ví shipper';
 
     return (
       <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 flex flex-col gap-1.5">
@@ -281,8 +301,11 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
             Đã trừ hoàn tiền: {fmtCur(refundAmount)}
           </p>
         )}
+        <p className="text-[11px] font-black text-amber-800">
+          {prepaidLabel}: {fmtCur(prepaidAmount)}
+        </p>
         <p className="text-[10px] text-amber-700 font-medium leading-relaxed">
-          Bấm hoàn tất giao hàng đồng nghĩa với việc bạn đã thu đúng số tiền này từ khách.
+          Lưu ý: COD cần thu là tổng tiền khách trả. Số tiền ứng gồm tiền hàng và 10% phí nền tảng từ phí ship.
         </p>
       </div>
     );
@@ -303,6 +326,7 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
           const isTracking = trackingOrderId === order.orderId;
           const codOrder = isCodOrder(order);
           const codCollectAmount = codOrder ? getCodCollectAmount(order) : 0;
+          const codPrepaidAmount = codOrder ? getCodPrepaidAmount(order) : 0;
           return (
             <div key={order.orderId} className="bg-white rounded-[40px] border border-gray-100 shadow-sm p-8 flex flex-col gap-6">
               <div className="flex items-start justify-between gap-4">
@@ -312,12 +336,14 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
                   <p className="text-xs text-gray-500 mt-1">{order.shippingAddress}</p>
                 </div>
                 <div className="text-right shrink-0">
-                  <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Phí ship</p>
+                  <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Tiền ship nhận</p>
                   <p className="text-xl font-black text-primary">{fmtCur(order.shippingFee)}</p>
                   {codOrder && (
                     <>
                       <p className="text-[9px] font-black text-amber-600 uppercase tracking-widest mt-2">Cần thu COD</p>
                       <p className="text-lg font-black text-amber-600">{fmtCur(codCollectAmount)}</p>
+                      <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mt-2">Đã ứng cho admin</p>
+                      <p className="text-sm font-black text-gray-700">{fmtCur(codPrepaidAmount)}</p>
                     </>
                   )}
                 </div>
@@ -405,7 +431,10 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
                 <RefreshCw className="size-4" /> Tải lại
               </button>
             </div>
-          ) : ordersToShow.map((order) => (
+          ) : ordersToShow.map((order) => {
+            const codOrder = (order.paymentMethod ?? '').toUpperCase() === 'COD';
+            const prepaidAmount = getCodPrepaidAmount(order);
+            return (
             <div key={order.orderId} className="bg-white rounded-[40px] border border-gray-100 shadow-sm hover:shadow-xl transition-all p-8 flex flex-col group relative overflow-hidden">
               {/* Header */}
               <div className="flex justify-between items-start mb-6">
@@ -413,7 +442,10 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
                   <Clock className="size-3" />
                   <span className="text-[10px] font-black uppercase">{fmtTime(order.createdAt)}</span>
                 </div>
-                <span className="text-2xl font-black text-primary">{fmtCur(order.shippingFee)}</span>
+                <div className="text-right">
+                  <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Tiền ship nhận</p>
+                  <span className="text-2xl font-black text-primary">{fmtCur(order.shippingFee)}</span>
+                </div>
               </div>
 
               {/* Route: shipper → shop → buyer */}
@@ -469,10 +501,17 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
                   }
                 </span>
               </div>
+              {codOrder && (
+                <div className="bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3 mb-4">
+                  <p className="text-[10px] font-black text-amber-700 uppercase tracking-widest">Đơn COD cần ứng trước</p>
+                  <p className="text-lg font-black text-amber-800 mt-1">{fmtCur(prepaidAmount)}</p>
+                  <p className="text-[11px] text-amber-700 font-semibold mt-1">Chọn trả tiền mặt cho admin hoặc trừ trực tiếp từ ví shipper.</p>
+                </div>
+              )}
 
               {/* Nút nhận đơn */}
               <button
-                onClick={() => handleAcceptOrder(order.orderId)}
+                onClick={() => handleAcceptOrder(order)}
                 disabled={acceptingOrderId === order.orderId}
                 className={`w-full py-4 font-black rounded-2xl flex items-center justify-center gap-2 shadow-xl transition-all transform active:scale-95
               ${acceptSuccess === order.orderId ? 'bg-green-500 text-white' : 'bg-primary text-white hover:bg-primary-dark'}
@@ -485,7 +524,8 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
 
               <div className="absolute top-0 right-0 size-32 bg-primary/5 rounded-full translate-x-1/2 -translate-y-1/2 blur-2xl group-hover:bg-primary/10 transition-colors" />
             </div>
-          ))}
+            );
+          })}
         </div>
         {/* Pagination controls when using paged API */}
         {ordersPage && (
@@ -657,6 +697,45 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+      {codAcceptOrder && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => setCodAcceptOrder(null)} />
+          <div className="bg-white w-full max-w-xl rounded-[36px] shadow-2xl relative z-10 p-8">
+            <h3 className="text-2xl font-black text-gray-900 uppercase">Chọn cách ứng tiền COD</h3>
+            <p className="text-sm text-gray-500 font-semibold mt-2">
+              Đơn #{codAcceptOrder.orderId} cần ứng trước{' '}
+              <span className="font-black text-amber-700">
+                {fmtCur(getCodPrepaidAmount(codAcceptOrder))}
+              </span>
+              {' '}trước khi giao.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-8">
+              <button
+                onClick={() => handleAcceptOrder(codAcceptOrder, 'CASH')}
+                disabled={acceptingOrderId === codAcceptOrder.orderId}
+                className="p-5 rounded-3xl border-2 border-amber-200 bg-amber-50 text-left hover:bg-amber-100 transition-all disabled:opacity-60"
+              >
+                <p className="text-sm font-black text-amber-800 uppercase">Trả tiền mặt</p>
+                <p className="text-xs text-amber-700 font-semibold mt-2">Shipper đưa tiền mặt, admin xác nhận đã nhận tiền rồi mới giao.</p>
+              </button>
+              <button
+                onClick={() => handleAcceptOrder(codAcceptOrder, 'WALLET')}
+                disabled={acceptingOrderId === codAcceptOrder.orderId}
+                className="p-5 rounded-3xl border-2 border-emerald-200 bg-emerald-50 text-left hover:bg-emerald-100 transition-all disabled:opacity-60"
+              >
+                <p className="text-sm font-black text-emerald-800 uppercase">Trừ ví shipper</p>
+                <p className="text-xs text-emerald-700 font-semibold mt-2">Hệ thống trừ ví ngay. Nếu không đủ số dư, đơn sẽ không được nhận.</p>
+              </button>
+            </div>
+            <button
+              onClick={() => setCodAcceptOrder(null)}
+              className="w-full mt-4 py-3 rounded-2xl bg-gray-100 text-gray-500 text-xs font-black uppercase hover:bg-gray-200"
+            >
+              Hủy
+            </button>
           </div>
         </div>
       )}

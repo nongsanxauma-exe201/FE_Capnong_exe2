@@ -5,6 +5,7 @@
 
 import { httpClient, ApiResponse } from './http.client';
 import { API_BASE_URL, TOKEN_KEY, REFRESH_TOKEN_KEY, USER_INFO_KEY } from './api.config';
+import { clearPayOSRecoveryState } from '../utils/pendingPayOSPayment';
 
 /**
  * Request/Response Types
@@ -51,6 +52,10 @@ export interface UserResponse {
   description?: string;
   logoUrl?: string;
   achievement?: string;
+  totalRescuedWeight?: number;
+  loyaltyPoints?: number;
+  totalRescuedKg?: number;
+  rewardPoints?: number;
   // Shipper specific
   license?: string;
   vehicleNumber?: string;
@@ -91,6 +96,7 @@ class AuthService {
    */
   async login(credentials: LoginRequest): Promise<ApiResponse<LoginResponse>> {
     try {
+      clearPayOSRecoveryState();
       const response = await httpClient.post<LoginResponse>('/auth/login', credentials);
 
       // Lưu token vào localStorage
@@ -279,6 +285,7 @@ class AuthService {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
     localStorage.removeItem(USER_INFO_KEY);
+    clearPayOSRecoveryState();
   }
 
   /**

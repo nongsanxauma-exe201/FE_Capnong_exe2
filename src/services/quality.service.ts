@@ -10,11 +10,13 @@ export interface QualityCheckingRequest {
 
 export interface QualityCheckRequest {
   note?: string;
-  qualityResult: QualityResult;
+  qualityResult?: QualityResult;
   orderDetailId?: number;
   orderMysteryBoxId?: number;
   qualityChecks: QualityCheckingRequest[];
   rejectedWeight?: number;
+  rejectedKg?: number;
+  damageNote?: string;
 }
 
 export interface QualityCheckImage {
@@ -34,6 +36,8 @@ export interface QualityCheckResponse {
   orderId?: number;
   qualityResult: QualityResult;
   note?: string | null;
+  damageNote?: string | null;
+  autoVoucherCreated?: boolean;
   qualityCheckingResponses?: QualityCheckingResponse[];
   createdAt?: string;
   status?: string;

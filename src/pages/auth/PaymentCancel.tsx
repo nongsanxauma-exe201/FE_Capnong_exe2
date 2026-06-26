@@ -13,10 +13,14 @@ const PaymentCancel: React.FC = () => {
   // Get params from URL
   const urlParams = new URLSearchParams(window.location.search);
   const orderCode = urlParams.get('orderCode');
+  const isExplicitPayOSCancel =
+    urlParams.get('source') === 'payos-cancel'
+    || urlParams.get('status') === 'CANCELLED'
+    || urlParams.get('cancel') === 'true';
 
   useEffect(() => {
     const cancelPayment = async () => {
-      if (!orderCode) return;
+      if (!orderCode || !isExplicitPayOSCancel) return;
       try {
         setIsCancelling(true);
         setCancelError(null);
@@ -39,7 +43,7 @@ const PaymentCancel: React.FC = () => {
     };
 
     cancelPayment();
-  }, [orderCode]);
+  }, [orderCode, isExplicitPayOSCancel]);
 
   useEffect(() => {
     // Countdown to redirect
@@ -78,13 +82,14 @@ const PaymentCancel: React.FC = () => {
 
           {/* Title */}
           <h1 className="text-3xl font-black text-gray-900 mb-3 font-display">
-            Thanh toán đã hủy
+            {isExplicitPayOSCancel ? 'Thanh toán đã hủy' : 'Đơn hàng đang chờ thanh toán'}
           </h1>
 
           {/* Description */}
           <p className="text-sm text-gray-500 font-medium leading-relaxed mb-8">
-            Bạn đã hủy thanh toán qua PayOS. Đơn hàng của bạn đã được lưu lại với trạng thái "Chờ thanh toán".
-            Bạn có thể thử thanh toán lại trong mục "Đơn hàng của tôi".
+            {isExplicitPayOSCancel
+              ? 'Bạn đã hủy thanh toán qua PayOS. Đơn hàng đã được hủy và giỏ hàng sẽ được khôi phục.'
+              : 'Bạn đã rời trang thanh toán PayOS. Đơn hàng vẫn được giữ ở trạng thái chờ thanh toán, không hủy và không khôi phục giỏ hàng/voucher.'}
           </p>
 
           {/* Order Info */}

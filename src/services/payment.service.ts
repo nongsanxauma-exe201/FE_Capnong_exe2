@@ -27,7 +27,7 @@ class PaymentService {
         return httpClient.post<PaymentResponse>('/payments', data);
     }
 
-    async getById(id: number): Promise<ApiResponse<PaymentResponse>> {
+    async getById(id: number | string): Promise<ApiResponse<PaymentResponse>> {
         return httpClient.get<PaymentResponse>(`/payments/${id}`);
     }
 

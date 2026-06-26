@@ -41,7 +41,7 @@ interface Ingredient {
   name: string;
   unit: string;
   isUglyProduce?: boolean;
-  pricePerUnit: number;
+  pricePerKg: number;
 }
 
 interface RecipeItem {
@@ -540,7 +540,7 @@ export default function MealPlan() {
 
     setIsSaving(true);
     try {
-      const totalBudget = shoppingList.reduce((acc, curr) => acc + (curr.quantity * curr.pricePerUnit), 0);
+      const totalBudget = shoppingList.reduce((acc, curr) => acc + (curr.quantity * curr.pricePerKg), 0);
 
       const request: BuildPlanDetailRequest = {
         plan: {
@@ -662,7 +662,7 @@ export default function MealPlan() {
         name: product?.productName || 'Nguyên liệu',
         unit: product?.unit || 'g',
         quantity: qty,
-        pricePerUnit: product?.sellingPrice || 0,
+        pricePerKg: product?.pricePerKg || product?.sellingPrice || 0,
         isUglyProduce: false // We can dynamically check if needed
       };
     });
@@ -1087,7 +1087,7 @@ export default function MealPlan() {
                       <div className="text-right">
                         <p className="text-xs text-emerald-300/60 uppercase tracking-widest font-bold">Ước tính</p>
                         <p className="text-2xl font-bold">
-                          {Math.round(shoppingList.reduce((acc, curr) => acc + (curr.quantity * curr.pricePerUnit), 0)).toLocaleString()}đ
+                          {Math.round(shoppingList.reduce((acc, curr) => acc + (curr.quantity * curr.pricePerKg), 0)).toLocaleString()}đ
                         </p>
                       </div>
                     </div>

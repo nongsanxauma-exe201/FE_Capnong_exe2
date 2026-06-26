@@ -7,12 +7,24 @@ import { productService, ProductImageResponse } from '../../services';
 
 const MAX_IMAGES = 8;
 
+const getTodayDateString = () => {
+  const now = new Date();
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+  return now.toISOString().slice(0, 10);
+};
+
+const getCurrentDatetimeLocal = () => {
+  const now = new Date();
+  now.setSeconds(0, 0);
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+  return now.toISOString().slice(0, 16);
+};
+
 const EditProduct: React.FC<{ productId: number; onBack: () => void }> = ({ productId, onBack }) => {
   const [productName, setProductName] = useState('');
   const [price, setPrice] = useState<number>(0);
   const [stock, setStock] = useState<number>(0);
   const [description, setDescription] = useState('');
-  const [unit, setUnit] = useState('kg');
   const [categoryId, setCategoryId] = useState<number>(1);
   const [expiryDate, setExpiryDate] = useState('');
   const [discountPercent, setDiscountPercent] = useState<number | ''>('');
@@ -35,10 +47,9 @@ const EditProduct: React.FC<{ productId: number; onBack: () => void }> = ({ prod
       if (productRes.result) {
         const p = productRes.result;
         setProductName(p.productName || '');
-        setPrice(p.sellingPrice || 0);
-        setStock(p.stockQuantity || 0);
+        setPrice(p.pricePerKg || p.sellingPrice || 0);
+        setStock(p.stockKg || p.stockQuantity || 0);
         setDescription(p.description || '');
-        setUnit(p.unit || 'kg');
         setCategoryId(p.categoryId || 1);
         setExpiryDate(p.expiryDate || '');
         setDiscountPercent(p.discountPercent ?? '');
@@ -105,12 +116,36 @@ const EditProduct: React.FC<{ productId: number; onBack: () => void }> = ({ prod
       setError('Vui lòng điền đầy đủ thông tin sản phẩm và giá hợp lệ.');
       return;
     }
+    if (expiryDate && expiryDate < getTodayDateString()) {
+      setError('Hạn sử dụng không được chọn ngày trong quá khứ.');
+      return;
+    }
+    const minDiscountDateTime = getCurrentDatetimeLocal();
+    if (discountStartDate && discountStartDate < minDiscountDateTime) {
+      setError('Ngày bắt đầu giảm giá không được chọn trong quá khứ.');
+      return;
+    }
+    if (discountEndDate && discountEndDate < minDiscountDateTime) {
+      setError('Ngày kết thúc giảm giá không được chọn trong quá khứ.');
+      return;
+    }
+    if (discountStartDate && discountEndDate && discountEndDate < discountStartDate) {
+      setError('Ngày kết thúc giảm giá phải sau ngày bắt đầu.');
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
       await productService.updateProduct(productId, {
-        productName, sellingPrice: price, stockQuantity: stock,
-        description, unit, expiryDate: expiryDate || undefined, categoryId: categoryId || 1,
+        productName,
+        sellingPrice: price,
+        pricePerKg: price,
+        stockQuantity: Math.floor(stock),
+        stockKg: stock,
+        description,
+        unit: 'kg',
+        expiryDate: expiryDate || undefined,
+        categoryId: categoryId || 1,
         discountPercent: discountPercent !== '' ? Number(discountPercent) : undefined,
         discountStartDate: discountStartDate ? discountStartDate + ':00' : undefined,
         discountEndDate: discountEndDate ? discountEndDate + ':00' : undefined,
@@ -137,6 +172,8 @@ const EditProduct: React.FC<{ productId: number; onBack: () => void }> = ({ prod
     if (b.isPrimary) return 1;
     return a.displayOrder - b.displayOrder;
   });
+  const minExpiryDate = getTodayDateString();
+  const minDiscountDateTime = getCurrentDatetimeLocal();
 
   return (
     <div className="flex flex-col gap-8 p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -172,7 +209,7 @@ const EditProduct: React.FC<{ productId: number; onBack: () => void }> = ({ prod
                 <input type="text" value={productName} onChange={e => setProductName(e.target.value)}
                   className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-primary/10 focus:bg-white transition-all" />
               </div>
-              <div className="grid grid-cols-2 gap-8">
+              <div className="grid grid-cols-1 gap-8">
                 <div className="flex flex-col gap-3">
                   <label className="text-sm font-bold text-gray-700">Danh mục</label>
                   <select value={categoryId} onChange={e => setCategoryId(Number(e.target.value))}
@@ -180,15 +217,6 @@ const EditProduct: React.FC<{ productId: number; onBack: () => void }> = ({ prod
                     <option value={1}>Củ</option>
                     <option value={2}>Trái cây</option>
                     <option value={3}>Khác</option>
-                  </select>
-                </div>
-                <div className="flex flex-col gap-3">
-                  <label className="text-sm font-bold text-gray-700">Đơn vị tính</label>
-                  <select value={unit} onChange={e => setUnit(e.target.value)}
-                    className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold text-gray-600 outline-none appearance-none cursor-pointer">
-                    <option value="kg">Kilogram (kg)</option>
-                    <option value="túi">Túi / Bó</option>
-                    <option value="thùng">Thùng</option>
                   </select>
                 </div>
               </div>
@@ -207,9 +235,9 @@ const EditProduct: React.FC<{ productId: number; onBack: () => void }> = ({ prod
               <h4 className="font-black text-gray-800 uppercase tracking-tight">Thông số & Bảo quản</h4>
             </div>
             <div className="space-y-8">
-              <div className="grid grid-cols-2 gap-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="flex flex-col gap-3">
-                  <label className="text-sm font-bold text-gray-700">Giá bán (VNĐ/{unit})</label>
+                  <label className="text-sm font-bold text-gray-700">Giá bán (VNĐ/kg)</label>
                   <div className="relative">
                     <input type="number" value={price} onChange={e => setPrice(Number(e.target.value))}
                       className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-primary/10 transition-all" />
@@ -217,8 +245,8 @@ const EditProduct: React.FC<{ productId: number; onBack: () => void }> = ({ prod
                   </div>
                 </div>
                 <div className="flex flex-col gap-3">
-                  <label className="text-sm font-bold text-gray-700">Số lượng tồn kho ({unit})</label>
-                  <input type="number" value={stock} onChange={e => setStock(Number(e.target.value))}
+                  <label className="text-sm font-bold text-gray-700">Tồn kho (kg)</label>
+                  <input type="number" min={0.01} step={0.01} value={stock} onChange={e => setStock(Number(e.target.value))}
                     className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-primary/10 transition-all" />
                 </div>
               </div>
@@ -245,7 +273,7 @@ const EditProduct: React.FC<{ productId: number; onBack: () => void }> = ({ prod
 
               <div className="flex flex-col gap-4">
                 <label className="text-sm font-bold text-gray-700">Hạn sử dụng</label>
-                <input type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)}
+                <input type="date" value={expiryDate} min={minExpiryDate} onChange={e => setExpiryDate(e.target.value)}
                   className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold text-gray-600 outline-none focus:ring-2 focus:ring-primary/10 transition-all" />
                 <div className="p-4 bg-primary/5 rounded-2xl flex items-start gap-3 border border-primary/10">
                   <HelpCircle className="size-4 text-primary shrink-0 mt-0.5" />
@@ -293,6 +321,7 @@ const EditProduct: React.FC<{ productId: number; onBack: () => void }> = ({ prod
                   <input
                     type="datetime-local"
                     value={discountStartDate}
+                    min={minDiscountDateTime}
                     onChange={e => setDiscountStartDate(e.target.value)}
                     className="w-full px-5 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-medium text-gray-600 outline-none"
                   />
@@ -303,6 +332,7 @@ const EditProduct: React.FC<{ productId: number; onBack: () => void }> = ({ prod
                   <input
                     type="datetime-local"
                     value={discountEndDate}
+                    min={discountStartDate || minDiscountDateTime}
                     onChange={e => setDiscountEndDate(e.target.value)}
                     className="w-full px-5 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-medium text-gray-600 outline-none"
                   />

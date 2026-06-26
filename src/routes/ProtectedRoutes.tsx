@@ -14,17 +14,12 @@ import Wallet from '../pages/auth/Wallet';
 import KYC from '../pages/auth/KYC';
 import { AppRole } from '../types';
 import { useAuth } from '../contexts/AuthContext';
-import { hasPendingPayOSRollback, redirectToCartAfterPayOSCancel } from '../utils/pendingPayOSPayment';
 
 const ProtectedRoutes = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
 
     const handleCheckoutBack = () => {
-        if (hasPendingPayOSRollback()) {
-            void redirectToCartAfterPayOSCancel();
-            return;
-        }
         navigate('/cart', { state: { refreshCartAt: Date.now() } });
     };
 

@@ -125,10 +125,10 @@ const OrderPreparation: React.FC<OrderPreparationProps> = ({ orderId, onBack, on
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-bold text-gray-800 truncate">{item.productName || `Sản phẩm #${i + 1}`}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">{item.quantity} x {(item.unitPrice || 0).toLocaleString('vi-VN')}đ</p>
+                        <p className="text-xs text-gray-400 mt-0.5">{(item.quantityKg ?? item.quantity).toLocaleString('vi-VN', { maximumFractionDigits: 2 })} kg x {((item.pricePerKg ?? item.unitPrice) || 0).toLocaleString('vi-VN')}đ/kg</p>
                       </div>
                       <p className="text-sm font-black text-primary flex-shrink-0">
-                        {((item.quantity || 1) * (item.unitPrice || 0)).toLocaleString('vi-VN')}đ
+                        {(((item.quantityKg ?? item.quantity) || 1) * ((item.pricePerKg ?? item.unitPrice) || 0)).toLocaleString('vi-VN')}đ
                       </p>
                     </div>
                   );

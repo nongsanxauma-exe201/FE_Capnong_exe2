@@ -1,8 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ShoppingCart, Trash2, Plus, Minus, Info, ArrowRight, ArrowLeft, Loader2, Package, Gift, ChefHat, AlertCircle } from 'lucide-react';
 import { cartService, CartResponse, CartItemResponse } from '../../services/cart.service';
 import { globalShowConfirm, globalShowAlert } from '../../contexts/PopupContext';
-import { clearRestoredPayOSCart, consumeRestoredPayOSCart, ensurePendingPayOSRolledBack, getRestoredPayOSCartData, buildGroupedCartItems, hasPayOSCartRecovery, saveRestoredPayOSCart, PAYOS_RELOAD_CART_ON_ARRIVAL_KEY } from '../../utils/pendingPayOSPayment';
+import { clearRestoredPayOSCart, buildGroupedCartItems, saveRestoredPayOSCart, PAYOS_RELOAD_CART_ON_ARRIVAL_KEY } from '../../utils/pendingPayOSPayment';
 
 interface CartProps {
   onProceedToCheckout: (selectedKeys?: string[]) => void;
@@ -11,43 +11,21 @@ interface CartProps {
 
 type GroupedCart = Record<string, CartItemResponse[]>;
 
+const getQuantityKg = (item: CartItemResponse) => Number(item.quantityKg ?? item.quantity ?? 0);
+const getPricePerKg = (item: CartItemResponse) => Number(item.salePrice ?? item.pricePerKg ?? item.price ?? 0);
+const getItemTotal = (item: CartItemResponse) => Number(item.itemTotal ?? getPricePerKg(item) * getQuantityKg(item));
+const formatKg = (value: number) => value.toLocaleString('vi-VN', { maximumFractionDigits: 2 });
+
 interface CartState {
   cart: CartResponse | null;
   groupedItems: GroupedCart;
 }
 
 const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) => {
-  const snapshotHoldUntilRef = useRef(0);
-  const hasVisibleItemsRef = useRef(false);
-
-  const [cartState, setCartState] = useState<CartState>(() => {
-    const snapshot = getRestoredPayOSCartData();
-    if (snapshot?.items?.length) {
-      snapshotHoldUntilRef.current = Date.now() + 60000;
-      hasVisibleItemsRef.current = true;
-      return {
-        cart: snapshot,
-        groupedItems: buildGroupedCartItems(snapshot.items),
-      };
-    }
-    return { cart: null, groupedItems: {} };
-  });
-  const [loading, setLoading] = useState(() => !getRestoredPayOSCartData()?.items?.length);
+  const [cartState, setCartState] = useState<CartState>({ cart: null, groupedItems: {} });
+  const [loading, setLoading] = useState(true);
   const [updatingKey, setUpdatingKey] = useState<string | null>(null);
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => {
-    const snapshot = getRestoredPayOSCartData();
-    if (!snapshot?.items?.length) return new Set();
-    return new Set(snapshot.items.map((item) => {
-      const type = item.itemType || '';
-      let id: any = null;
-      if (type === 'MYSTERY_BOX') id = item.mysteryBoxId || (item as any).id;
-      else if (type === 'BUILD_COMBO' || type === 'COMBO') id = item.buildComboId || (item as any).comboId || (item as any).id;
-      else id = item.productId || (item as any).id;
-      if (type === 'MYSTERY_BOX') return `b-${id}`;
-      if (type === 'BUILD_COMBO' || type === 'COMBO') return `c-${id}`;
-      return `p-${id}`;
-    }));
-  });
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     try {
@@ -75,44 +53,21 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
       acc[key].push(item);
       return acc;
     }, {});
-    hasVisibleItemsRef.current = cartData.items.length > 0;
     setCartState({ cart: cartData, groupedItems: grouped });
     if (autoSelect) {
       setSelectedKeys(new Set(cartData.items.map(buildItemKey)));
     }
   };
 
-  const fetchCart = async (isSilent = false, keepSnapshot = false) => {
+  const fetchCart = async (isSilent = false) => {
     if (!isSilent) setLoading(true);
     try {
       const resp = await cartService.getCart();
       const cartData = resp.result;
-      const snapshot = getRestoredPayOSCartData();
 
       if (!cartData || !cartData.items) {
-        if (snapshot?.items?.length) {
-          snapshotHoldUntilRef.current = Date.now() + 60000;
-          applyCartData(snapshot, !isSilent);
-          return;
-        }
-        if (!hasVisibleItemsRef.current) {
-          setCartState({ cart: null, groupedItems: {} });
-        }
-        return;
-      }
-
-      if (cartData.items.length === 0 && snapshot?.items?.length) {
-        snapshotHoldUntilRef.current = Date.now() + 60000;
-        applyCartData(snapshot, !isSilent);
-        return;
-      }
-
-      if (
-        keepSnapshot
-        && hasVisibleItemsRef.current
-        && cartData.items.length === 0
-        && Date.now() < snapshotHoldUntilRef.current
-      ) {
+        setCartState({ cart: null, groupedItems: {} });
+        setSelectedKeys(new Set());
         return;
       }
 
@@ -123,10 +78,6 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
       applyCartData(cartData, !isSilent);
     } catch (error) {
       console.error('Failed to load cart', error);
-      const snapshot = getRestoredPayOSCartData();
-      if (snapshot?.items?.length) {
-        applyCartData(snapshot, !isSilent);
-      }
     } finally {
       setLoading(false);
     }
@@ -136,43 +87,14 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
     let cancelled = false;
 
     const syncCartAfterPayOS = async () => {
-      const snapshot = consumeRestoredPayOSCart();
-      if (snapshot?.items?.length) {
-        snapshotHoldUntilRef.current = Date.now() + 60000;
-        applyCartData(snapshot, true);
-        setLoading(false);
-      }
-
-      if (hasPayOSCartRecovery()) {
-        await ensurePendingPayOSRolledBack();
-      }
       if (cancelled) return;
 
-      await fetchCart(!!snapshot?.items?.length, true);
-
-      // Tiếp tục poll BE trong nền nếu vẫn đang hiển thị snapshot.
-      if (!getRestoredPayOSCartData()?.items?.length) return;
-
-      for (let attempt = 0; attempt < 30; attempt += 1) {
-        if (cancelled) return;
-        await new Promise((resolve) => window.setTimeout(resolve, 500));
-        try {
-          const resp = await cartService.getCart();
-          if (resp.result?.items?.length) {
-            clearRestoredPayOSCart();
-            applyCartData(resp.result, false);
-            window.dispatchEvent(new Event('cart-updated'));
-            return;
-          }
-        } catch (error) {
-          console.warn('Background cart restore poll failed', error);
-        }
-      }
+      await fetchCart(false);
     };
 
     void syncCartAfterPayOS();
 
-    const handleCartUpdate = () => fetchCart(true, true);
+    const handleCartUpdate = () => fetchCart(true);
     window.addEventListener('cart-updated', handleCartUpdate);
     return () => {
       cancelled = true;
@@ -182,15 +104,7 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
 
   useEffect(() => {
     const handleReturnToCart = async () => {
-      const snapshot = getRestoredPayOSCartData();
-      if (snapshot?.items?.length) {
-        snapshotHoldUntilRef.current = Date.now() + 60000;
-        applyCartData(snapshot, true);
-      }
-      if (hasPayOSCartRecovery()) {
-        await ensurePendingPayOSRolledBack();
-      }
-      void fetchCart(true, true);
+      void fetchCart(true);
     };
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
@@ -245,7 +159,7 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
   };
 
   const handleUpdateQuantity = async (item: CartItemResponse, change: number) => {
-    const currentQty = Number(item.quantity) || 0;
+    const currentQty = getQuantityKg(item);
     const newQty = currentQty + change;
     if (newQty < 1) return;
 
@@ -331,7 +245,7 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
   const totalItems = cart?.items.length || 0;
   
   const selectedItems = cart?.items.filter(it => selectedKeys.has(itemKey(it))) || [];
-  const selectedTotal = selectedItems.reduce((sum, it) => sum + ((it.salePrice ?? it.price) * it.quantity), 0);
+  const selectedTotal = selectedItems.reduce((sum, it) => sum + getItemTotal(it), 0);
   const selectedShops = Array.from(new Set(selectedItems.map(it => it.shopName)));
   const isMultiShop = selectedShops.length > 1;
   const shopsCount = Object.keys(groupedItems).length;
@@ -348,7 +262,7 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
     if (cart?.items?.length) {
       const selectedItems = cart.items.filter((it) => selectedKeys.has(itemKey(it)));
       if (selectedItems.length > 0) {
-        const selectedTotal = selectedItems.reduce((sum, it) => sum + ((it.salePrice ?? it.price) * it.quantity), 0);
+        const selectedTotal = selectedItems.reduce((sum, it) => sum + getItemTotal(it), 0);
         saveRestoredPayOSCart({
           items: selectedItems,
           totalAmount: selectedTotal,
@@ -494,25 +408,23 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
                                   ) : (
                                     <p className="text-lg font-black text-primary">{(item.price || 0).toLocaleString('vi-VN')}đ</p>
                                   )}
-                                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
-                                    {isMysteryBox ? 'Mỗi túi' : isCombo ? 'Mỗi combo' : 'Mỗi đơn vị'}
-                                  </p>
+                                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">VNĐ/kg</p>
                                 </div>
                               </div>
                               <div className="flex items-center justify-between mt-4">
                                 <div className="flex items-center gap-4 bg-gray-50 p-1.5 rounded-xl border border-gray-100">
-                                  <button disabled={isUpdating || item.quantity <= 1} onClick={() => handleUpdateQuantity(item, -1)} className="size-8 flex items-center justify-center text-gray-400 hover:text-primary disabled:opacity-50">
+                                  <button disabled={isUpdating || getQuantityKg(item) <= 1} onClick={() => handleUpdateQuantity(item, -1)} className="size-8 flex items-center justify-center text-gray-400 hover:text-primary disabled:opacity-50">
                                     <Minus className="size-3" />
                                   </button>
                                   <span className="text-sm font-black text-gray-900 w-4 text-center">
-                                    {isUpdating ? <Loader2 className="size-3 animate-spin mx-auto text-primary" /> : item.quantity}
+                                    {isUpdating ? <Loader2 className="size-3 animate-spin mx-auto text-primary" /> : formatKg(getQuantityKg(item))}
                                   </span>
                                   <button disabled={isUpdating} onClick={() => handleUpdateQuantity(item, 1)} className="size-8 flex items-center justify-center text-gray-400 hover:text-primary disabled:opacity-50">
                                     <Plus className="size-3" />
                                   </button>
                                 </div>
                                 <div className="flex items-center gap-4">
-                                  <span className="text-xl font-black text-primary">{(((item.salePrice ?? item.price) || 0) * item.quantity).toLocaleString('vi-VN')}đ</span>
+                                  <span className="text-xl font-black text-primary">{getItemTotal(item).toLocaleString('vi-VN')}đ</span>
                                   <button disabled={isUpdating} onClick={() => handleRemoveItem(item)} className="size-10 bg-red-50 rounded-2xl flex items-center justify-center text-red-400 hover:bg-red-500 hover:text-white transition-colors disabled:opacity-50">
                                     <Trash2 className="size-4" />
                                   </button>

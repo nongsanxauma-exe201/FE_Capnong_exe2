@@ -14,7 +14,10 @@ export interface ProductResponse {
     productName: string;
     unit: string;
     sellingPrice: number;
+    pricePerKg?: number;
     stockQuantity: number;
+    stockKg?: number;
+    minOrderKg?: number;
     description: string;
     imageUrl: string;
     status?: string;
@@ -37,9 +40,12 @@ function normalizeProduct(p: ProductResponse): ProductResponse {
 
 export interface ProductCreationRequest {
     productName: string;
-    unit: string;
+    unit?: string;
     sellingPrice: number;
+    pricePerKg?: number;
     stockQuantity: number;
+    stockKg?: number;
+    minOrderKg?: number;
     description: string;
     categoryId?: number;
     expiryDate?: string;

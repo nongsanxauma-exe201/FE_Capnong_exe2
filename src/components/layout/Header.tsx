@@ -5,7 +5,7 @@ import { AppRole, User, KYCStatus } from '../../types/index';
 import { Search, ShoppingCart, Bell, Menu, User as UserIcon, LogOut, Phone, X, CheckCircle2, Trash2, Store, Truck, LayoutDashboard, Package, MessageSquare, RefreshCw, Ticket } from 'lucide-react';
 import { notificationService, NotificationItem, cartService } from '../../services';
 import { useNotificationWebSocket } from '../../services/useNotificationWebSocket';
-import { getRestoredPayOSCartData, hasPendingPayOSRollback, redirectToCartAfterPayOSCancel, savePendingPayOSPayment } from '../../utils/pendingPayOSPayment';
+import { savePendingPayOSPayment } from '../../utils/pendingPayOSPayment';
 import { paymentService } from '../../services';
 
 import { useAuth } from '../../contexts/AuthContext';
@@ -24,10 +24,6 @@ const Header: React.FC<HeaderProps> = ({
   const location = useLocation();
 
   const handleOpenCart = () => {
-    if (hasPendingPayOSRollback()) {
-      void redirectToCartAfterPayOSCancel();
-      return;
-    }
     navigate('/cart');
   };
   const [showProfileMenu, setShowProfileMenu] = useState(false);
@@ -83,11 +79,9 @@ const Header: React.FC<HeaderProps> = ({
         setCartCount(res.result.items.length);
         return;
       }
-      const snapshot = getRestoredPayOSCartData();
-      setCartCount(snapshot?.items?.length || 0);
+      setCartCount(0);
     } catch (err) {
-      const snapshot = getRestoredPayOSCartData();
-      setCartCount(snapshot?.items?.length || 0);
+      setCartCount(0);
       console.error('Failed to fetch cart count', err);
     }
   };
