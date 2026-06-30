@@ -1,7 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { ArrowLeft, Camera, Info, Truck, HelpCircle, AlertTriangle, X, Star, Tag } from 'lucide-react';
 import SubmissionSuccess from './SubmissionSuccessProps';
-import { productService } from '../../services';
+import { productService, categoryService } from '../../services';
+import type { CategoryResponse } from '../../services';
 
 const MAX_IMAGES = 8;
 
@@ -39,6 +40,7 @@ const AddProduct: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [discountPercent, setDiscountPercent] = useState('');
   const [discountStartDate, setDiscountStartDate] = useState('');
   const [discountEndDate, setDiscountEndDate] = useState('');
+  const [categories, setCategories] = useState<CategoryResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,6 +48,16 @@ const AddProduct: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [previews, setPreviews] = useState<string[]>([]);
   const [primaryIdx, setPrimaryIdx] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    categoryService.getAll().then(res => {
+      const list = res.result ?? [];
+      if (list.length > 0) {
+        setCategories(list);
+        setCategoryId(list[0].id);
+      }
+    }).catch(() => {});
+  }, []);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
@@ -179,9 +191,12 @@ const AddProduct: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                   <label className="text-sm font-bold text-gray-700">Danh mục</label>
                   <select value={categoryId} onChange={e => setCategoryId(Number(e.target.value))}
                     className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold text-gray-600 outline-none appearance-none cursor-pointer">
-                    <option value={1}>Củ</option>
-                    <option value={2}>Trái cây</option>
-                    <option value={3}>Khác</option>
+                    {categories.length === 0
+                      ? <option value={0} disabled>Đang tải danh mục...</option>
+                      : categories.map(cat => (
+                          <option key={cat.id} value={cat.id}>{cat.name}</option>
+                        ))
+                    }
                   </select>
                 </div>
               </div>
@@ -234,7 +249,7 @@ const AddProduct: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     <p className="text-[10px] font-bold text-blue-600 mt-1.5">
                       Ví dụ với giá {parseWholeNumber(price).toLocaleString('vi-VN')}đ →
                       phí sàn ~{Math.round(parseWholeNumber(price) * 0.1).toLocaleString('vi-VN')}đ →
-                      bạn nhận ~{Math.round(parseWholeNumber(price) * 0.9).toLocaleString('vi-VN')}đ/{unit}
+                      bạn nhận ~{Math.round(parseWholeNumber(price) * 0.9).toLocaleString('vi-VN')}đ/kg
                     </p>
                   )}
                 </div>

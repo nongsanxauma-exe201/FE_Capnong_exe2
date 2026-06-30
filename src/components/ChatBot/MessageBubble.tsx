@@ -683,10 +683,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
               fontWeight: 700,
             }}
           >
-            AI
+            Bot
           </div>
           <span style={{ fontSize: '11px', color: '#888', fontWeight: 500 }}>
-            Trợ lý AI
+            Chat Box
           </span>
         </div>
       )}

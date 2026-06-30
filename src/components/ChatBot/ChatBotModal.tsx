@@ -24,7 +24,7 @@ interface ChatBotModalProps {
 }
 
 export function ChatBotModal({
-  title = 'Trợ lý AI',
+  title = 'Chat Box',
   className = ''
 }: ChatBotModalProps) {
   const {
@@ -62,8 +62,8 @@ export function ChatBotModal({
     if (messages.length > 0) {
       const lastMessage = messages[messages.length - 1];
       if (lastMessage.sender === 'bot') {
-        announce(`Trợ lý AI: ${lastMessage.content}`, 'polite');
-        updateMessage('Tin nhắn mới từ trợ lý AI', 'polite');
+        announce(`Chat Box: ${lastMessage.content}`, 'polite');
+        updateMessage('Tin nhắn mới từ Chat Box', 'polite');
       }
     }
   }, [messages, announce, updateMessage]);
@@ -177,7 +177,7 @@ export function ChatBotModal({
 
         {/* Screen Reader */}
         <div id="chatbot-description" className="sr-only" style={{ position: 'absolute', left: '-10000px', width: '1px', height: '1px', overflow: 'hidden' }}>
-          Trợ lý AI hỗ trợ mua sắm nông sản
+          Chat Box hỗ trợ mua sắm nông sản
         </div>
         <div aria-live="polite" aria-atomic="true" className="sr-only" style={{ position: 'absolute', left: '-10000px', width: '1px', height: '1px', overflow: 'hidden' }}>
           {liveMessage}
