@@ -248,11 +248,13 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
 
   const handleCompleteOrder = async (orderId: number, status: 'DELIVERED' | 'FAILED') => {
     try {
-      await shipperService.updateOrderStatus(orderId, { status });
+    const respone =   await shipperService.updateOrderStatus(orderId, { status });
+  console.log(" Loi shipment", respone)
       if (trackingOrderId === orderId) stopTracking();
       fetchMyOrders();
       globalShowAlert(status === 'DELIVERED' ? '✅ Giao hàng thành công!' : '❌ Đã đánh dấu thất bại', 'Cập nhật', status === 'DELIVERED' ? 'success' : 'warning');
-    } catch { globalShowAlert('Không thể cập nhật.', 'Lỗi', 'error'); }
+    } catch(errors) {
+      globalShowAlert(errors?.data?.message, 'Lỗi', 'error'); }
   };
 
   // ===================== HELPERS =====================
