@@ -140,7 +140,7 @@ const VirtualizedMessageList: React.FC<VirtualizedMessageListProps> = memo(({
             color: '#666',
             fontStyle: 'italic'
           }}>
-            Hãy bắt đầu trò chuyện với trợ lý AI!
+            Hãy bắt đầu trò chuyện với Chat Box!
           </div>
         )}
       </div>

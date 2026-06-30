@@ -33,7 +33,7 @@ const ChatBotWrapper: React.FC = () => {
       userRole={getChatBotRole(user.role)}
     >
       <ChatBot
-        title="Trợ lý AI FoodMarket"
+        title="Chat Box CapNong"
         className="z-50"
       />
     </ChatBotProvider>
