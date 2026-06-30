@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState, useRef } from 'react';
-import { Camera, ShieldCheck, Mail, Phone, MapPin, Save, User, CheckCircle2, Package, Wallet, ShoppingCart, Loader2, ArrowRight, UserCircle } from 'lucide-react';
+import { Award, Camera, ShieldCheck, Mail, Phone, MapPin, Save, User, CheckCircle2, Package, Wallet, ShoppingCart, Loader2, ArrowRight, UserCircle, Sprout } from 'lucide-react';
 import { authService, UserResponse } from '../../services';
 import { useNavigate } from 'react-router-dom';
 
@@ -89,6 +89,10 @@ const UserProfile: React.FC = () => {
             year: 'numeric'
         });
     };
+
+    const totalRescuedWeight = Number(user?.totalRescuedKg ?? user?.totalRescuedWeight ?? 0);
+    const loyaltyPoints = Number(user?.rewardPoints ?? user?.loyaltyPoints ?? 0);
+    const formatNumber = (value: number) => value.toLocaleString('vi-VN', { maximumFractionDigits: 2 });
 
     if (loading) {
         return (
@@ -179,6 +183,34 @@ const UserProfile: React.FC = () => {
                                 <span className="text-gray-900 font-medium">{formatDate(user?.createdAt)}</span>
                             </div>
                         </div>
+                    </div>
+
+                    <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-[32px] border border-green-100 shadow-sm p-8">
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="size-12 bg-white rounded-2xl flex items-center justify-center shadow-sm text-primary">
+                                <Sprout className="size-6" />
+                            </div>
+                            <div>
+                                <p className="text-[10px] font-black text-primary uppercase tracking-widest">Đóng góp xanh</p>
+                                <h3 className="text-lg font-black text-gray-900">Giải cứu nông sản</h3>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 mb-5">
+                            <div className="rounded-2xl bg-white/80 p-4">
+                                <p className="text-[10px] font-black text-gray-400 uppercase">Tổng kg</p>
+                                <p className="mt-1 text-2xl font-black text-primary">{formatNumber(totalRescuedWeight)}</p>
+                            </div>
+                            <div className="rounded-2xl bg-white/80 p-4">
+                                <p className="text-[10px] font-black text-gray-400 uppercase">Điểm</p>
+                                <p className="mt-1 flex items-center gap-1 text-2xl font-black text-amber-600">
+                                    <Award className="size-5" />
+                                    {formatNumber(loyaltyPoints)}
+                                </p>
+                            </div>
+                        </div>
+                        <p className="text-sm font-bold leading-relaxed text-green-800">
+                            Bạn đã góp phần giải cứu tổng cộng {formatNumber(totalRescuedWeight)} kg nông sản. Cảm ơn bạn đã đồng hành cùng người nông dân.
+                        </p>
                     </div>
 
                     {/* Quick Actions Card */}

@@ -5,7 +5,7 @@ export interface VoucherResponse {
   voucherId: string;
   voucherCode: string;
   discountValue: number;
-  maxDiscount: number;
+  maxDiscount: number | null;
   minOrderValue: number;
   expiryDate: string;
   createAt: string;
@@ -15,11 +15,16 @@ export interface VoucherResponse {
   usageLimit: number | null;
   usedCount?: number | null;
   perUserLimit: number | null;
+  voucherType?: 'SHOP' | 'PLATFORM' | 'DAMAGED_ORDER' | 'WELCOME';
+  shopId?: number | null;
+  shopName?: string | null;
+  autoCreatedReason?: string | null;
+  autoCreatedFromOrderId?: number | null;
 }
 
 export interface VoucherUserResponse {
   voucherUserId: string;
-  voucherResponse: Pick<VoucherResponse, 'voucherId' | 'voucherCode' | 'discountValue' | 'maxDiscount' | 'minOrderValue' | 'expiryDate'> | null;
+  voucherResponse: Pick<VoucherResponse, 'voucherId' | 'voucherCode' | 'discountValue' | 'maxDiscount' | 'minOrderValue' | 'expiryDate' | 'voucherType'> | null;
   quantityUsed: number;
   quantity: number;
   claimAt: string;
@@ -56,6 +61,16 @@ class VoucherService {
     active = true
   ): Promise<ApiResponse<PageResponse<VoucherResponse>>> {
     return httpClient.get<PageResponse<VoucherResponse>>('/vouchers/shop', {
+      params: { page, size, active },
+    });
+  }
+
+  async getPlatformVouchers(
+    page = 0,
+    size = 10,
+    active = true
+  ): Promise<ApiResponse<PageResponse<VoucherResponse>>> {
+    return httpClient.get<PageResponse<VoucherResponse>>('/vouchers/admin/platform', {
       params: { page, size, active },
     });
   }
@@ -107,6 +122,10 @@ class VoucherService {
 
   async create(data: VoucherCreateRequest): Promise<ApiResponse<VoucherResponse>> {
     return httpClient.post<VoucherResponse>('/vouchers', data);
+  }
+
+  async createPlatform(data: VoucherCreateRequest): Promise<ApiResponse<VoucherResponse>> {
+    return httpClient.post<VoucherResponse>('/vouchers/admin/platform', data);
   }
 
   async update(voucherCode: string, data: VoucherUpdateRequest): Promise<ApiResponse<VoucherResponse>> {

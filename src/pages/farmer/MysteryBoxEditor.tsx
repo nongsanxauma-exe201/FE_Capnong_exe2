@@ -402,15 +402,8 @@ const MysteryBoxEditor: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                             className="size-12 rounded-lg object-cover flex-shrink-0 bg-gray-50" />
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-bold text-gray-800 mb-1 truncate">{product.productName}</p>
-                            <p className="text-xs text-gray-500 mb-1">Tồn: {product.stockQuantity} {product.unit}</p>
-                            {product.salePrice != null && product.salePrice < product.sellingPrice ? (
-                              <p className="text-xs font-bold text-primary">
-                                <span className="line-through text-gray-400 mr-1">{product.sellingPrice.toLocaleString('vi-VN')}đ</span>
-                                {product.salePrice.toLocaleString('vi-VN')}đ/{product.unit}
-                              </p>
-                            ) : (
-                              <p className="text-xs font-bold text-primary">{(product.sellingPrice || 0).toLocaleString('vi-VN')}đ/{product.unit}</p>
-                            )}
+                            <p className="text-xs text-gray-500 mb-1">Tồn: {(product.stockKg ?? product.stockQuantity).toLocaleString('vi-VN', { maximumFractionDigits: 2 })} kg</p>
+                            <p className="text-xs font-bold text-primary">{((product.pricePerKg ?? product.sellingPrice) || 0).toLocaleString('vi-VN')}đ/kg</p>
                           </div>
                           {isSelected && (
                             <div className="size-5 bg-primary rounded-full flex items-center justify-center flex-shrink-0 mt-1">

@@ -356,7 +356,7 @@ const BuyerHome: React.FC<BuyerHomeProps> = ({ onSelectProduct, isAuthenticated 
                           ) : (
                             <span className="text-primary font-black text-2xl">{(product.sellingPrice || 0).toLocaleString('vi-VN')}đ</span>
                           )}
-                          <span className="text-[10px] text-gray-400 font-bold uppercase">Mỗi {product.unit}</span>
+                          <span className="text-[10px] text-gray-400 font-bold uppercase">Mỗi kg</span>
                         </div>
                         <span className="bg-green-100 text-green-700 text-[10px] font-black px-2 py-1 rounded-md">TƯƠI SẠCH</span>
                       </div>

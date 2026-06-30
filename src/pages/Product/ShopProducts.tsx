@@ -120,7 +120,8 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
         setVoucherError(null);
         const response = await voucherService.getBuyerShopVouchers(shopId, 0, 3);
         const result = response.result;
-        const vouchers = Array.isArray(result) ? result : result?.content || [];
+        const vouchers = (Array.isArray(result) ? result : result?.content || [])
+          .filter((voucher) => voucher.voucherType === 'SHOP' && Number(voucher.shopId) === Number(shopId));
         setShopVouchers(vouchers);
 
         if (isAuthenticated && vouchers.length > 0) {
@@ -155,7 +156,7 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
     if (!isAuthenticated) { onOpenLogin(); return; }
     setAddingToCart(productId);
     try {
-      await cartService.addToCart({ productId, quantity: 1 });
+      await cartService.addToCart({ productId, quantity: 1, quantityKg: 1 });
       window.dispatchEvent(new Event('cart-updated'));
       globalShowAlert('Đã thêm vào giỏ hàng!', 'Thành công', 'success');
     } catch (error) {
@@ -230,21 +231,17 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
   };
 
   // Filter and sort products
-  const categories = Array.from(new Set(products.map(p => p.unit || 'Khác')));
-
-  let filteredProducts = selectedCategory
-    ? products.filter(p => (p.unit || 'Khác') === selectedCategory)
-    : products;
+  let filteredProducts = products;
 
   if (sortBy === 'asc') {
-    filteredProducts = [...filteredProducts].sort((a, b) => a.sellingPrice - b.sellingPrice);
+    filteredProducts = [...filteredProducts].sort((a, b) => (a.pricePerKg ?? a.sellingPrice) - (b.pricePerKg ?? b.sellingPrice));
   } else if (sortBy === 'desc') {
-    filteredProducts = [...filteredProducts].sort((a, b) => b.sellingPrice - a.sellingPrice);
+    filteredProducts = [...filteredProducts].sort((a, b) => (b.pricePerKg ?? b.sellingPrice) - (a.pricePerKg ?? a.sellingPrice));
   } else if (sortBy === 'name') {
     filteredProducts = [...filteredProducts].sort((a, b) => a.productName.localeCompare(b.productName));
   }
 
-  const activeProducts = products.filter(p => p.stockQuantity > 0).length;
+  const activeProducts = products.filter(p => (p.stockKg ?? p.stockQuantity) > 0).length;
 
   // Calculate average rating
   const calculateAverageRating = () => {
@@ -546,33 +543,9 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
                 <h3 className="font-black text-gray-900 text-sm">Bộ lọc</h3>
               </div>
 
-              {/* Categories */}
-              <div className="space-y-2">
-                <h4 className="font-black text-gray-700 text-xs mb-3 uppercase">Đơn vị</h4>
-                <button
-                  onClick={() => setSelectedCategory(null)}
-                  className={`w-full text-left px-3 py-2 rounded-lg font-bold text-xs transition-all ${selectedCategory === null
-                    ? 'bg-primary/10 text-primary border border-primary/20'
-                    : 'text-gray-600 hover:bg-gray-50'
-                    }`}
-                >
-                  Tất cả ({products.length})
-                </button>
-                {categories.map(cat => {
-                  const count = products.filter(p => (p.unit || 'Khác') === cat).length;
-                  return (
-                    <button
-                      key={cat}
-                      onClick={() => setSelectedCategory(cat)}
-                      className={`w-full text-left px-3 py-2 rounded-lg font-bold text-xs transition-all ${selectedCategory === cat
-                        ? 'bg-primary/10 text-primary border border-primary/20'
-                        : 'text-gray-600 hover:bg-gray-50'
-                        }`}
-                    >
-                      {cat} ({count})
-                    </button>
-                  );
-                })}
+              <div className="rounded-2xl bg-primary/5 border border-primary/10 p-4">
+                <h4 className="font-black text-gray-700 text-xs mb-2 uppercase">Đơn vị thống nhất</h4>
+                <p className="text-xs font-bold text-gray-500">Tất cả sản phẩm được bán theo kg.</p>
               </div>
             </div>
           </div>
@@ -603,7 +576,9 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
                   ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
                   : 'grid-cols-1'
                   }`}>
-                  {filteredProducts.map(product => (
+                  {filteredProducts.map(product => {
+                    const basePricePerKg = product.pricePerKg ?? product.sellingPrice ?? 0;
+                    return (
                     <div
                       key={product.id}
                       className={`group ${viewMode === 'list' ? 'flex gap-4' : ''
@@ -617,14 +592,14 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
                           alt={product.productName}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                         />
-                        {product.stockQuantity <= 0 && (
+                        {(product.stockKg ?? product.stockQuantity) <= 0 && (
                           <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
                             <span className="text-white text-xs font-black">Hết hàng</span>
                           </div>
                         )}
                         <button
                           onClick={() => handleAddToCart(product.id)}
-                          disabled={product.stockQuantity <= 0 || addingToCart === product.id}
+                          disabled={(product.stockKg ?? product.stockQuantity) <= 0 || addingToCart === product.id}
                           className={`absolute ${viewMode === 'list' ? 'bottom-2 right-2 size-8' : 'bottom-3 right-3 size-10'
                             } bg-primary text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:scale-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed`}
                         >
@@ -641,27 +616,27 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
                         <h4 className="font-bold text-gray-800 text-sm mb-1 line-clamp-2 group-hover:text-primary transition-colors">
                           {product.productName}
                         </h4>
-                        <p className="text-xs text-gray-500 font-medium mb-2">{product.unit}</p>
+                        <p className="text-xs text-gray-500 font-medium mb-2">Đơn vị: kg</p>
 
                         <div className="flex flex-col gap-0.5 mb-2">
                           {product.salePrice != null && product.salePrice > 0 ? (
                             <>
                               <div className="flex items-center gap-1.5">
-                                <span className="text-xs text-red-500 line-through font-semibold">{(product.sellingPrice || 0).toLocaleString('vi-VN')}đ</span>
+                                <span className="text-xs text-red-500 line-through font-semibold">{basePricePerKg.toLocaleString('vi-VN')}đ/kg</span>
                                 <span className="bg-primary text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">-{product.discountPercent}%</span>
                               </div>
-                              <span className="text-lg font-black text-primary">{product.salePrice.toLocaleString('vi-VN')}đ</span>
+                              <span className="text-lg font-black text-primary">{product.salePrice.toLocaleString('vi-VN')}đ/kg</span>
                             </>
                           ) : (
-                            <span className="text-lg font-black text-primary">{(product.sellingPrice || 0).toLocaleString('vi-VN')}đ</span>
+                            <span className="text-lg font-black text-primary">{basePricePerKg.toLocaleString('vi-VN')}đ/kg</span>
                           )}
                         </div>
 
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] text-gray-500 font-medium">
-                            Còn: {product.stockQuantity} {product.unit}
+                            Còn: {(product.stockKg ?? product.stockQuantity).toLocaleString('vi-VN', { maximumFractionDigits: 2 })} kg
                           </span>
-                          {product.stockQuantity > 0 ? (
+                          {(product.stockKg ?? product.stockQuantity) > 0 ? (
                             <span className="text-[10px] text-primary font-bold">Còn hàng</span>
                           ) : (
                             <span className="text-[10px] text-red-600 font-bold">Hết hàng</span>
@@ -669,7 +644,7 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
                         </div>
                       </div>
                     </div>
-                  ))}
+                  )})}
                 </div>
               ) : (
                 <div className="py-16 text-center">

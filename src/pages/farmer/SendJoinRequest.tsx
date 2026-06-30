@@ -25,24 +25,9 @@ async function fetchOSRMDuration(
   } catch { return null; }
 }
 
-const UNIT_KG: Record<string, number> = {
-  kg: 1, g: 0.001, chai: 0.5, hộp: 0.3, hũ: 0.3, cây: 0.2, bịch: 0.4, túi: 0.4, bó: 0.6,
-};
-const toKg = (qty?: number | null, unit?: string | null, itemType?: string | null) => {
-  const safeQty = Number(qty ?? 0);
-
-  if (itemType === 'MYSTERY_BOX') {
-    // DTO chưa có weightKg nên tạm tính 1 mystery box = 1kg
-    return Number((safeQty * 1).toFixed(2));
-  }
-
-  const safeUnit = (unit ?? 'kg').trim().toLowerCase();
-  return Number((safeQty * (UNIT_KG[safeUnit] ?? 1)).toFixed(2));
-};
-
 const orderWeightKg = (o: OrderResponse) =>
   (o.items ?? []).reduce(
-    (sum, item) => sum + toKg(item.quantity, item.unit, item.itemType),
+    (sum, item) => sum + Number(item.quantityKg ?? item.rescuedWeightKg ?? item.quantity ?? 0),
     0
   );
 function formatDuration(min: number) {

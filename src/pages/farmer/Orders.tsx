@@ -366,7 +366,7 @@ const Orders: React.FC = () => {
                               <div>
                                 <p className="text-xs font-bold text-gray-800 line-clamp-1">{item.productName}</p>
                                 <p className="text-[10px] text-gray-400 font-bold">
-                                  {item.quantity} x {(item.unitPrice || 0).toLocaleString('vi-VN')}đ
+                                  {(item.quantityKg ?? item.quantity).toLocaleString('vi-VN', { maximumFractionDigits: 2 })} kg x {((item.pricePerKg ?? item.unitPrice) || 0).toLocaleString('vi-VN')}đ/kg
                                 </p>
                               </div>
                             </div>
@@ -611,7 +611,7 @@ const Orders: React.FC = () => {
                         <img src={item.imageUrl || fallback} alt="" className="size-10 rounded-xl object-cover shrink-0" onError={(e) => { e.currentTarget.src = fallback; }} />
                         <div className="min-w-0">
                           <p className="text-sm font-black text-gray-800 truncate">{item.productName || item.mysteryBoxType || 'Sản phẩm'}</p>
-                          <p className="text-[11px] text-gray-400 font-medium mt-0.5">{item.quantity} x {(item.unitPrice || 0).toLocaleString('vi-VN')}đ</p>
+                          <p className="text-[11px] text-gray-400 font-medium mt-0.5">{(item.quantityKg ?? item.quantity).toLocaleString('vi-VN', { maximumFractionDigits: 2 })} kg x {((item.pricePerKg ?? item.unitPrice) || 0).toLocaleString('vi-VN')}đ/kg</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
@@ -621,7 +621,7 @@ const Orders: React.FC = () => {
                             Xem kiểm duyệt
                           </button>
                         )}
-                        <span className="text-sm font-black text-primary">{((item.quantity || 0) * (item.unitPrice || 0)).toLocaleString('vi-VN')}đ</span>
+                        <span className="text-sm font-black text-primary">{(((item.quantityKg ?? item.quantity) || 0) * ((item.pricePerKg ?? item.unitPrice) || 0)).toLocaleString('vi-VN')}đ</span>
                       </div>
                     </div>
                   );
