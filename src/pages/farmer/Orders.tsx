@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Truck, CheckCircle2, XCircle, User, AlertTriangle, X, Loader2, AlertCircle, PackageCheck, PackageX, Gift, Eye, Navigation, CheckCircle } from 'lucide-react';
+import { Truck, CheckCircle2, XCircle, User, AlertTriangle, X, Loader2, AlertCircle, PackageCheck, PackageX, Gift, Eye, Navigation, CheckCircle, Download } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { orderService, OrderResponse, type OrderItemResponse } from '../../services';
 import { ImageLightbox } from '../../components/ui';
 import Pagination, { PageInfo } from '../../components/ui/Pagination';
 import { globalShowAlert } from '../../contexts/PopupContext';
+import { exportService } from '../../services/export.service';
 
 // Định nghĩa ngoài component để fetchOrders có thể dùng mà không lo TDZ
 // Chỉ dùng các status tồn tại trong BE OrderStatus enum
@@ -60,6 +61,25 @@ const Orders: React.FC = () => {
       else next.add(orderId);
       return next;
     });
+  };
+
+  // Export state — default: last 30 days
+  const [shopExportFrom, setShopExportFrom] = useState(
+    new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  );
+  const [shopExportTo, setShopExportTo] = useState(new Date().toISOString().slice(0, 10));
+  const [exportingShopExcel, setExportingShopExcel] = useState(false);
+
+  const handleShopExportExcel = async () => {
+    setExportingShopExcel(true);
+    try {
+      await exportService.exportShopOrdersExcel({ from: shopExportFrom, to: shopExportTo });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Xuất Excel thất bại';
+      globalShowAlert(msg, 'Lỗi', 'error');
+    } finally {
+      setExportingShopExcel(false);
+    }
   };
 
   // Tracking modal
@@ -180,6 +200,40 @@ const Orders: React.FC = () => {
           <button className="size-11 bg-white border border-gray-100 rounded-full flex items-center justify-center text-gray-400 relative shadow-sm hover:text-primary transition-colors">
             <span className="material-symbols-outlined fill-1">notifications</span>
             <span className="absolute top-2 right-2 size-2 bg-red-500 border-2 border-white rounded-full"></span>
+          </button>
+        </div>
+      </div>
+
+      {/* Export Excel section */}
+      <div className="bg-white rounded-[32px] border border-gray-100 shadow-sm p-6">
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Từ ngày</label>
+            <input
+              type="date"
+              value={shopExportFrom}
+              max={shopExportTo}
+              onChange={e => setShopExportFrom(e.target.value)}
+              className="px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Đến ngày</label>
+            <input
+              type="date"
+              value={shopExportTo}
+              min={shopExportFrom}
+              onChange={e => setShopExportTo(e.target.value)}
+              className="px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+            />
+          </div>
+          <button
+            onClick={handleShopExportExcel}
+            disabled={exportingShopExcel}
+            className="flex items-center gap-2 px-6 py-2.5 bg-emerald-600 text-white rounded-2xl text-sm font-black hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+          >
+            {exportingShopExcel ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+            Xuất Excel
           </button>
         </div>
       </div>

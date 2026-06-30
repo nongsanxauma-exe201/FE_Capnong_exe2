@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import {
   Package, Clock, Truck, CheckCircle2, XCircle, Eye,
-  ArrowLeft, RefreshCw, AlertCircle, Search, Sprout, Award
+  ArrowLeft, RefreshCw, AlertCircle, Search, Download, Loader2 as ReceiptLoader, Sprout, Award
 } from 'lucide-react';
+import { exportService } from '../../services/export.service';
 import { orderService, OrderResponse, OrderItemResponse } from '../../services/order.service';
 import { authService } from '../../services/auth.service';
 import { reviewService } from '../../services/review.service';
@@ -86,6 +87,20 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
   const [orderReturnReason, setOrderReturnReason] = useState('');
   const [orderReturnEvidence, setOrderReturnEvidence] = useState<File | null>(null);
   const [submittingOrderReturn, setSubmittingOrderReturn] = useState(false);
+  const [downloadingReceiptId, setDownloadingReceiptId] = useState<number | null>(null);
+
+  const handleDownloadReceipt = async (orderId: number) => {
+    setDownloadingReceiptId(orderId);
+    try {
+      await exportService.exportOrderReceiptPdf(orderId);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Tải hóa đơn thất bại. Vui lòng thử lại.';
+      globalShowAlert(msg, 'Lỗi', 'error');
+    } finally {
+      setDownloadingReceiptId(null);
+    }
+  };
+
   const formatImpactNumber = (value?: number | null) =>
     Number(value ?? 0).toLocaleString('vi-VN', { maximumFractionDigits: 2 });
 
@@ -682,6 +697,16 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
                             <CheckCircle2 className="size-4" />
                             <span className="text-sm font-black uppercase tracking-wider">Đã nhận được hàng</span>
                           </div>
+                          <button
+                            onClick={() => handleDownloadReceipt(order.id)}
+                            disabled={downloadingReceiptId === order.id}
+                            className="px-5 py-3 bg-blue-50 text-blue-600 font-black text-xs rounded-2xl border border-blue-100 hover:bg-blue-100 transition-all flex items-center gap-2 uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {downloadingReceiptId === order.id
+                              ? <ReceiptLoader className="size-3.5 animate-spin" />
+                              : <Download className="size-3.5" />}
+                            Tải hóa đơn
+                          </button>
                           {/* Return whole order button — only shown if NO item has been returned yet */}
                           {!order.items?.some(i => i.isRequestedReturn) && (
                             <button
