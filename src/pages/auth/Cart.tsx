@@ -495,7 +495,7 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping, onNa
                                   ) : (
                                     <p className="text-lg font-black text-primary">{(item.price || 0).toLocaleString('vi-VN')}đ</p>
                                   )}
-                                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">VNĐ/kg</p>
+                                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{isCombo ? 'VNĐ/combo' : 'VNĐ/kg'}</p>
                                 </div>
                               </div>
                               <div className="flex items-center justify-between mt-4">

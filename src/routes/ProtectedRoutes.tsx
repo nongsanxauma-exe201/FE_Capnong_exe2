@@ -12,6 +12,7 @@ import MyReturns from '../pages/auth/MyReturns';
 import UserProfile from '../pages/auth/UserProfile';
 import Wallet from '../pages/auth/Wallet';
 import KYC from '../pages/auth/KYC';
+import MealPlan from '../pages/auth/MealPlan';
 import { AppRole } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -77,11 +78,11 @@ const ProtectedRoutes = () => {
                     <Wallet />
                 </ProtectedRoute>
             } />
-            {/* <Route path="/meal-plan" element={
-                <ProtectedRoute>
+            <Route path="/meal-plan" element={
+                <ProtectedRoute allowedRoles={[AppRole.BUYER]}>
                     <MealPlan />
                 </ProtectedRoute>
-            } /> */}
+            } />
             <Route path="/kyc" element={
                 <ProtectedRoute allowedRoles={[AppRole.FARMER, AppRole.SHIPPER]}>
                     <KYCRouteWrapper />

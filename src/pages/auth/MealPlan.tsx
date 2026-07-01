@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Users,
@@ -94,9 +94,27 @@ export default function MealPlan() {
   const [allShops, setAllShops] = useState<ShopComboCountResponse[]>([]);
   const [lockedShopId, setLockedShopId] = useState<number | null>(null);
   const [expandedShops, setExpandedShops] = useState<Record<number, boolean>>({});
+  const [quickAddCombo, setQuickAddCombo] = useState<BuildComboResponse | null>(null);
+  const [quickAddSlot, setQuickAddSlot] = useState<{ dayIndex: number; mealId: string } | null>(null);
 
   const { user } = useAuth();
   const navigate = useNavigate();
+
+  // Auto-scroll when dragging near the top/bottom edge of the viewport
+  useEffect(() => {
+    let rafId: number;
+    const onDragOver = (e: DragEvent) => {
+      const ZONE = 100;
+      const SPEED = 14;
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        if (e.clientY < ZONE) window.scrollBy({ top: -SPEED, behavior: 'instant' as ScrollBehavior });
+        else if (e.clientY > window.innerHeight - ZONE) window.scrollBy({ top: SPEED, behavior: 'instant' as ScrollBehavior });
+      });
+    };
+    window.addEventListener('dragover', onDragOver);
+    return () => { window.removeEventListener('dragover', onDragOver); cancelAnimationFrame(rafId); };
+  }, []);
 
   // Map Backend MealType
   const mapToBackendType = (type: MealType): string => {
@@ -142,6 +160,16 @@ export default function MealPlan() {
     }
   };
 
+  const isComboAvailable = (combo: BuildComboResponse): boolean => {
+    if (combo.totalQuantity == null) return true;
+    return (combo.totalQuantity - (combo.soldQuantity || 0)) > 0;
+  };
+
+  const getComboRemaining = (combo: BuildComboResponse): number | null => {
+    if (combo.totalQuantity == null) return null;
+    return combo.totalQuantity - (combo.soldQuantity || 0);
+  };
+
   // Convert Backend Combo to Frontend Dish
   const mapComboToDish = (combo: BuildComboResponse): Dish => {
     const mealType = mapFromBackendType(combo.mealType || 'LUNCH');
@@ -163,7 +191,7 @@ export default function MealPlan() {
   };
 
   const dishes: Dish[] = useMemo(() => {
-    return allCombos.map(mapComboToDish);
+    return allCombos.filter(isComboAvailable).map(mapComboToDish);
   }, [allCombos]);
 
   // Fetch initial data
@@ -307,8 +335,8 @@ export default function MealPlan() {
     }
 
     const targetCombos = currentLockedId
-      ? combos.filter(c => c.shopOwnerId === currentLockedId)
-      : combos;
+      ? combos.filter(c => c.shopOwnerId === currentLockedId && isComboAvailable(c))
+      : combos.filter(isComboAvailable);
 
     const currentDishes = targetCombos.map(mapComboToDish);
     const newPlan: MealPlanDay[] = [];
@@ -591,17 +619,74 @@ export default function MealPlan() {
       return;
     }
 
-    if (!await globalShowConfirm("Hệ thống sẽ thêm tất cả nguyên liệu trong thực đơn này vào giỏ hàng và chuyển đến trang thanh toán. Bạn có muốn tiếp tục?", "Xác nhận mua")) {
+    if (!await globalShowConfirm(
+      "Bạn sẽ được chuyển đến trang thanh toán chỉ với các combo trong thực đơn này. Giỏ hàng thông thường sẽ không bị ảnh hưởng. Tiếp tục?",
+      "Xác nhận thanh toán thực đơn"
+    )) {
       return;
     }
 
     setIsBuying(true);
     try {
-      await cartService.addPlanToCart(targetId);
-      navigate('/checkout');
+      // Fetch plan details from BE to get accurate combo data
+      const planRes = await buildPlanService.getPlanById(targetId);
+      const plan = planRes.result;
+      if (!plan) throw new Error('Không tìm thấy thực đơn');
+
+      // Aggregate combos across all days/meals
+      const comboMap = new Map<number, {
+        buildComboId: number;
+        productName: string;
+        quantity: number;
+        price: number;
+        itemType: string;
+        shopOwnerId?: number;
+        itemTotal: number;
+      }>();
+
+      plan.days.forEach(day => {
+        day.meals.forEach(meal => {
+          meal.items.forEach(mealItem => {
+            const comboId = mealItem.combo.id;
+            const qty = mealItem.quantity * plan.numberOfPeople;
+            const price = mealItem.combo.discountPrice || 0;
+            const existing = comboMap.get(comboId);
+            if (existing) {
+              existing.quantity += qty;
+              existing.itemTotal = existing.price * existing.quantity;
+            } else {
+              comboMap.set(comboId, {
+                buildComboId: comboId,
+                productName: mealItem.combo.comboName,
+                quantity: qty,
+                price,
+                itemType: 'BUILD_COMBO',
+                shopOwnerId: mealItem.combo.shopOwnerId,
+                itemTotal: price * qty,
+              });
+            }
+          });
+        });
+      });
+
+      const items = Array.from(comboMap.values());
+      if (items.length === 0) {
+        globalShowAlert("Thực đơn chưa có combo nào. Vui lòng tạo kế hoạch trước.", "Nhắc nhở", "warning");
+        return;
+      }
+
+      const totalAmount = items.reduce((sum, item) => sum + item.itemTotal, 0);
+      sessionStorage.setItem('planCheckoutData', JSON.stringify({
+        items,
+        totalAmount,
+        planId: targetId,
+        numPeople: plan.numberOfPeople,
+      }));
+
+      navigate('/checkout?mode=plan');
     } catch (err) {
-      console.error("Error buying plan:", err);
-      globalShowAlert("Không thể thực hiện mua. Vui lòng thử lại.", "Lỗi", "error");
+      console.error("Error preparing plan checkout:", err);
+      globalShowAlert("Không thể chuẩn bị thanh toán. Vui lòng thử lại.", "Lỗi", "error");
     } finally {
       setIsBuying(false);
     }
@@ -641,6 +726,18 @@ export default function MealPlan() {
   const getProductInfo = (productId: string) => {
     return allProducts.find(p => p.id.toString() === productId);
   };
+
+  const comboTotal = useMemo(() => {
+    let total = 0;
+    mealPlan.forEach(day => {
+      day.meals.forEach(meal => {
+        meal.dishes.forEach(dish => {
+          total += (dish.price || 0) * numPeople;
+        });
+      });
+    });
+    return total;
+  }, [mealPlan, numPeople]);
 
   const shoppingList = useMemo(() => {
     const list: Record<string, number> = {};
@@ -1006,44 +1103,36 @@ export default function MealPlan() {
                   </div>
                 </section>
 
-                Shopping List
+                {/* Summary & Order */}
                 <section className="bg-emerald-900 text-white rounded-3xl p-8 shadow-2xl relative overflow-hidden">
                   <div className="relative z-10">
+                    {/* Header */}
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
                       <div className="flex items-center gap-4">
                         <div className="w-14 h-14 bg-white/10 rounded-2xl flex items-center justify-center backdrop-blur-sm">
-                          <ShoppingCart size={28} className="text-emerald-400" />
+                          <Leaf size={28} className="text-emerald-400" />
                         </div>
                         <div>
-                          <h2 className="text-2xl font-bold">Giỏ hàng nguyên liệu</h2>
-                          <p className="text-emerald-300/80 text-sm">Tổng hợp từ thực đơn {numDays} ngày</p>
+                          <h2 className="text-2xl font-bold">Nguyên liệu bạn sẽ nhận</h2>
+                          <p className="text-emerald-300/80 text-sm">Tổng hợp từ thực đơn {numDays} ngày · {numPeople} người</p>
                         </div>
                       </div>
                       <div className="flex flex-col sm:flex-row gap-3">
                         <button
                           onClick={saveToBackend}
                           disabled={isSaving}
-                          className="bg-emerald-500 hover:bg-emerald-400 text-emerald-950 font-bold px-8 py-4 rounded-2xl transition-all shadow-lg flex items-center justify-center gap-2 group disabled:opacity-50"
+                          className="bg-emerald-500 hover:bg-emerald-400 text-emerald-950 font-bold px-8 py-4 rounded-2xl transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
                         >
-                          {isSaving ? (
-                            <RefreshCw size={18} className="animate-spin" />
-                          ) : (
-                            <CheckCircle2 size={18} />
-                          )}
+                          {isSaving ? <RefreshCw size={18} className="animate-spin" /> : <CheckCircle2 size={18} />}
                           Lưu thực đơn
                         </button>
-
                         {planId && (
                           <button
                             onClick={() => handleBuyPlan()}
                             disabled={isBuying}
                             className="bg-white hover:bg-stone-50 text-emerald-900 font-bold px-8 py-4 rounded-2xl transition-all shadow-lg border-2 border-emerald-500 flex items-center justify-center gap-2 group disabled:opacity-50"
                           >
-                            {isBuying ? (
-                              <RefreshCw size={18} className="animate-spin" />
-                            ) : (
-                              <ShoppingCart size={18} />
-                            )}
+                            {isBuying ? <RefreshCw size={18} className="animate-spin" /> : <ShoppingCart size={18} />}
                             Mua tất cả
                             <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform" />
                           </button>
@@ -1051,48 +1140,70 @@ export default function MealPlan() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Ingredient list */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       {shoppingList.map((item) => (
                         <div
                           key={item.id}
-                          className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${item.isUglyProduce
-                            ? 'bg-emerald-800/40 border-emerald-500/30'
-                            : 'bg-white/5 border-white/10'
-                            }`}
+                          className="flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/10"
                         >
                           <div className="flex items-center gap-3">
-                            <div className={`w-2 h-2 rounded-full ${item.isUglyProduce ? 'bg-emerald-400' : 'bg-white/30'}`}></div>
-                            <div>
-                              <p className="font-bold">{item.name}</p>
-                              {item.isUglyProduce && (
-                                <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">Nông sản xấu mã</span>
-                              )}
-                            </div>
+                            <div className="w-2 h-2 rounded-full bg-emerald-400/60"></div>
+                            <p className="font-semibold text-sm">{item.name}</p>
                           </div>
                           <div className="text-right">
-                            <p className="font-mono text-lg font-bold">
+                            <p className="font-mono font-bold">
                               {item.quantity >= 1000 ? (item.quantity / 1000).toFixed(1) : item.quantity}
                               <span className="text-xs ml-1 opacity-60 font-sans">{item.quantity >= 1000 ? 'kg' : item.unit}</span>
                             </p>
+                            {item.pricePerKg > 0 && (
+                              <p className="text-[10px] text-emerald-300/60 font-mono">
+                                {Math.round(item.quantity * item.pricePerKg).toLocaleString()}đ
+                              </p>
+                            )}
                           </div>
                         </div>
                       ))}
                     </div>
 
-                    <div className="mt-8 pt-8 border-t border-white/10 flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-emerald-300 text-sm">
-                        <CheckCircle2 size={16} />
-                        <span>Đã tối ưu hóa theo lượng người ăn ({numPeople} người)</span>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-xs text-emerald-300/60 uppercase tracking-widest font-bold">Ước tính</p>
-                        <p className="text-2xl font-bold">
-                          {Math.round(shoppingList.reduce((acc, curr) => acc + (curr.quantity * curr.pricePerKg), 0)).toLocaleString()}đ
-                        </p>
-                      </div>
-                    </div>
+                    {/* Savings comparison */}
+                    {(() => {
+                      const individualTotal = Math.round(shoppingList.reduce((acc, curr) => acc + curr.quantity * curr.pricePerKg, 0));
+                      const comboTotalRounded = Math.round(comboTotal);
+                      const savings = individualTotal - comboTotalRounded;
+                      const savingsPct = individualTotal > 0 ? Math.round((savings / individualTotal) * 100) : 0;
+                      return (
+                        <div className="mt-8 pt-6 border-t border-white/10 space-y-3">
+                          <div className="flex items-center justify-between text-sm text-emerald-300/70">
+                            <span>Nếu mua từng nguyên liệu lẻ</span>
+                            <span className="font-mono line-through">{individualTotal.toLocaleString()}đ</span>
+                          </div>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-white/80">Giá mua combo thực đơn này</span>
+                            <span className="font-mono font-bold text-white">{comboTotalRounded.toLocaleString()}đ</span>
+                          </div>
+                          {savings > 0 && (
+                            <div className="flex items-center justify-between bg-emerald-500/20 border border-emerald-400/30 rounded-2xl px-4 py-3 mt-2">
+                              <div className="flex items-center gap-2">
+                                <CheckCircle2 size={16} className="text-emerald-400" />
+                                <span className="text-sm font-bold text-emerald-300">Tiết kiệm được</span>
+                              </div>
+                              <div className="text-right">
+                                <span className="text-xl font-black text-emerald-300">{savings.toLocaleString()}đ</span>
+                                <span className="ml-2 text-xs bg-emerald-400 text-emerald-900 font-black px-2 py-0.5 rounded-full">-{savingsPct}%</span>
+                              </div>
+                            </div>
+                          )}
+                          {savings <= 0 && comboTotalRounded > 0 && (
+                            <div className="flex items-center gap-2 text-xs text-emerald-300/60 pt-1">
+                              <CheckCircle2 size={14} />
+                              <span>Đã tối ưu cho {numPeople} người ăn</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
-                  {/* Decorative elements */}
                   <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl -mr-32 -mt-32"></div>
                   <div className="absolute bottom-0 left-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl -ml-32 -mb-32"></div>
                 </section>
@@ -1108,11 +1219,18 @@ export default function MealPlan() {
                 Cửa hàng đề xuất
               </h2>
 
+              <p className="text-[10px] text-stone-400 leading-relaxed flex items-center gap-1.5 mb-1">
+                <span className="text-emerald-500">💡</span>
+                Kéo combo vào ô bữa ăn, hoặc bấm <strong className="text-emerald-600">+</strong> để chọn bữa muốn thêm vào.
+              </p>
+
               <div className="space-y-3">
                 {allShops.map(shop => {
                   const isLocked = lockedShopId === shop.shopId;
                   const isExpanded = expandedShops[shop.shopId];
                   const shopCombos = allCombos.filter(c => c.shopOwnerId === shop.shopId);
+                  const availableCount = shopCombos.filter(isComboAvailable).length;
+                  const hasAvailable = availableCount > 0;
 
                   return (
                     <div
@@ -1136,11 +1254,16 @@ export default function MealPlan() {
                           </div>
                           <div>
                             <h3 className="text-sm font-bold text-stone-800 line-clamp-1">{shop.shopName || 'Cửa hàng'}</h3>
-                            <p className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">{shop.comboCount} Combo</p>
+                            <p className="text-[10px] font-bold uppercase tracking-wider">
+                              {hasAvailable
+                                ? <span className="text-stone-400">{availableCount}/{shopCombos.length} Combo có sẵn</span>
+                                : <span className="text-red-400">Hết toàn bộ combo</span>
+                              }
+                            </p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          {!isLocked && (
+                          {!isLocked && hasAvailable && (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -1158,44 +1281,63 @@ export default function MealPlan() {
 
                       {isExpanded && (
                         <div className="p-3 pt-0 space-y-2 bg-stone-50/50">
-                          {shopCombos.map(combo => (
-                            <div
-                              key={combo.id}
-                              draggable
-                              onDragStart={(e) => {
-                                const dragData = {
-                                  type: 'DISH_EXT',
-                                  dish: mapComboToDish(combo)
-                                };
-                                console.log("[DragStart DishExt]", dragData);
-                                e.dataTransfer.setData('text', JSON.stringify(dragData));
-                              }}
-                              className="bg-white p-3 rounded-xl border border-stone-100 shadow-sm hover:border-emerald-400 transition-all cursor-grab active:cursor-grabbing group"
-                            >
-                              <div className="flex items-start justify-between gap-2">
-                                <h4 className="text-xs font-bold text-stone-700 leading-tight group-hover:text-emerald-600">{combo.comboName}</h4>
-                                <span className="text-[10px] font-bold text-emerald-600 whitespace-nowrap">{combo.discountPrice.toLocaleString()}đ</span>
-                              </div>
-                              <p className="text-[9px] text-stone-400 mt-1 line-clamp-2">{combo.description}</p>
-                              <div className="flex items-center justify-between mt-3">
-                                <div className="flex gap-1">
-                                  <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-stone-100 text-stone-500 uppercase font-bold tracking-tighter">
-                                    {mapFromBackendType(combo.mealType || 'LUNCH')}
-                                  </span>
+                          {shopCombos.map(combo => {
+                            const remaining = getComboRemaining(combo);
+                            const available = isComboAvailable(combo);
+                            return (
+                              <div
+                                key={combo.id}
+                                draggable={available}
+                                onDragStart={available ? (e) => {
+                                  const dragData = { type: 'DISH_EXT', dish: mapComboToDish(combo) };
+                                  e.dataTransfer.setData('text', JSON.stringify(dragData));
+                                } : undefined}
+                                className={`bg-white p-3 rounded-xl border shadow-sm transition-all ${
+                                  available
+                                    ? 'border-stone-100 hover:border-emerald-400 cursor-grab active:cursor-grabbing group'
+                                    : 'border-stone-100 opacity-55 cursor-not-allowed'
+                                }`}
+                              >
+                                {!available && (
+                                  <span className="inline-block mb-1.5 text-[8px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-500 font-black uppercase tracking-tight">Hết hàng</span>
+                                )}
+                                <div className="flex items-start justify-between gap-2">
+                                  <h4 className={`text-xs font-bold leading-tight ${available ? 'text-stone-700 group-hover:text-emerald-600' : 'text-stone-400'}`}>{combo.comboName}</h4>
+                                  <span className="text-[10px] font-bold text-emerald-600 whitespace-nowrap">{combo.discountPrice.toLocaleString()}đ</span>
                                 </div>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    // If no meal is being edited, just set global warning or do nothing
-                                    globalShowAlert("Kéo món ăn vào ô bữa ăn trong ngày để thêm!", "Hướng dẫn", "info");
-                                  }}
-                                  className="p-1 hover:bg-emerald-50 text-emerald-600 rounded-lg group-hover:scale-110 transition-transform"
-                                >
-                                  <Plus size={14} />
-                                </button>
+                                <p className="text-[9px] text-stone-400 mt-1 line-clamp-2">{combo.description}</p>
+                                <div className="flex items-center justify-between mt-3">
+                                  <div className="flex gap-1 flex-wrap">
+                                    <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-stone-100 text-stone-500 uppercase font-bold tracking-tighter">
+                                      {mapFromBackendType(combo.mealType || 'LUNCH')}
+                                    </span>
+                                    {remaining !== null && (
+                                      <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-tighter ${
+                                        remaining > 0
+                                          ? remaining <= 3 ? 'bg-orange-50 text-orange-500' : 'bg-emerald-50 text-emerald-600'
+                                          : 'bg-red-50 text-red-500'
+                                      }`}>
+                                        {remaining > 0 ? `Còn ${remaining}` : 'Hết'}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {available && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setQuickAddCombo(combo);
+                                        setQuickAddSlot(null);
+                                      }}
+                                      title="Thêm vào bữa ăn"
+                                      className="p-1 hover:bg-emerald-50 text-emerald-600 rounded-lg group-hover:scale-110 transition-transform"
+                                    >
+                                      <Plus size={14} />
+                                    </button>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -1283,40 +1425,62 @@ export default function MealPlan() {
                   filteredDishes = filteredDishes.filter(d => d.shopOwnerId === lockedShopId);
                 }
 
+                const allDishesForMeal = currentMeal ? dishes.filter(d => d.mealType === currentMeal.type) : dishes;
+                const allBeforeShopFilter = lockedShopId ? allDishesForMeal.filter(d => d.shopOwnerId !== lockedShopId) : [];
+                const soldOutInShop = lockedShopId && filteredDishes.length === 0 && allBeforeShopFilter.length === 0 && allDishesForMeal.length === 0;
+
                 if (filteredDishes.length === 0) return (
-                  <div className="col-span-2 py-12 text-center text-stone-500">
-                    Không tìm thấy món ăn phù hợp.
+                  <div className="col-span-2 py-12 text-center text-stone-500 space-y-2">
+                    <p className="font-bold">Không có combo nào có thể chọn.</p>
+                    <p className="text-xs text-stone-400">
+                      {soldOutInShop
+                        ? 'Tất cả combo cho bữa này đã hết hàng. Vui lòng chờ nông trại bổ sung thêm.'
+                        : lockedShopId
+                          ? 'Cửa hàng này chưa có combo phù hợp cho bữa ăn này.'
+                          : 'Chưa có combo nào khả dụng.'}
+                    </p>
                   </div>
                 );
 
                 return (
                   <>
-                    {filteredDishes.map(dish => (
-                      <button
-                        key={dish.id}
-                        onClick={() => handleManualSelection(dish)}
-                        className="flex flex-col text-left border border-stone-100 rounded-2xl p-4 hover:border-emerald-500 hover:bg-emerald-50/20 transition-all group"
-                      >
-                        <div className="aspect-video w-full bg-stone-100 rounded-xl mb-3 overflow-hidden">
-                          {dish.image ? (
-                            <img src={dish.image} alt={dish.name} className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-stone-300">
-                              <Utensils size={32} />
-                            </div>
-                          )}
-                        </div>
-                        <h4 className="font-bold text-stone-800 group-hover:text-emerald-700">{dish.name}</h4>
-                        <p className="text-xs text-stone-500 mt-1 line-clamp-2">{dish.price?.toLocaleString()}đ</p>
-                        <div className="flex flex-wrap gap-1 mt-3">
-                          {dish.recipes.slice(0, 2).map(r => (
-                            <span key={r.ingredientId} className="text-[10px] bg-white border border-stone-100 px-1.5 py-0.5 rounded text-stone-500">
-                              {getProductInfo(r.ingredientId)?.productName || '...'}
-                            </span>
-                          ))}
-                        </div>
-                      </button>
-                    ))}
+                    {filteredDishes.map(dish => {
+                      const originalCombo = allCombos.find(c => c.id?.toString() === dish.id);
+                      const remaining = originalCombo ? getComboRemaining(originalCombo) : null;
+                      return (
+                        <button
+                          key={dish.id}
+                          onClick={() => handleManualSelection(dish)}
+                          className="flex flex-col text-left border border-stone-100 rounded-2xl p-4 hover:border-emerald-500 hover:bg-emerald-50/20 transition-all group"
+                        >
+                          <div className="aspect-video w-full bg-stone-100 rounded-xl mb-3 overflow-hidden relative">
+                            {dish.image ? (
+                              <img src={dish.image} alt={dish.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-stone-300">
+                                <Utensils size={32} />
+                              </div>
+                            )}
+                            {remaining !== null && (
+                              <span className={`absolute top-2 right-2 text-[9px] px-2 py-0.5 rounded-full font-black uppercase ${
+                                remaining <= 3 ? 'bg-orange-500 text-white' : 'bg-emerald-500 text-white'
+                              }`}>
+                                Còn {remaining}
+                              </span>
+                            )}
+                          </div>
+                          <h4 className="font-bold text-stone-800 group-hover:text-emerald-700">{dish.name}</h4>
+                          <p className="text-xs text-stone-500 mt-1 line-clamp-2">{dish.price?.toLocaleString()}đ</p>
+                          <div className="flex flex-wrap gap-1 mt-3">
+                            {dish.recipes.slice(0, 2).map(r => (
+                              <span key={r.ingredientId} className="text-[10px] bg-white border border-stone-100 px-1.5 py-0.5 rounded text-stone-500">
+                                {getProductInfo(r.ingredientId)?.productName || '...'}
+                              </span>
+                            ))}
+                          </div>
+                        </button>
+                      );
+                    })}
                   </>
                 );
               })()}
@@ -1333,6 +1497,86 @@ export default function MealPlan() {
           </div>
         </div>
       )}
+      {/* Quick-add combo to meal modal */}
+      {quickAddCombo && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" onClick={() => setQuickAddCombo(null)} />
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm relative z-10 overflow-hidden">
+            <div className="p-5 border-b border-stone-100 bg-emerald-50/60">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Thêm vào bữa ăn</p>
+                  <h3 className="text-sm font-bold text-stone-800 line-clamp-2">{quickAddCombo.comboName}</h3>
+                  <p className="text-xs text-emerald-600 font-bold mt-0.5">{quickAddCombo.discountPrice?.toLocaleString()}đ</p>
+                </div>
+                <button onClick={() => setQuickAddCombo(null)} className="p-1.5 hover:bg-white rounded-full transition-colors shrink-0">
+                  <X size={16} className="text-stone-400" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-4 max-h-[50vh] overflow-y-auto">
+              {mealPlan.length === 0 ? (
+                <p className="text-center text-stone-400 text-sm py-6">Chưa có thực đơn. Hãy tạo thực đơn trước.</p>
+              ) : (
+                <div className="space-y-3">
+                  {mealPlan.map(dayPlan => (
+                    <div key={dayPlan.day}>
+                      <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1.5">Ngày {dayPlan.day}</p>
+                      <div className="space-y-1.5">
+                        {dayPlan.meals.map(meal => {
+                          const isSelected = quickAddSlot?.dayIndex === dayPlan.day && quickAddSlot?.mealId === meal.id;
+                          return (
+                            <button
+                              key={meal.id}
+                              onClick={() => setQuickAddSlot(isSelected ? null : { dayIndex: dayPlan.day, mealId: meal.id })}
+                              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border-2 text-left transition-all ${
+                                isSelected
+                                  ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                                  : 'border-stone-100 hover:border-emerald-300 text-stone-600'
+                              }`}
+                            >
+                              <div>
+                                <span className="text-xs font-bold">{meal.label}</span>
+                                {meal.dishes.length > 0 && (
+                                  <span className="text-[10px] text-stone-400 ml-2">({meal.dishes.length} món)</span>
+                                )}
+                              </div>
+                              {isSelected && <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-stone-100 flex gap-2">
+              <button
+                onClick={() => setQuickAddCombo(null)}
+                className="flex-1 py-2.5 rounded-xl border border-stone-200 text-sm font-bold text-stone-500 hover:bg-stone-50 transition-colors"
+              >
+                Huỷ
+              </button>
+              <button
+                disabled={!quickAddSlot}
+                onClick={async () => {
+                  if (!quickAddSlot) return;
+                  await addDishToMeal(quickAddSlot.dayIndex, quickAddSlot.mealId, mapComboToDish(quickAddCombo));
+                  setQuickAddCombo(null);
+                  setQuickAddSlot(null);
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-emerald-500 text-white text-sm font-bold hover:bg-emerald-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Thêm vào bữa ăn
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Saved Plans List Modal */}
       {showPlansList && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">

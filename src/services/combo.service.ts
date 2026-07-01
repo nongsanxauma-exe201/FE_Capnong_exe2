@@ -14,6 +14,7 @@ export interface BuildComboCreationRequest {
     type: string;
     region?: Region;
     items: ProductComboRequest[];
+    totalQuantity?: number;
 }
 
 export interface BuildComboUpdateRequest extends BuildComboCreationRequest { }
@@ -36,6 +37,8 @@ export interface BuildComboResponse {
     shopOwnerId: number;
     imageUrl?: string;
     items: ProductComboResponse[];
+    totalQuantity?: number;
+    soldQuantity?: number;
 }
 
 export interface ShopComboCountResponse {

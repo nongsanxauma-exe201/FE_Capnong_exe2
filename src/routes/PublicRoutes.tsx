@@ -10,7 +10,6 @@ import News from '../pages/News/News';
 import NewsDetail from '../pages/News/NewsDetail';
 import PaymentSuccess from '../pages/auth/PaymentSuccess';
 import PaymentCancel from '../pages/auth/PaymentCancel';
-import MealPlan from '../pages/auth/MealPlan';
 import PrivacyPolicy from '../pages/legal/PrivacyPolicy';
 import TermsOfService from '../pages/legal/TermsOfService';
 import { useAuth } from '../contexts/AuthContext';
@@ -41,7 +40,6 @@ const PublicRoutes = () => {
         <>
             <Route path="/" element={renderRoot()} />
             <Route path="/search" element={<SearchResults onSelectProduct={handleSelectProduct} />} />
-            <Route path="/meal-plan" element={<MealPlan />} />
             <Route path="/san-pham/:productId" element={<ProductDetail />} />
             <Route path="/cua-hang/:shopId" element={<ShopPage />} />
             {/* backward compat — old links still work */}

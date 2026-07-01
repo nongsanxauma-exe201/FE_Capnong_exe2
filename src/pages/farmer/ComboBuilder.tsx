@@ -26,6 +26,7 @@ const ComboBuilder: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [totalQuantity, setTotalQuantity] = useState('1');
   const [comboImage, setComboImage] = useState<File | null>(null);
   const [comboImagePreview, setComboImagePreview] = useState<string>('');
 
@@ -77,9 +78,7 @@ const ComboBuilder: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const handleAddIngredient = (productId: number) => {
     const existing = selectedIngredients.find(ing => ing.productId === productId);
     if (existing) {
-      setSelectedIngredients(selectedIngredients.map(ing =>
-        ing.productId === productId ? { ...ing, quantity: ing.quantity + 1 } : ing
-      ));
+      setSelectedIngredients(selectedIngredients.filter(ing => ing.productId !== productId));
     } else {
       const product = availableProducts.find(p => p.id === productId);
       if (product) {
@@ -105,6 +104,7 @@ const ComboBuilder: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const handleSave = async () => {
     if (!comboName.trim()) { globalShowAlert('Vui lòng nhập tên combo.', 'Nhắc nhở', 'warning'); return; }
     if (!comboPrice || Number(comboPrice) <= 0) { globalShowAlert('Vui lòng nhập giá hợp lệ.', 'Nhắc nhở', 'warning'); return; }
+    if (!totalQuantity || Number(totalQuantity) < 1) { globalShowAlert('Vui lòng nhập số lượng combo muốn bán (tối thiểu 1).', 'Nhắc nhở', 'warning'); return; }
     if (selectedIngredients.length === 0) { globalShowAlert('Vui lòng chọn ít nhất một nguyên liệu.', 'Nhắc nhở', 'warning'); return; }
     const priceNum = Number(comboPrice);
     if (priceNum > totalIngredientsPrice) {
@@ -120,15 +120,18 @@ const ComboBuilder: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         discountPrice: priceNum,
         type: 'CUSTOM' as const,
         region: comboRegion || undefined,
+        totalQuantity: Number(totalQuantity),
         items: selectedIngredients.map(ing => ({ productId: ing.productId, quantity: ing.quantity }))
       };
-      console.log('[ComboBuilder] Sending payload:', JSON.stringify(payload, null, 2));
       if (isEditMode) {
         await comboService.update(Number(comboId), payload, comboImage || undefined);
+        await globalShowAlert('Cập nhật combo thành công!', 'Thành công', 'success');
+        onBack();
       } else {
         await comboService.create(payload, comboImage || undefined);
+        await globalShowAlert('Tạo combo thành công!', 'Thành công', 'success');
+        onBack();
       }
-      onBack();
     } catch (err: any) {
       setError(err?.data?.message || 'Có lỗi xảy ra. Vui lòng thử lại.');
     } finally {
@@ -243,6 +246,16 @@ const ComboBuilder: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     </p>
                   )}
                 </div>
+
+                {!isEditMode && (
+                  <div>
+                    <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-3">Số lượng combo bán ra *</label>
+                    <input type="number" min="1" value={totalQuantity} onChange={e => setTotalQuantity(e.target.value)}
+                      placeholder="Nhập số lượng combo muốn bán..."
+                      className="w-full px-4 py-4 bg-gray-50 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-primary/10 transition-all" />
+                    <p className="text-xs text-gray-400 mt-2 font-bold">Stock nguyên liệu sẽ bị khóa tương ứng số lượng này.</p>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-3">Ảnh combo</label>
