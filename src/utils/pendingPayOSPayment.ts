@@ -10,6 +10,8 @@ export const PAYOS_RELOAD_CART_ON_ARRIVAL_KEY = 'payOSReloadCartOnArrival';
 export type PendingPayOSPayment = {
   orderCode?: string | null;
   orderId?: number | null;
+  batchId?: number | null;
+  orderIds?: number[];
   createdAt?: number;
 };
 
@@ -88,11 +90,17 @@ export function resolvePayOSOrderCode(payment: PaymentResponse): string | null {
   }
 }
 
-export function savePendingPayOSPayment(payment: PaymentResponse, orderId: number) {
+export function savePendingPayOSPayment(
+  payment: PaymentResponse,
+  orderId: number,
+  extra?: { batchId?: number; orderIds?: number[] },
+) {
   const orderCode = resolvePayOSOrderCode(payment);
   const payload = JSON.stringify({
     orderCode,
     orderId,
+    batchId: extra?.batchId ?? null,
+    orderIds: extra?.orderIds ?? (orderId ? [orderId] : []),
     createdAt: Date.now(),
   });
 

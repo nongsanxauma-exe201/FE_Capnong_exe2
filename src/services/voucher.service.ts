@@ -116,6 +116,20 @@ class VoucherService {
     });
   }
 
+  async getVouchersForBatch(
+    amount: number,
+    totalShipping: number,
+    page = 0,
+    size = 10
+  ): Promise<ApiResponse<PageResponse<VoucherUserResponse>>> {
+    return httpClient.post<PageResponse<VoucherUserResponse>>('/vouchers-users/voucher-batch', {
+      amount,
+      totalShipping,
+    }, {
+      params: { page, size },
+    });
+  }
+
   async getByCode(voucherCode: string): Promise<ApiResponse<VoucherResponse>> {
     return httpClient.get<VoucherResponse>(`/vouchers/${encodeURIComponent(voucherCode)}`);
   }

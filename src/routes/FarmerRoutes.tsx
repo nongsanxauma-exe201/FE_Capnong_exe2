@@ -2,6 +2,7 @@ import React from 'react';
 import { Route, Navigate, useNavigate, useParams } from 'react-router-dom';
 import FarmerLayout from './FarmerLayout';
 import ProtectedRoute from './ProtectedRoute';
+import FarmerRevenueReport from '../pages/farmer/RevenueReport';
 import FarmerDashboard from '../pages/farmer/Dashboard';
 import Products from '../pages/farmer/Products';
 import AddProduct from '../pages/farmer/AddProduct';
@@ -26,6 +27,8 @@ import FarmerDisputes from '../pages/farmer/FarmerDisputes';
 import Vouchers from '../pages/farmer/Vouchers';
 import { AppRole, KYCStatus } from '../types';
 // ── Wrapper components ──────────────────────────────────────────────────────
+
+const RevenueReportWrapper = () => <FarmerRevenueReport />;
 
 const DashboardWrapper = () => {
     const navigate = useNavigate();
@@ -96,6 +99,7 @@ const FarmerRoutes = () => {
         >
             <Route index element={<DashboardWrapper />} />
             <Route path="overview" element={<DashboardWrapper />} />
+            <Route path="revenue-report" element={<RevenueReportWrapper />} />
             <Route path="products" element={<ProductsWrapper />} />
             <Route path="add-product" element={<AddProductWrapper />} />
             <Route path="edit-product/:productId" element={<EditProductWrapper />} />

@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Wallet, TrendingUp, Download, Loader2, AlertCircle, CheckCircle, XCircle } from 'lucide-react';
-import { walletService, WithdrawRequestResponse } from '../../services';
+import { walletService, WithdrawRequestResponse, WalletResponse } from '../../services';
 import { globalShowAlert, globalShowConfirm } from '../../contexts/PopupContext';
 
 const AdminWallet: React.FC = () => {
   const [pendingRequests, setPendingRequests] = useState<WithdrawRequestResponse[]>([]);
   const [history, setHistory] = useState<WithdrawRequestResponse[]>([]);
+  const [platformWallet, setPlatformWallet] = useState<WalletResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,17 +24,20 @@ const AdminWallet: React.FC = () => {
   const [rejectFiles, setRejectFiles] = useState<File[]>([]);
   
   const [isProcessing, setIsProcessing] = useState(false);
+  const [historyFilter, setHistoryFilter] = useState<'ALL' | 'SUCCESS' | 'REJECTED' | 'PENDING'>('ALL');
 
   const fetchData = async () => {
     try {
       setIsLoading(true);
-      const [pendingRes, historyRes] = await Promise.all([
+      const [pendingRes, historyRes, platformWalletRes] = await Promise.all([
         walletService.getAllPendingWithdrawRequests(),
-        walletService.getAllWithdrawRequests()
+        walletService.getAllWithdrawRequests(),
+        walletService.getPlatformWallet()
       ]);
 
       if (pendingRes.result) setPendingRequests(pendingRes.result);
       if (historyRes.result) setHistory(historyRes.result);
+      if (platformWalletRes.result) setPlatformWallet(platformWalletRes.result);
     } catch (err) {
       console.error('Failed to fetch admin wallet data', err);
       setError('Mất kết nối tải dữ liệu hoặc chưa có dữ liệu. Vui lòng thử lại sau.');
@@ -143,6 +147,20 @@ const AdminWallet: React.FC = () => {
     }
   };
 
+  // Calculate statistics from real data
+  const totalWithdrawn = history.filter(h => h.status === 'SUCCESS').reduce((sum, h) => sum + h.amount, 0);
+  const totalPending = pendingRequests.reduce((sum, req) => sum + req.amount, 0);
+  const totalRejected = history.filter(h => h.status === 'REJECTED').reduce((sum, h) => sum + h.amount, 0);
+  const totalProcessing = history.filter(h => h.status === 'PENDING').reduce((sum, h) => sum + h.amount, 0);
+  const platformTotalBalance = platformWallet?.totalBalance ?? 0;
+  const platformFrozenBalance = platformWallet?.frozenBalance ?? 0;
+  const platformAvailableBalance = Math.max(0, platformTotalBalance - platformFrozenBalance);
+
+  const filteredHistory = useMemo(() => {
+    if (historyFilter === 'ALL') return history;
+    return history.filter(tx => tx.status === historyFilter);
+  }, [history, historyFilter]);
+
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[600px] gap-4">
@@ -152,29 +170,24 @@ const AdminWallet: React.FC = () => {
     );
   }
 
-  // Calculate statistics from real data
-  const totalWithdrawn = history.filter(h => h.status === 'SUCCESS').reduce((sum, h) => sum + h.amount, 0);
-  const totalPending = pendingRequests.reduce((sum, req) => sum + req.amount, 0);
-  const totalRejected = history.filter(h => h.status === 'REJECTED').reduce((sum, h) => sum + h.amount, 0);
-  const totalProcessing = history.filter(h => h.status === 'PENDING').reduce((sum, h) => sum + h.amount, 0);
-  
-  // Calculate platform statistics (these would ideally come from a dedicated admin API)
-  // For now, we calculate from available data
-  const totalBalance = totalWithdrawn + totalPending; // Simplified calculation
-  const platformCommission = Math.floor(totalWithdrawn * 0.3); // Assuming 3% commission
-  const shippingFees = Math.floor(totalWithdrawn * 0.1); // Assuming 1% shipping fee
-  const shopFunds = totalPending; // Money waiting to be withdrawn
-
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-2xl font-bold text-gray-900">Quản lý Ví Sàn</h1>
         <div className="flex gap-3">
-          <button className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50">
+          <button
+            disabled
+            title="Tính năng đang cập nhật"
+            className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-semibold text-gray-400 cursor-not-allowed"
+          >
             Xuất báo cáo
           </button>
-          <button className="px-4 py-2 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary/90 shadow-sm">
+          <button
+            disabled
+            title="Tính năng đang cập nhật"
+            className="px-4 py-2 bg-primary/60 text-white rounded-xl text-sm font-semibold cursor-not-allowed shadow-sm"
+          >
             Nạp tiền hệ thống
           </button>
         </div>
@@ -187,8 +200,34 @@ const AdminWallet: React.FC = () => {
         </div>
       )}
 
-      {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      {/* Platform Wallet Breakdown */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Ví sàn - Tổng</p>
+          <h3 className="text-2xl font-black text-gray-900">
+            {platformTotalBalance.toLocaleString('vi-VN')}
+            <span className="text-sm font-normal text-gray-400 ml-1">đ</span>
+          </h3>
+        </div>
+        <div className="bg-white p-6 rounded-2xl border border-emerald-100 shadow-sm">
+          <p className="text-xs font-bold text-emerald-600 uppercase tracking-wider mb-2">Ví sàn - Khả dụng</p>
+          <h3 className="text-2xl font-black text-emerald-600">
+            {platformAvailableBalance.toLocaleString('vi-VN')}
+            <span className="text-sm font-normal text-emerald-400 ml-1">đ</span>
+          </h3>
+        </div>
+        <div className="bg-white p-6 rounded-2xl border border-amber-100 shadow-sm">
+          <p className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-2">Ví sàn - Đang giữ</p>
+          <h3 className="text-2xl font-black text-amber-600">
+            {platformFrozenBalance.toLocaleString('vi-VN')}
+            <span className="text-sm font-normal text-amber-400 ml-1">đ</span>
+          </h3>
+        </div>
+      </div>
+
+      {/* Withdraw & Processing Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-8">
+
         <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
           <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Tổng đã giải ngân</p>
           <h3 className="text-2xl font-bold text-gray-900 mb-1">
@@ -201,19 +240,19 @@ const AdminWallet: React.FC = () => {
         </div>
 
         <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
-          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Hoa hồng sàn (ước tính)</p>
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Yêu cầu bị từ chối</p>
           <h3 className="text-2xl font-bold text-gray-900 mb-1">
-            {platformCommission.toLocaleString('vi-VN')} <span className="text-sm font-normal text-gray-400">đ</span>
+            {totalRejected.toLocaleString('vi-VN')} <span className="text-sm font-normal text-gray-400">đ</span>
           </h3>
-          <p className="text-xs text-blue-600 font-semibold">10% từ giao dịch</p>
+          <p className="text-xs text-red-600 font-semibold">Tổng tiền từ chối giải ngân</p>
         </div>
 
         <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
-          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Phí ship (ước tính)</p>
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Đang xử lý</p>
           <h3 className="text-2xl font-bold text-gray-900 mb-1">
-            {shippingFees.toLocaleString('vi-VN')} <span className="text-sm font-normal text-gray-400">đ</span>
+            {totalProcessing.toLocaleString('vi-VN')} <span className="text-sm font-normal text-gray-400">đ</span>
           </h3>
-          <p className="text-xs text-gray-500 font-semibold">3% từ giao dịch</p>
+          <p className="text-xs text-amber-600 font-semibold">Trong lịch sử giải ngân</p>
         </div>
 
         <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
@@ -234,7 +273,13 @@ const AdminWallet: React.FC = () => {
             </div>
             <h3 className="font-bold text-gray-800 uppercase tracking-tight text-sm">Hàng đợi yêu cầu rút tiền</h3>
           </div>
-          <button className="text-xs font-bold text-primary hover:underline">Xử lý hàng loạt</button>
+          <button
+            disabled
+            title="Tính năng đang cập nhật"
+            className="text-xs font-bold text-gray-400 cursor-not-allowed"
+          >
+            Xử lý hàng loạt
+          </button>
         </div>
 
         <div className="overflow-x-auto">
@@ -339,13 +384,21 @@ const AdminWallet: React.FC = () => {
             <h3 className="font-bold text-gray-800 uppercase tracking-tight text-sm">Lịch sử giao dịch chi tiết</h3>
           </div>
           <div className="flex items-center gap-2">
-            <select className="text-xs font-semibold border-gray-200 rounded-lg bg-gray-50 px-3 py-2 focus:ring-primary focus:border-primary">
-              <option>Tất cả giao dịch</option>
-              <option>Thành công</option>
-              <option>Từ chối</option>
-              <option>Đang xử lý</option>
+            <select
+              value={historyFilter}
+              onChange={(e) => setHistoryFilter(e.target.value as 'ALL' | 'SUCCESS' | 'REJECTED' | 'PENDING')}
+              className="text-xs font-semibold border-gray-200 rounded-lg bg-gray-50 px-3 py-2 focus:ring-primary focus:border-primary"
+            >
+              <option value="ALL">Tất cả giao dịch</option>
+              <option value="SUCCESS">Thành công</option>
+              <option value="REJECTED">Từ chối</option>
+              <option value="PENDING">Đang xử lý</option>
             </select>
-            <button className="bg-gray-800 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-gray-700 transition-colors flex items-center gap-2">
+            <button
+              disabled
+              title="Tính năng đang cập nhật"
+              className="bg-gray-400 text-white px-4 py-2 rounded-lg text-xs font-bold cursor-not-allowed transition-colors flex items-center gap-2"
+            >
               <Download className="size-4" />
               TẢI SAO KÊ
             </button>
@@ -366,7 +419,7 @@ const AdminWallet: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {history.length === 0 ? (
+              {filteredHistory.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-12 text-center">
                     <div className="flex flex-col items-center justify-center opacity-40">
@@ -378,7 +431,7 @@ const AdminWallet: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                history.map((tx) => (
+                filteredHistory.map((tx) => (
                   <tr key={tx.id} className="hover:bg-gray-50/50 transition-colors">
                     <td className="px-6 py-4 text-xs font-bold text-gray-900">#{tx.id}</td>
                     <td className="px-6 py-4">
@@ -421,26 +474,8 @@ const AdminWallet: React.FC = () => {
 
         <div className="px-6 py-4 bg-gray-50/30 border-t border-gray-100 flex items-center justify-between">
           <span className="text-xs text-gray-400 font-medium">
-            Hiển thị {history.length} giao dịch
+            Hiển thị {filteredHistory.length} / {history.length} giao dịch
           </span>
-          <div className="flex gap-1">
-            <button className="size-8 flex items-center justify-center rounded border border-gray-200 bg-white text-gray-400 hover:bg-gray-50">
-              <svg className="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <button className="size-8 flex items-center justify-center rounded border border-primary bg-primary/10 text-primary font-bold text-xs">
-              1
-            </button>
-            <button className="size-8 flex items-center justify-center rounded border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 font-bold text-xs">
-              2
-            </button>
-            <button className="size-8 flex items-center justify-center rounded border border-gray-200 bg-white text-gray-400 hover:bg-gray-50">
-              <svg className="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
-          </div>
         </div>
       </div>
 

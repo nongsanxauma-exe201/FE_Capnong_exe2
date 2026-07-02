@@ -2,8 +2,9 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell, Clock, ShoppingCart, Info, TrendingUp, CheckCircle2, ChevronRight, MoreHorizontal, Trash2, AlertCircle, X } from 'lucide-react';
-import { notificationService, NotificationItem, paymentService } from '../../services';
-import { savePendingPayOSPayment } from '../../utils/pendingPayOSPayment';
+import { notificationService, NotificationItem } from '../../services';
+import { useResumePayment } from '../../hooks/useResumePayment';
+import ResumePaymentModal from '../../components/payment/ResumePaymentModal';
 
 type UiNotificationType = 'order' | 'market' | 'system' | 'info';
 
@@ -43,6 +44,7 @@ const FarmerNotifications: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedNotification, setSelectedNotification] = useState<UiNotification | null>(null);
+  const { openResumePayment, resumeOptions, closeResumePayment } = useResumePayment();
 
   useEffect(() => {
     const fetchNotifications = async () => {
@@ -241,14 +243,8 @@ const FarmerNotifications: React.FC = () => {
                   <div className="mt-6 flex gap-3">
                     <button
                       onClick={async () => {
-                        try {
-                          const res = await paymentService.getLatestPendingByOrderId(orderId);
-                          const payment = res?.result;
-                          if (payment?.checkoutUrl) {
-                            savePendingPayOSPayment(payment, orderId);
-                            window.location.href = payment.checkoutUrl;
-                          }
-                        } catch {}
+                        setSelectedNotification(null);
+                        await openResumePayment(orderId);
                       }}
                       className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white text-sm font-black rounded-2xl transition-all shadow-lg shadow-amber-500/20"
                     >
@@ -280,6 +276,9 @@ const FarmerNotifications: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+      {resumeOptions && (
+        <ResumePaymentModal options={resumeOptions} onClose={closeResumePayment} />
       )}
     </div>
   );

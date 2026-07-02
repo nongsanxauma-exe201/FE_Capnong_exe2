@@ -3,6 +3,7 @@ import { httpClient, ApiResponse } from './http.client';
 export interface WalletResponse {
     id: number;
     shopOwnerId: number;
+    shipperId?: number;
     status: string;
     totalBalance: number;
     frozenBalance: number;
@@ -42,6 +43,10 @@ export interface WithdrawRequestResponse {
 class WalletService {
     async getMyWallet(): Promise<ApiResponse<WalletResponse>> {
         return httpClient.get<WalletResponse>('/wallets/me');
+    }
+
+    async getPlatformWallet(): Promise<ApiResponse<WalletResponse>> {
+        return httpClient.get<WalletResponse>('/wallets/platform');
     }
 
     async createWithdrawRequest(data: WithdrawRequestCreationRequest): Promise<ApiResponse<WithdrawRequestResponse>> {
