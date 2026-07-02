@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Star,
@@ -19,7 +19,8 @@ import {
   Check,
   Facebook,
   ThumbsUp,
-  ThumbsDown
+  ThumbsDown,
+  ChevronDown,
 } from 'lucide-react';
 import { productService, ProductResponse, ProductImageResponse, cartService, reviewService, ReviewResponse, comboService, BuildComboResponse } from '../../services';
 import { userService } from '../../services';
@@ -181,6 +182,14 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId: propProductId,
   const [copied,            setCopied]            = useState(false);
   const [reactingReviewId,  setReactingReviewId]  = useState<number | null>(null);
   const [shopCopied,        setShopCopied]        = useState(false);
+  const detailSectionRef = useRef<HTMLDivElement>(null);
+
+  const scrollToProductDetail = () => {
+    setActiveTab('Mô tả chi tiết');
+    window.setTimeout(() => {
+      detailSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+  };
 
   const handleBack = () => {
     if (propOnBack) propOnBack();
@@ -526,7 +535,14 @@ return (
         <div>
           <div className="flex items-center justify-between mb-2">
             <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Danh mục: Nông sản</span>
-            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">ID: {product.id}</span>
+            <button
+              type="button"
+              onClick={scrollToProductDetail}
+              className="text-[10px] font-black text-primary uppercase tracking-widest hover:underline inline-flex items-center gap-1"
+            >
+              Đọc thêm
+              <ChevronDown className="size-3.5" />
+            </button>
           </div>
           <h1 className="text-3xl font-black font-display text-gray-800 mb-2 leading-tight">{product.productName}</h1>
           <div className="flex items-center gap-4 text-sm mt-3">
@@ -715,7 +731,7 @@ return (
       </div>
     </div>
 
-    <div className="max-w-7xl mx-auto px-4 border-t border-gray-100 pt-16 mb-20">
+    <div ref={detailSectionRef} id="product-detail-section" className="max-w-7xl mx-auto px-4 border-t border-gray-100 pt-16 mb-20 scroll-mt-24">
       <div className="flex justify-center gap-12 -mt-px mb-12">
         {['Mô tả chi tiết', 'Chứng nhận', 'Đánh giá '].map((tab) => (
           <button key={tab} onClick={() => setActiveTab(tab)} className={`pb-4 text-[11px] font-black uppercase tracking-widest border-b-2 transition-all ${activeTab === tab ? 'border-primary text-primary' : 'border-transparent text-gray-400 hover:text-gray-600'}`}>{tab}</button>

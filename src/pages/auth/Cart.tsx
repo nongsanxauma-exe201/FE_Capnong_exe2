@@ -6,13 +6,15 @@ import {
 } from 'lucide-react';
 import { cartService, CartResponse, CartItemResponse } from '../../services/cart.service';
 import { orderService, OrderResponse } from '../../services/order.service';
-import { paymentService } from '../../services/payment.service';
 import { useAuth } from '../../contexts/AuthContext';
 import { globalShowConfirm, globalShowAlert } from '../../contexts/PopupContext';
+import { useResumePayment } from '../../hooks/useResumePayment';
+import ResumePaymentModal from '../../components/payment/ResumePaymentModal';
 import {
   clearRestoredPayOSCart, buildGroupedCartItems, saveRestoredPayOSCart,
-  PAYOS_RELOAD_CART_ON_ARRIVAL_KEY, savePendingPayOSPayment,
+  PAYOS_RELOAD_CART_ON_ARRIVAL_KEY,
 } from '../../utils/pendingPayOSPayment';
+import { groupCartItemsByShop, type ShopCartGroup } from '../../utils/cartShopGroups';
 
 interface CartProps {
   onProceedToCheckout: (selectedKeys?: string[]) => void;
@@ -20,7 +22,10 @@ interface CartProps {
   onNavigateToOrders?: () => void;
 }
 
-type GroupedCart = Record<string, CartItemResponse[]>;
+interface CartState {
+  cart: CartResponse | null;
+  shopGroups: ShopCartGroup[];
+}
 
 const getQuantityKg = (item: CartItemResponse) => Number(item.quantityKg ?? item.quantity ?? 0);
 const getPricePerKg = (item: CartItemResponse) => Number(item.salePrice ?? item.pricePerKg ?? item.price ?? 0);
@@ -40,11 +45,6 @@ function fmtOrderDate(dateStr: string): string {
   return `${hh}:${mm} ${dd}/${mo}`;
 }
 
-interface CartState {
-  cart: CartResponse | null;
-  groupedItems: GroupedCart;
-}
-
 const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping, onNavigateToOrders }) => {
   const { user }   = useAuth();
   const navigate   = useNavigate();
@@ -60,12 +60,14 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping, onNa
     }
   };
 
-  const [cartState,    setCartState]    = useState<CartState>({ cart: null, groupedItems: {} });
+  const [cartState,    setCartState]    = useState<CartState>({ cart: null, shopGroups: [] });
   const [pendingOrder, setPendingOrder] = useState<OrderResponse | null>(null);
   const [loading,      setLoading]      = useState(true);
   const [updatingKey,  setUpdatingKey]  = useState<string | null>(null);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
-  const [payingOrder,  setPayingOrder]  = useState(false);
+  const { openResumePayment, resuming: payingOrder, resumeOptions, closeResumePayment } = useResumePayment((message) => {
+    globalShowAlert(message, 'Lỗi', 'error');
+  });
 
   useEffect(() => {
     try {
@@ -87,13 +89,8 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping, onNa
   };
 
   const applyCartData = (cartData: CartResponse, autoSelect: boolean) => {
-    const grouped = cartData.items.reduce((acc: GroupedCart, item) => {
-      const key = item.shopName || 'Nông Trại Khác';
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(item);
-      return acc;
-    }, {});
-    setCartState({ cart: cartData, groupedItems: grouped });
+    const shopGroups = groupCartItemsByShop(cartData.items);
+    setCartState({ cart: cartData, shopGroups });
     if (autoSelect) {
       setSelectedKeys(new Set(cartData.items.map(buildItemKey)));
     }
@@ -113,7 +110,7 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping, onNa
       if (cartResp.status === 'fulfilled') {
         const cartData = cartResp.value.result;
         if (!cartData || !cartData.items) {
-          setCartState({ cart: null, groupedItems: {} });
+          setCartState({ cart: null, shopGroups: [] });
           setSelectedKeys(new Set());
         } else {
           if (cartData.items.length > 0) clearRestoredPayOSCart();
@@ -183,7 +180,7 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping, onNa
     });
   };
 
-  const handleToggleShop = (shopName: string, items: CartItemResponse[]) => {
+  const handleToggleShop = (items: CartItemResponse[]) => {
     const shopItemKeys = items.map(itemKey);
     setSelectedKeys(prev => {
       const next = new Set(prev);
@@ -267,30 +264,12 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping, onNa
 
   const handleContinuePayment = async () => {
     if (!pendingOrder) return;
-    setPayingOrder(true);
-    try {
-      const res = await paymentService.getLatestPendingByOrderId(pendingOrder.id);
-      const payment = res?.result;
-      if (payment?.checkoutUrl) {
-        savePendingPayOSPayment(payment, pendingOrder.id);
-        window.location.href = payment.checkoutUrl;
-      } else {
-        globalShowAlert('Không tìm thấy link thanh toán. Vui lòng thử lại.', 'Thông báo', 'warning');
-      }
-    } catch (e: any) {
-      globalShowAlert(e?.data?.message ?? 'Không thể tiếp tục thanh toán. Vui lòng thử lại.', 'Lỗi', 'error');
-    } finally {
-      setPayingOrder(false);
-    }
+    await openResumePayment(pendingOrder.id);
   };
 
   const handleCheckout = () => {
     if (selectedKeys.size === 0) {
       globalShowAlert('Vui lòng chọn ít nhất một sản phẩm để thanh toán', 'Thông báo', 'info');
-      return;
-    }
-    if (isMultiShop) {
-      globalShowAlert('Hệ thống hiện tại chưa hỗ trợ gộp đơn từ nhiều nhà vườn. Vui lòng chỉ chọn sản phẩm từ một nhà vườn để thanh toán.', 'Không thể gộp đơn', 'warning');
       return;
     }
     if (cart?.items?.length) {
@@ -314,13 +293,13 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping, onNa
     );
   }
 
-  const { cart, groupedItems } = cartState;
+  const { cart, shopGroups } = cartState;
   const totalItems    = cart?.items.length || 0;
   const selectedItems = cart?.items.filter(it => selectedKeys.has(itemKey(it))) || [];
   const selectedTotal = selectedItems.reduce((sum, it) => sum + getItemTotal(it), 0);
-  const selectedShops = Array.from(new Set(selectedItems.map(it => it.shopName)));
-  const isMultiShop   = selectedShops.length > 1;
-  const shopsCount    = Object.keys(groupedItems).length;
+  const selectedShopIds = Array.from(new Set(selectedItems.map(it => it.shopOwnerId).filter(Boolean)));
+  const isMultiShop   = selectedShopIds.length > 1;
+  const shopsCount    = shopGroups.length;
 
   /* ── render ─────────────────────────────────────────────────────── */
   return (
@@ -401,20 +380,21 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping, onNa
                 />
               )}
 
-              {Object.entries(groupedItems).map(([shopName, items]) => {
+              {shopGroups.map((group) => {
+                const { shopOwnerId, shopName, items } = group;
                 const shopKeys = items.map(itemKey);
                 const isShopSelected = shopKeys.every(k => selectedKeys.has(k));
                 const isShopPartial  = !isShopSelected && shopKeys.some(k => selectedKeys.has(k));
 
                 return (
-                  <div key={shopName} className="bg-white rounded-[40px] border border-gray-100 shadow-sm overflow-hidden">
+                  <div key={shopOwnerId} className="bg-white rounded-[40px] border border-gray-100 shadow-sm overflow-hidden">
                     <div className="px-8 py-5 border-b border-gray-50 flex items-center justify-between">
                       <div className="flex items-center gap-4">
                         <input
                           type="checkbox"
                           checked={isShopSelected}
                           ref={el => { if (el) el.indeterminate = isShopPartial; }}
-                          onChange={() => handleToggleShop(shopName, items)}
+                          onChange={() => handleToggleShop(items)}
                           className="size-5 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
                         />
                         <h3 className="text-lg font-black text-gray-900 uppercase tracking-tight">{shopName}</h3>
@@ -538,18 +518,11 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping, onNa
                   </div>
                   <div className="flex justify-between items-center text-sm font-bold text-gray-500">
                     <span>Số nhà vườn</span>
-                    <span className="text-gray-900 font-black">{selectedShops.length}</span>
+                    <span className="text-gray-900 font-black">{selectedShopIds.length}</span>
                   </div>
                 </div>
 
-                {isMultiShop && (
-                  <div className="p-4 bg-red-50 rounded-2xl border border-red-100 flex items-start gap-3">
-                    <AlertCircle className="size-5 text-red-500 shrink-0 mt-0.5" />
-                    <p className="text-[10px] text-red-600 font-bold leading-relaxed">
-                      Lưu ý: Bạn chỉ có thể thanh toán sản phẩm từ một nhà vườn trong mỗi lần đặt hàng. Vui lòng lọc lại lựa chọn.
-                    </p>
-                  </div>
-                )}
+              
 
                 <div className="pt-8 border-t border-gray-50 flex justify-between items-end">
                   <div>
@@ -563,10 +536,10 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping, onNa
 
                 <button
                   onClick={handleCheckout}
-                  disabled={selectedKeys.size === 0 || isMultiShop}
+                  disabled={selectedKeys.size === 0}
                   className="w-full py-5 bg-primary text-white font-black rounded-2xl flex items-center justify-center gap-3 shadow-xl shadow-primary/20 hover:bg-primary-dark transition-all transform active:scale-[0.98] disabled:opacity-50 disabled:grayscale disabled:cursor-not-allowed"
                 >
-                  {isMultiShop ? 'Không thể gộp đơn' : 'Tiến hành đặt hàng'} <ArrowRight className="size-5" />
+                  Tiến hành đặt hàng <ArrowRight className="size-5" />
                 </button>
                 <button onClick={onBackToShopping} className="text-sm font-black text-primary hover:underline mx-auto uppercase tracking-widest">
                   Tiếp tục mua sắm
@@ -588,6 +561,9 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping, onNa
           </div>
         )}
       </div>
+      {resumeOptions && (
+        <ResumePaymentModal options={resumeOptions} onClose={closeResumePayment} />
+      )}
     </div>
   );
 };

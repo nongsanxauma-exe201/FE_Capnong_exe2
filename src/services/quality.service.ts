@@ -43,6 +43,13 @@ export interface QualityCheckResponse {
   status?: string;
   summary?: string;
   rejectedWeight?: number;
+  rejectedKg?: number;
+  requestedKg?: number;
+  approvedKg?: number;
+  refundedKg?: number;
+  damageTier?: string;
+  lineCancelled?: boolean;
+  lineRefundAmount?: number;
 }
 
 export interface QualityCriteriaItem {

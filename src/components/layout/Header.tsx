@@ -5,10 +5,9 @@ import { AppRole, User, KYCStatus } from '../../types/index';
 import { Search, ShoppingCart, Bell, Menu, User as UserIcon, LogOut, Phone, X, CheckCircle2, Trash2, Store, Truck, LayoutDashboard, Package, MessageSquare, RefreshCw, Ticket } from 'lucide-react';
 import { notificationService, NotificationItem, cartService } from '../../services';
 import { useNotificationWebSocket } from '../../services/useNotificationWebSocket';
-import { savePendingPayOSPayment } from '../../utils/pendingPayOSPayment';
-import { paymentService } from '../../services';
-
 import { useAuth } from '../../contexts/AuthContext';
+import { useResumePayment } from '../../hooks/useResumePayment';
+import ResumePaymentModal from '../../components/payment/ResumePaymentModal';
 
 interface HeaderProps {
   // Kept for backward compatibility but mostly internal refactored
@@ -34,6 +33,7 @@ const Header: React.FC<HeaderProps> = ({
   const [cartCount, setCartCount] = useState(0);
   const [searchInput, setSearchInput] = useState('');
   const notifRef = useRef<HTMLDivElement>(null);
+  const { openResumePayment, resumeOptions, closeResumePayment } = useResumePayment();
 
   // Kích hoạt WebSocket để nhận thông báo realtime
   useNotificationWebSocket({
@@ -463,15 +463,8 @@ const Header: React.FC<HeaderProps> = ({
                 <div className="px-6 pb-4 flex gap-2">
                   <button
                     onClick={async () => {
-                      try {
-                        const res = await paymentService.getLatestPendingByOrderId(orderId);
-                        const payment = res?.result;
-                        if (payment?.checkoutUrl) {
-                          savePendingPayOSPayment(payment, orderId);
-                          setSelectedNotification(null);
-                          window.location.href = payment.checkoutUrl;
-                        }
-                      } catch {}
+                      setSelectedNotification(null);
+                      await openResumePayment(orderId);
                     }}
                     className="flex-1 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-black rounded-lg transition-colors"
                   >
@@ -496,6 +489,9 @@ const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
         </div>
+      )}
+      {resumeOptions && (
+        <ResumePaymentModal options={resumeOptions} onClose={closeResumePayment} />
       )}
     </header>
   );

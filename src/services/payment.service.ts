@@ -16,10 +16,35 @@ export interface PaymentResponse {
     paymentDate?: string;
     createdAt?: string;
     updatedAt?: string;
-    // PayOS fields
     payosOrderCode?: string;
     checkoutUrl?: string;
     qrCodeUrl?: string;
+    batchId?: number;
+    orderIds?: number[];
+    paymentScope?: 'BATCH' | 'ORDER' | string;
+}
+
+export interface ResumePaymentOrderOption {
+    orderId: number;
+    shopName?: string;
+    amount: number;
+    status?: string;
+}
+
+export interface PayAllOption {
+    amount: number;
+    checkoutUrl?: string;
+    payosOrderCode?: string;
+    canReuseExistingLink: boolean;
+}
+
+export interface ResumePaymentOptionsResponse {
+    isBatch: boolean;
+    batchId?: number;
+    triggerOrderId?: number;
+    unpaidOrders?: ResumePaymentOrderOption[];
+    payAllOption?: PayAllOption;
+    singleOrderPayment?: PaymentResponse;
 }
 
 class PaymentService {
@@ -57,6 +82,14 @@ class PaymentService {
 
     async getLatestPendingByOrderId(orderId: number): Promise<ApiResponse<PaymentResponse>> {
         return httpClient.get<PaymentResponse>(`/payments/order/${orderId}/latest-pending`);
+    }
+
+    async getResumePaymentOptions(orderId: number): Promise<ApiResponse<ResumePaymentOptionsResponse>> {
+        return httpClient.get<ResumePaymentOptionsResponse>(`/payments/order/${orderId}/resume-options`);
+    }
+
+    async createBatchPayOS(batchId: number): Promise<ApiResponse<PaymentResponse>> {
+        return httpClient.post<PaymentResponse>(`/payments/batch/${batchId}/payos`, {});
     }
 }
 

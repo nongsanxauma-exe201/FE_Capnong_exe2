@@ -37,7 +37,12 @@ const ProtectedRoutes = () => {
             <Route path="/checkout" element={
                 <ProtectedRoute>
                     <Checkout
-                        onComplete={(id) => navigate(`/success?orderId=${id}`)}
+                        onComplete={(id, orderIds) => {
+                          const qs = orderIds && orderIds.length > 1
+                            ? `orderId=${id}&orderIds=${orderIds.join(',')}`
+                            : `orderId=${id}`;
+                          navigate(`/success?${qs}`);
+                        }}
                         onBack={handleCheckoutBack}
                     />
                 </ProtectedRoute>

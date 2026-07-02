@@ -10,7 +10,8 @@ const PaymentSuccess: React.FC = () => {
   const [countdown, setCountdown] = useState(5);
   const [paymentStatus, setPaymentStatus] = useState<'verifying' | 'success' | 'failed' | 'timeout'>('verifying');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [orderSummary, setOrderSummary] = useState<OrderResponse | null>(null);
+  const [orderSummaries, setOrderSummaries] = useState<OrderResponse[]>([]);
+  const [paidOrderIds, setPaidOrderIds] = useState<number[]>([]);
 
   // Get params from URL
   const urlParams = new URLSearchParams(window.location.search);
@@ -29,12 +30,15 @@ const PaymentSuccess: React.FC = () => {
     let pollCount = 0;
     const MAX_POLLS = 15; // 15 * 2s = 30 seconds max
 
-    const loadOrderSummary = async (orderId: number) => {
+    const loadPaidOrders = async (orderIds: number[]) => {
+      setPaidOrderIds(orderIds);
+      if (orderIds.length === 0) return;
       try {
-        const orderRes = await orderService.getOrderById(orderId);
-        if (orderRes.result) {
-          setOrderSummary(orderRes.result);
-        }
+        const results = await Promise.all(orderIds.map((id) => orderService.getOrderById(id)));
+        const summaries = results
+          .map((res) => res.result)
+          .filter((v): v is OrderResponse => Boolean(v));
+        setOrderSummaries(summaries);
       } catch (error) {
         console.error('Failed to load order rescue summary:', error);
       }
@@ -70,8 +74,11 @@ const PaymentSuccess: React.FC = () => {
         const res = await paymentService.getById(orderCode);
         if (res.result) {
           if (res.result.status === 'SUCCESS') {
-            if (res.result.orderId) {
-              void loadOrderSummary(res.result.orderId);
+            const ids = res.result.orderIds?.length
+              ? res.result.orderIds
+              : (res.result.orderId ? [res.result.orderId] : []);
+            if (ids.length > 0) {
+              void loadPaidOrders(ids);
             }
             setPaymentStatus('success');
             clearInterval(pollInterval);
@@ -87,6 +94,18 @@ const PaymentSuccess: React.FC = () => {
         }
       } catch (error) {
         console.error('Failed to check payment status:', error);
+        if (pollCount >= MAX_POLLS - 1) {
+          try {
+            await paymentService.confirmPaymentByOrderCode(orderCode);
+            setPaymentStatus('success');
+            clearInterval(pollInterval);
+            clearTimeout(timeoutId);
+            startCountdown();
+            return;
+          } catch {
+            // keep polling until timeout
+          }
+        }
       }
 
       pollCount++;
@@ -118,7 +137,7 @@ const PaymentSuccess: React.FC = () => {
       const orderId = Number(orderIdParam);
       if (!Number.isNaN(orderId)) {
         setPaymentStatus('success');
-        void loadOrderSummary(orderId);
+        void loadPaidOrders([orderId]);
         startCountdown();
         return;
       }
@@ -155,9 +174,9 @@ const PaymentSuccess: React.FC = () => {
     window.location.reload();
   };
 
-  const rescuedWeight = Number(orderSummary?.rescuedWeight ?? 0);
-  const rewardPoints = Number(orderSummary?.rewardPoints ?? 0);
-  const rewardApplied = Boolean(orderSummary?.rewardApplied);
+  const rescuedWeight = orderSummaries.reduce((sum, order) => sum + Number(order.rescuedWeight ?? 0), 0);
+  const rewardPoints = orderSummaries.reduce((sum, order) => sum + Number(order.rewardPoints ?? 0), 0);
+  const rewardApplied = orderSummaries.some((order) => Boolean(order.rewardApplied));
   const formatKg = (value: number) => value.toLocaleString('vi-VN', { maximumFractionDigits: 2 });
 
   return (
@@ -192,18 +211,24 @@ const PaymentSuccess: React.FC = () => {
                 Chúng tôi sẽ xử lý đơn hàng trong thời gian sớm nhất.
               </p>
 
-              {(orderSummary?.id || orderCode) && (
+              {(paidOrderIds.length > 0 || orderSummary?.id || orderCode) && (
                 <div className="w-full p-6 bg-gray-50 rounded-3xl mb-8">
                   <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2">
-                    Mã đơn hàng
+                    {paidOrderIds.length > 1 ? 'Mã đơn hàng' : 'Mã đơn hàng'}
                   </p>
-                  <p className="text-xl font-black text-primary">
-                    #{orderSummary?.id ?? orderCode}
-                  </p>
+                  {paidOrderIds.length > 1 ? (
+                    <div className="flex flex-wrap gap-2 justify-center">
+                      {paidOrderIds.map((id) => (
+                        <span key={id} className="text-base font-black text-primary">#{id}</span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xl font-black text-primary">#{paidOrderIds[0] ?? orderCode}</p>
+                  )}
                 </div>
               )}
 
-              {orderSummary && rescuedWeight > 0 && (
+              {orderSummaries.length > 0 && rescuedWeight > 0 && (
                 <div className="w-full p-6 bg-gradient-to-br from-green-50 to-emerald-50 border border-green-100 rounded-3xl mb-8 text-left">
                   <div className="flex items-center gap-3 mb-4">
                     <div className="size-12 bg-white rounded-2xl flex items-center justify-center shadow-sm">
@@ -221,8 +246,7 @@ const PaymentSuccess: React.FC = () => {
                     <Award className="size-5" />
                     {rewardApplied
                       ? `+${formatKg(rewardPoints)} điểm tích lũy`
-                      : `${formatKg(rewardPoints)} điểm dự kiến, sẽ cộng khi đơn hoàn tất`
-                    }
+                      : `${formatKg(rewardPoints)} điểm dự kiến, sẽ cộng khi đơn hoàn tất`}
                   </div>
                 </div>
               )}

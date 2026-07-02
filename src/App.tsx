@@ -8,8 +8,10 @@ import ScrollToTop from './components/layout/ScrollToTop';
 import { PopupProvider } from './contexts/PopupContext';
 import './App.css';
 import { useNotificationWebSocket } from './services/useNotificationWebSocket';
-import { ensurePendingPayOSRolledBack, getPendingPayOSPayment, clearPendingPayOSPayment, savePendingPayOSPayment, getRestoredPayOSCart, saveRestoredPayOSCart } from './utils/pendingPayOSPayment';
+import { ensurePendingPayOSRolledBack, getPendingPayOSPayment, clearPendingPayOSPayment, getRestoredPayOSCart, saveRestoredPayOSCart } from './utils/pendingPayOSPayment';
 import { paymentService } from './services';
+import { useResumePayment } from './hooks/useResumePayment';
+import ResumePaymentModal from './components/payment/ResumePaymentModal';
 
 const ChatBotWrapper: React.FC = () => {
   const { user, isAuthenticated } = useAuth();
@@ -64,6 +66,7 @@ const PendingPayOSRollbackGuard: React.FC = () => {
   const { isAuthenticated, loading } = useAuth();
   const [pendingInfo, setPendingInfo] = React.useState<{ orderId: number; orderCode: string } | null>(null);
   const notifiedRef = React.useRef(false);
+  const { openResumePayment, resumeOptions, closeResumePayment } = useResumePayment();
 
   const checkPending = React.useCallback(() => {
     if (loading || !isAuthenticated) return;
@@ -100,18 +103,9 @@ const PendingPayOSRollbackGuard: React.FC = () => {
   const handleContinuePayment = async () => {
     if (!pendingInfo) return;
     try {
-      const res = await paymentService.getLatestPendingByOrderId(pendingInfo.orderId);
-      const payment = res?.result;
-      if (payment?.checkoutUrl) {
-        savePendingPayOSPayment(payment, pendingInfo.orderId);
-        notifiedRef.current = false;
-        setPendingInfo(null);
-        window.location.href = payment.checkoutUrl;
-      } else {
-        setPendingInfo(null);
-        clearPendingPayOSPayment();
-        navigate('/my-orders');
-      }
+      await openResumePayment(pendingInfo.orderId);
+      notifiedRef.current = false;
+      setPendingInfo(null);
     } catch {
       setPendingInfo(null);
       clearPendingPayOSPayment();
@@ -176,6 +170,9 @@ const PendingPayOSRollbackGuard: React.FC = () => {
           </button>
         </div>
       </div>
+      {resumeOptions && (
+        <ResumePaymentModal options={resumeOptions} onClose={closeResumePayment} />
+      )}
     </div>
   );
 };
