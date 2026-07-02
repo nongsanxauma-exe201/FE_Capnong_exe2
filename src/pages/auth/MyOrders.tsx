@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import {
   Package, Clock, Truck, CheckCircle2, XCircle, Eye,
-  ArrowLeft, RefreshCw, AlertCircle, Search, Download, Loader2 as ReceiptLoader, Sprout, Award
+  ArrowLeft, RefreshCw, AlertCircle, Search, Download, Loader2 as ReceiptLoader, Sprout, Award, FileText
 } from 'lucide-react';
 import { exportService } from '../../services/export.service';
 import { orderService, OrderResponse, OrderItemResponse } from '../../services/order.service';
-import { authService } from '../../services/auth.service';
 import { reviewService } from '../../services/review.service';
 import { returnService } from '../../services/return.service';
 import { Star, Camera, X, Loader2 } from 'lucide-react';
@@ -15,7 +14,8 @@ import ReturnRequestModal from '../../components/ReturnRequestModal';
 import ResumePaymentModal from '../../components/payment/ResumePaymentModal';
 import { useResumePayment } from '../../hooks/useResumePayment';
 
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
 
 const PAGE_SIZE = 10;
 
@@ -60,19 +60,32 @@ const BUYER_FILTERS: Array<{ key: OrderStatusFilter; label: string }> = [
   { key: 'FAILED', label: 'Giao thất bại' },
 ];
 
-const getFilterLabel = (filter: OrderStatusFilter) => {
-  return BUYER_FILTERS.find(item => item.key === filter)?.label ?? 'Tất cả';
+const getQcRefundHint = (paymentMethod?: string) => {
+  if (paymentMethod?.toUpperCase() === 'COD') {
+    return 'Nếu bạn chọn không nhận, phần còn lại sẽ bị hủy và số tiền COD khi nhận hàng sẽ được giảm tương ứng.';
+  }
+  return 'Nếu bạn chọn không nhận, phần còn lại sẽ bị hủy và tiền hoàn sẽ được cộng vào ví (đơn thanh toán online).';
 };
 
+const getQcRejectButtonLabel = (paymentMethod?: string) =>
+  paymentMethod?.toUpperCase() === 'COD'
+    ? 'Không nhận phần còn lại'
+    : 'Không nhận, hoàn tiền phần còn lại';
+
 const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const orderIdFromUrl = searchParams.get('orderId');
-  const [allOrders, setAllOrders] = useState<OrderResponse[]>([]);
+  const [orders, setOrders] = useState<OrderResponse[]>([]);
+  const [searchResults, setSearchResults] = useState<OrderResponse[]>([]);
+  const [serverPageInfo, setServerPageInfo] = useState<PageInfo>({
+    page: 0, size: PAGE_SIZE, totalElements: 0, totalPages: 1, first: true, last: true,
+  });
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<OrderStatusFilter>('ALL');
   const [searchQuery, setSearchQuery] = useState(orderIdFromUrl || '');
+  const [debouncedSearch, setDebouncedSearch] = useState(orderIdFromUrl || '');
   const [page, setPage] = useState(0);
-  const [userId, setUserId] = useState<number | null>(null);
 
   // Review state
   const [selectedItem, setSelectedItem] = useState<OrderItemResponse | null>(null);
@@ -89,7 +102,11 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
   const [orderReturnEvidence, setOrderReturnEvidence] = useState<File | null>(null);
   const [submittingOrderReturn, setSubmittingOrderReturn] = useState(false);
   const [downloadingReceiptId, setDownloadingReceiptId] = useState<number | null>(null);
-  const [qcDecisionModal, setQcDecisionModal] = useState<{ orderId: number; deadline?: string | null } | null>(null);
+  const [qcDecisionModal, setQcDecisionModal] = useState<{
+    orderId: number;
+    deadline?: string | null;
+    paymentMethod?: string;
+  } | null>(null);
   const { openResumePayment, resuming, resumeOptions, closeResumePayment } = useResumePayment((message) => {
     globalShowAlert(message, 'Lỗi', 'error');
   });
@@ -123,32 +140,53 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
   };
 
   const fetchOrders = async () => {
+    const uid = user?.id ? parseInt(user.id, 10) : NaN;
+    if (!Number.isFinite(uid)) return;
+
+    const isSearching = debouncedSearch.trim().length > 0;
+
     try {
       setLoading(true);
-      const userInfo = await authService.getMyInfo();
-      if (!userInfo.result) {
-        console.error('No user info found');
+
+      if (orderIdFromUrl) {
+        const response = await orderService.getOrderById(parseInt(orderIdFromUrl, 10));
+        const list = response.result ? [response.result] : [];
+        setOrders(list);
+        setSearchResults([]);
+        setServerPageInfo({
+          page: 0, size: PAGE_SIZE, totalElements: list.length, totalPages: 1, first: true, last: true,
+        });
         return;
       }
 
-      const uid = userInfo.result.id;
-      setUserId(uid);
-
-      if (orderIdFromUrl) {
-        const response = await orderService.getOrderById(parseInt(orderIdFromUrl));
-        if (response.result) {
-          setAllOrders([response.result]);
-          return;
-        }
+      if (isSearching) {
+        const response = await orderService.getOrdersByUserId(uid);
+        const q = debouncedSearch.trim().toLowerCase();
+        const filtered = (response.result ?? [])
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          .filter(order =>
+            order.id.toString().includes(q) ||
+            order.recipientName.toLowerCase().includes(q)
+          );
+        setSearchResults(filtered);
+        setOrders([]);
+        return;
       }
 
-      // Fetch tất cả đơn một lần, filter và phân trang hoàn toàn client-side
-      // để tránh lỗi pagination khi backend không hỗ trợ filter statuses
-      const response = await orderService.getOrdersByUserId(uid);
+      const statuses = filter === 'ALL' ? undefined : BUYER_STATUS_GROUPS[filter];
+      const response = await orderService.getOrdersByUserIdPaged(uid, page, PAGE_SIZE, statuses);
       if (response.result) {
-        setAllOrders(response.result.sort((a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        ));
+        const r = response.result;
+        setOrders(r.content);
+        setSearchResults([]);
+        setServerPageInfo({
+          page: r.page,
+          size: r.size,
+          totalElements: r.totalElements,
+          totalPages: Math.max(1, r.totalPages),
+          first: r.first,
+          last: r.last,
+        });
       }
     } catch (error: any) {
       console.error('Failed to fetch orders:', error);
@@ -259,7 +297,9 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
       globalShowAlert(
         acceptRemaining
           ? 'Bạn đã chọn nhận phần hàng còn lại. Đơn sẽ được đóng gói và giao.'
-          : 'Bạn đã từ chối nhận phần còn lại. Hệ thống sẽ hoàn tiền vào ví (nếu có).',
+          : qcDecisionModal.paymentMethod?.toUpperCase() === 'COD'
+            ? 'Bạn đã từ chối nhận phần còn lại. Số tiền COD khi nhận hàng sẽ được cập nhật.'
+            : 'Bạn đã từ chối nhận phần còn lại. Tiền hoàn (nếu có) sẽ được cộng vào ví.',
         'Thành công',
         'success'
       );
@@ -302,17 +342,23 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
     }
   };
 
-  // Fetch tất cả đơn 1 lần khi mount (hoặc khi orderId URL thay đổi)
   useEffect(() => {
-    fetchOrders();
-    loadReviewedIds();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderIdFromUrl]);
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setPage(0);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
-  // Reset về trang đầu khi đổi tab hoặc thay đổi search
   useEffect(() => {
-    setPage(0);
-  }, [filter, searchQuery]);
+    if (!user?.id) return;
+    fetchOrders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, orderIdFromUrl, page, filter, debouncedSearch]);
+
+  useEffect(() => {
+    loadReviewedIds();
+  }, []);
 
   const getStatusConfig = (status: string) => {
     const configs: Record<string, { label: string; color: string; icon: any; bg: string }> = {
@@ -436,31 +482,33 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
     ].includes(status);
   };
 
-  // Lọc theo tab
-  const tabOrders = filter === 'ALL'
-    ? allOrders
-    : allOrders.filter(o => BUYER_STATUS_GROUPS[filter].includes(o.status));
+  const isSearching = debouncedSearch.trim().length > 0 && !orderIdFromUrl;
 
-  // Lọc theo search
-  const filteredOrders = tabOrders.filter(order =>
-    searchQuery === '' ||
-    order.id.toString().includes(searchQuery) ||
-    order.recipientName.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const searchFiltered = isSearching
+    ? searchResults.filter(o => filter === 'ALL' || BUYER_STATUS_GROUPS[filter].includes(o.status))
+    : [];
 
-  // Phân trang client-side — chính xác theo số đơn đã lọc
-  const totalElements = filteredOrders.length;
-  const totalPages = Math.max(1, Math.ceil(totalElements / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages - 1);
-  const paginatedOrders = filteredOrders.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
-  const clientPageInfo: PageInfo = {
-    page: safePage,
-    size: PAGE_SIZE,
-    totalElements,
-    totalPages,
-    first: safePage === 0,
-    last: safePage >= totalPages - 1,
-  };
+  const paginatedOrders = isSearching
+    ? searchFiltered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+    : orders;
+
+  const pageInfo: PageInfo = isSearching
+    ? (() => {
+        const totalElements = searchFiltered.length;
+        const totalPages = Math.max(1, Math.ceil(totalElements / PAGE_SIZE));
+        const safePage = Math.min(page, totalPages - 1);
+        return {
+          page: safePage,
+          size: PAGE_SIZE,
+          totalElements,
+          totalPages,
+          first: safePage === 0,
+          last: safePage >= totalPages - 1,
+        };
+      })()
+    : serverPageInfo;
+
+  const totalPages = pageInfo.totalPages;
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleString('vi-VN', {
@@ -722,7 +770,7 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
                     )}
 
                     {/* Actions */}
-                    <div className="flex items-center justify-between pt-6 border-t border-gray-50">
+                    <div className="flex items-center justify-between pt-6 border-t border-gray-50 flex-wrap gap-3">
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-bold text-gray-400">Phương thức:</span>
                         <span className="px-3 py-1 bg-gray-50 text-gray-700 text-xs font-black rounded-full uppercase">
@@ -730,7 +778,17 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
                         </span>
                       </div>
 
-                      {order.status === 'DELIVERED' ? (
+                      <div className="flex items-center gap-3 flex-wrap justify-end">
+                        <Link
+                          to={`/my-orders/${order.id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="px-5 py-3 bg-gray-50 text-gray-700 font-black text-xs rounded-2xl border border-gray-100 hover:bg-gray-100 transition-all flex items-center gap-2 uppercase tracking-wider"
+                        >
+                          <FileText className="size-3.5" />
+                          Chi tiết đơn
+                        </Link>
+
+                        {order.status === 'DELIVERED' ? (
                         <div className="flex items-center gap-3 flex-wrap">
                           <div className="flex items-center gap-2 px-6 py-3 bg-green-50 text-green-700 rounded-2xl border border-green-100">
                             <CheckCircle2 className="size-4" />
@@ -746,8 +804,7 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
                               : <Download className="size-3.5" />}
                             Tải hóa đơn
                           </button>
-                          {/* Return whole order button — only shown if NO item has been returned yet */}
-                          {!order.items?.some(i => i.isRequestedReturn) && (
+                          {/* {!order.items?.some(i => i.isRequestedReturn) && (
                             <button
                               onClick={() => setOrderReturnModal({ orderId: order.id, orderNum: order.id })}
                               className="px-5 py-3 bg-orange-50 text-orange-600 font-black text-xs rounded-2xl border border-orange-100 hover:bg-orange-100 transition-all flex items-center gap-2 uppercase tracking-wider"
@@ -755,12 +812,16 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
                               <RefreshCw className="size-3.5" />
                               Trả toàn bộ đơn
                             </button>
-                          )}
+                          )} */}
                         </div>
                       ) : order.status === 'QC_PENDING_BUYER' ? (
                         <div className="flex items-center gap-3 flex-wrap">
                           <button
-                            onClick={() => setQcDecisionModal({ orderId: order.id, deadline: order.qcBuyerDecisionDeadline })}
+                            onClick={() => setQcDecisionModal({
+                              orderId: order.id,
+                              deadline: order.qcBuyerDecisionDeadline,
+                              paymentMethod: order.paymentMethod,
+                            })}
                             className="px-6 py-3 bg-orange-500 text-white font-black rounded-2xl flex items-center gap-2 shadow-lg shadow-orange-500/20 hover:bg-orange-600 transition-all"
                           >
                             <AlertCircle className="size-4" />
@@ -822,6 +883,7 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
                           <span className="text-sm font-bold">Không thể theo dõi</span>
                         </div>
                       )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -829,7 +891,7 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
             })}
           </div>
         )}
-        {totalPages > 1 && <Pagination pageInfo={clientPageInfo} onPageChange={setPage} className="mt-6" />}
+        {totalPages > 1 && <Pagination pageInfo={pageInfo} onPageChange={setPage} className="mt-6" />}
       </div>
 
       {/* QC Decision Modal */}
@@ -869,10 +931,10 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
                 onClick={() => handleQcDecision(false)}
                 className="w-full py-4 bg-red-50 text-red-700 font-black rounded-2xl border border-red-100 hover:bg-red-100 transition-all disabled:opacity-60"
               >
-                Không nhận, hoàn tiền phần còn lại
+                {getQcRejectButtonLabel(qcDecisionModal.paymentMethod)}
               </button>
               <p className="text-[11px] text-gray-400 font-medium">
-                Nếu bạn chọn không nhận, hệ thống sẽ hủy phần còn lại và hoàn tiền vào ví (nếu có).
+                {getQcRefundHint(qcDecisionModal.paymentMethod)}
               </p>
             </div>
           </div>
