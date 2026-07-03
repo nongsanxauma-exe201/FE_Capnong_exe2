@@ -9,6 +9,7 @@ export const ORDER_STATUS_LABELS: Record<string, string> = {
   ARRIVED_AT_WAREHOUSE: 'Đã tới kho',
   QUALITY_CHECKING: 'Đang kiểm định',
   QUALITY_CHECKED: 'Đã kiểm tra',
+  QC_PENDING_BUYER: 'Chờ bạn xác nhận',
   READY: 'Chờ shipper lấy',
   SHIPPING: 'Đang giao',
   DELIVERED: 'Đã giao',
