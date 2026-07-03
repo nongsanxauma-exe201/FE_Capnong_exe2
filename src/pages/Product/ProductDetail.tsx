@@ -10,7 +10,6 @@ import {
   Loader2,
   AlertCircle,
   MessageSquare,
-  ChefHat,
   ChevronLeft,
   X,
   ZoomIn,
@@ -21,7 +20,7 @@ import {
   ThumbsUp,
   ThumbsDown
 } from 'lucide-react';
-import { productService, ProductResponse, ProductImageResponse, cartService, reviewService, ReviewResponse, comboService, BuildComboResponse } from '../../services';
+import { productService, ProductResponse, ProductImageResponse, cartService, reviewService, ReviewResponse } from '../../services';
 import { userService } from '../../services';
 import { UserResponse } from '../../services/auth.service';
 import { globalShowAlert } from '../../contexts/PopupContext';
@@ -163,7 +162,6 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId: propProductId,
 
   const [product, setProduct] = useState<ProductResponse | null>(null);
   const [relatedProducts, setRelatedProducts] = useState<ProductResponse[]>([]);
-  const [shopCombos, setShopCombos] = useState<BuildComboResponse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -231,14 +229,6 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId: propProductId,
 
     const shopId = foundProduct.shopOwnerId || foundProduct.shopId;
 
-    if (shopId) {
-      try {
-        const comboRes = await comboService.getByShop(shopId);
-        if (comboRes.result) {
-          setShopCombos(comboRes.result);
-        }
-      } catch (_) {}
-    }
   } catch (err) {
     console.error('Failed to fetch product detail:', err);
     setError('Không thể tải thông tin sản phẩm. Vui lòng thử lại sau.');
@@ -806,39 +796,6 @@ return (
       </div>
     </div>
 
-    {shopCombos.filter(combo => combo.items?.some(item => item.productId === Number(productId))).length > 0 && (
-      <div className="max-w-7xl mx-auto px-4 mt-32">
-        <h2 className="text-2xl font-black font-display text-gray-900 uppercase mb-12 flex items-center gap-4">
-          Combo nấu ăn từ shop này <span className="h-px bg-gray-200 flex-1"></span>
-        </h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-          {shopCombos
-            .filter(combo => combo.items?.some(item => item.productId === Number(productId)))
-            .map((combo) => (
-              <div key={combo.id} onClick={() => navigate(`/combo/${combo.id}`)} className="group cursor-pointer bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all overflow-hidden">
-                <div className="aspect-[4/3] bg-gradient-to-br from-green-50 to-emerald-100 flex items-center justify-center relative overflow-hidden">
-                  {combo.imageUrl
-                    ? <img src={combo.imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt={combo.comboName} />
-                    : <ChefHat className="size-12 text-green-200" />}
-                  {combo.region && (
-                    <span className="absolute top-2 right-2 text-[9px] font-black px-2 py-0.5 rounded-full bg-white/80 text-gray-600">
-                      {combo.region === 'MIEN_BAC' ? '🌿 Bắc' : combo.region === 'MIEN_TRUNG' ? '🌶 Trung' : '🥥 Nam'}
-                    </span>
-                  )}
-                </div>
-                <div className="p-4">
-                  <h4 className="font-extrabold text-gray-900 text-sm mb-1 line-clamp-1">{combo.comboName}</h4>
-                  <p className="text-xs text-gray-400 mb-2">{combo.items?.length || 0} nguyên liệu</p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-primary font-black text-lg">{(combo.discountPrice || 0).toLocaleString('vi-VN')}đ</span>
-                    <span className="text-[9px] font-black text-primary bg-primary/10 px-2 py-1 rounded-full uppercase">Chọn combo</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-        </div>
-      </div>
-    )}
   </div>
 );
 };

@@ -17,8 +17,6 @@ import {
   ShieldCheck,
   Award,
   Gift,
-  ChefHat,
-  Tag,
   Share2,
   Copy,
   Check,
@@ -27,7 +25,7 @@ import {
   ThumbsUp,
   ThumbsDown,
 } from 'lucide-react';
-import { productService, ProductResponse, userService, UserResponse, cartService, reviewService, ReviewResponse, mysteryBoxService, MysteryBox, comboService, BuildComboResponse, voucherService, VoucherResponse } from '../../services';
+import { productService, ProductResponse, userService, UserResponse, cartService, reviewService, ReviewResponse, mysteryBoxService, MysteryBox, voucherService, VoucherResponse } from '../../services';
 import { globalShowAlert } from '../../contexts/PopupContext';
 
 interface ShopProductsProps {
@@ -46,7 +44,6 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
   const navigate = useNavigate();
   const [products, setProducts] = useState<ProductResponse[]>([]);
   const [mysteryBoxes, setMysteryBoxes] = useState<MysteryBox[]>([]);
-  const [combos, setCombos] = useState<BuildComboResponse[]>([]);
   const [shopInfo, setShopInfo] = useState<UserResponse | null>(null);
   const [reviews, setReviews] = useState<ReviewResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,7 +52,6 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [addingToCart, setAddingToCart] = useState<number | null>(null);
   const [addingBoxToCart, setAddingBoxToCart] = useState<number | null>(null);
-  const [addingComboToCart, setAddingComboToCart] = useState<number | null>(null);
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [copied, setCopied] = useState(false);
   const [shopVouchers, setShopVouchers] = useState<VoucherResponse[]>([]);
@@ -73,12 +69,11 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
     const fetchShopData = async () => {
       setLoading(true);
       try {
-        const [productsRes, shopRes, reviewsRes, boxesRes, combosRes] = await Promise.all([
+        const [productsRes, shopRes, reviewsRes, boxesRes] = await Promise.all([
           productService.getForBuyer().catch(() => ({ result: [] })),
           userService.getUserById(shopId).catch(() => ({ result: null })),
           reviewService.getByShopId(shopId).catch(() => ({ result: [] })),
           mysteryBoxService.getForBuyer().catch(() => ({ result: [] })),
-          comboService.getByShop(shopId).catch(() => ({ result: [] }))
         ]);
 
         if (productsRes.result) {
@@ -99,9 +94,6 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
           setMysteryBoxes(
             boxesRes.result.filter((b: MysteryBox) => b.shopOwnerId === shopId)
           );
-        }
-        if (combosRes.result) {
-          setCombos(combosRes.result);
         }
       } catch (error) {
         console.error('Failed to load shop data', error);
@@ -180,19 +172,6 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
     }
   };
 
-  const handleAddComboToCart = async (combo: BuildComboResponse) => {
-    if (!isAuthenticated) { onOpenLogin(); return; }
-    setAddingComboToCart(combo.id);
-    try {
-      await cartService.addToCart({ buildComboId: combo.id, quantity: 1 });
-      window.dispatchEvent(new Event('cart-updated'));
-      globalShowAlert(`Đã thêm combo "${combo.comboName}" vào giỏ hàng!`, 'Thành công', 'success');
-    } catch {
-      globalShowAlert('Không thể thêm combo vào giỏ hàng. Vui lòng thử lại.', 'Lỗi', 'error');
-    } finally {
-      setAddingComboToCart(null);
-    }
-  };
 
   const handleReceiveVoucher = async (voucherCode: string) => {
     if (!isAuthenticated) { onOpenLogin(); return; }
@@ -725,88 +704,6 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
           </div>
         )}
 
-        {/* Combos Section */}
-        {combos.length > 0 && (
-          <div className="mt-6">
-            <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-              <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-100">
-                <div className="size-9 bg-green-100 rounded-xl flex items-center justify-center">
-                  <ChefHat className="size-5 text-primary" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-black text-gray-900">Combo Nấu Ăn</h3>
-                  <p className="text-xs text-gray-400 font-bold">{combos.length} combo đang bán</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                {combos.map((combo) => {
-                  const totalOriginal = combo.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-                  const savings = totalOriginal - combo.discountPrice;
-                  return (
-                    <div key={combo.id} onClick={() => navigate(`/combo/${combo.id}`)} className="group bg-gradient-to-br from-green-50 to-white rounded-2xl border border-green-100 overflow-hidden hover:shadow-lg hover:border-green-200 transition-all cursor-pointer">
-                      {/* Header */}
-                      <div className="p-4 flex items-center gap-3 border-b border-green-100">
-                        <div className="size-11 bg-white rounded-xl flex items-center justify-center shadow-sm border border-green-100 overflow-hidden flex-shrink-0">
-                          {combo.imageUrl
-                            ? <img src={combo.imageUrl} className="w-full h-full object-cover" alt={combo.comboName} />
-                            : <ChefHat className="size-5 text-primary" />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-black text-gray-900 text-sm truncate">{combo.comboName}</h4>
-                          {combo.region && (
-                            <span className="inline-block text-[9px] font-black px-2 py-0.5 rounded-full bg-primary/10 text-primary mt-0.5">
-                              {combo.region === 'MIEN_BAC' ? '🌿 Miền Bắc' : combo.region === 'MIEN_TRUNG' ? '🌶 Miền Trung' : '🥥 Miền Nam'}
-                            </span>
-                          )}
-                          {combo.description && (
-                            <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">{combo.description}</p>
-                          )}
-                        </div>
-                        {savings > 0 && (
-                          <span className="bg-red-100 text-red-600 text-[10px] font-black px-2 py-1 rounded-full whitespace-nowrap">
-                            -{Math.round((savings / totalOriginal) * 100)}%
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Items list */}
-                      <div className="px-4 py-3 space-y-1.5">
-                        {combo.items.map((item) => (
-                          <div key={item.productId} className="flex items-center justify-between text-xs">
-                            <span className="text-gray-700 font-medium truncate flex-1 pr-2">• {item.productName}</span>
-                            <span className="text-gray-500 font-bold">x{item.quantity}</span>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Footer */}
-                      <div className="px-4 pb-4 pt-2">
-                        <div className="flex items-center justify-between mb-3">
-                          <div>
-                            <span className="text-lg font-black text-primary">{combo.discountPrice.toLocaleString('vi-VN')}đ</span>
-                            {savings > 0 && (
-                              <p className="text-[10px] text-primary font-bold flex items-center gap-1 mt-0.5">
-                                <Tag className="size-3" /> Tiết kiệm {savings.toLocaleString('vi-VN')}đ
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); navigate(`/combo/${combo.id}`); }}
-                          className="w-full px-3 py-2 bg-primary text-white text-xs font-black rounded-xl hover:bg-primary-dark transition-colors flex items-center justify-center gap-1.5"
-                        >
-                          <ChefHat className="size-3.5" />
-                          Chọn combo này
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Reviews Section */}
         {reviews.length > 0 && (
