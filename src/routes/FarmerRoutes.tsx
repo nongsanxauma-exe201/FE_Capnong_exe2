@@ -25,6 +25,7 @@ import TripJoinRequestDetail from '../pages/farmer/TripJoinRequestDetail';
 import SendJoinRequest from '../pages/farmer/SendJoinRequest';
 import FarmerDisputes from '../pages/farmer/FarmerDisputes';
 import Vouchers from '../pages/farmer/Vouchers';
+import ComboBuilder from '../pages/farmer/ComboBuilder';
 import { AppRole, KYCStatus } from '../types';
 // ── Wrapper components ──────────────────────────────────────────────────────
 
@@ -55,6 +56,11 @@ const EditProductWrapper = () => {
 const MysteryBoxEditorWrapper = () => {
     const navigate = useNavigate();
     return <MysteryBoxEditor onBack={() => navigate('/farmer/products')} />;
+};
+
+const ComboBuilderWrapper = () => {
+    const navigate = useNavigate();
+    return <ComboBuilder onBack={() => navigate('/farmer/products')} />;
 };
 
 const VehiclesWrapper = () => {
@@ -105,6 +111,8 @@ const FarmerRoutes = () => {
             <Route path="edit-product/:productId" element={<EditProductWrapper />} />
             <Route path="mystery-box-editor" element={<MysteryBoxEditorWrapper />} />
             <Route path="mystery-box-editor/:boxId" element={<MysteryBoxEditorWrapper />} />
+            <Route path="combos" element={<ComboBuilderWrapper />} />
+            <Route path="combos/:comboId" element={<ComboBuilderWrapper />} />
             <Route path="vehicles" element={<VehiclesWrapper />} />
             <Route path="wallet" element={<Wallet />} />
             <Route path="orders" element={<OrdersWrapper />} />

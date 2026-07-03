@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Filter, Edit3, CheckCircle, Clock, AlertCircle, Loader2, Sparkles, Tag, X, CalendarDays, Check, ChevronDown } from 'lucide-react';
-import { productService, mysteryBoxService, authService, ProductResponse, MysteryBox } from '../../services';
+import { Plus, Search, Filter, Edit3, CheckCircle, Clock, AlertCircle, Loader2, Sparkles, Tag, X, CalendarDays, Check, ChevronDown, ChefHat } from 'lucide-react';
+import { productService, mysteryBoxService, comboService, authService, ProductResponse, MysteryBox, BuildComboResponse } from '../../services';
 import Pagination, { PageInfo } from '../../components/ui/Pagination';
 import { globalShowAlert, globalShowConfirm } from '../../contexts/PopupContext';
 
@@ -15,7 +15,8 @@ const getTodayDateString = () => {
 const Products: React.FC<{ onNavigate: (id: string) => void }> = ({ onNavigate }) => {
   const [products, setProducts] = useState<ProductResponse[]>([]);
   const [mysteryBoxes, setMysteryBoxes] = useState<MysteryBox[]>([]);
-  const [activeTab, setActiveTab] = useState<'NONG_SAN' | 'BLIND_BOX'>('NONG_SAN');
+  const [combos, setCombos] = useState<BuildComboResponse[]>([]);
+  const [activeTab, setActiveTab] = useState<'NONG_SAN' | 'BLIND_BOX' | 'COMBO'>('NONG_SAN');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -43,14 +44,16 @@ const Products: React.FC<{ onNavigate: (id: string) => void }> = ({ onNavigate }
       const id = userRes.result?.id;
       if (id) {
         setShopId(Number(id));
-        const [productsRes, mysteryRes] = await Promise.all([
+        const [productsRes, mysteryRes, combosRes] = await Promise.all([
           productService.getByShopId(Number(id)).catch(() => ({ result: [] })),
-          mysteryBoxService.getMyBoxes().catch(() => ({ result: [] }))
+          mysteryBoxService.getMyBoxes().catch(() => ({ result: [] })),
+          comboService.getMyCombos().catch(() => ({ result: [] }))
         ]);
         if (productsRes.result) {
           setProducts(productsRes.result);
         }
         if (mysteryRes.result) setMysteryBoxes(mysteryRes.result);
+        if (combosRes.result) setCombos(combosRes.result);
       }
     } catch (err) {
       console.error('Failed to fetch data:', err);
@@ -231,10 +234,16 @@ const Products: React.FC<{ onNavigate: (id: string) => void }> = ({ onNavigate }
     return matchSearch && matchStatus;
   });
 
+  const filteredCombos = combos.filter(c => {
+    const matchSearch = c.comboName.toLowerCase().includes(searchQuery.toLowerCase()) || c.id.toString().includes(searchQuery);
+    return matchSearch;
+  });
+
   // Calculate generic derived state based on activeTab
   let displayItems: any[] = [];
   if (activeTab === 'NONG_SAN') displayItems = filteredProducts;
   else if (activeTab === 'BLIND_BOX') displayItems = filteredBoxes;
+  else if (activeTab === 'COMBO') displayItems = filteredCombos;
 
   const totalElements = displayItems.length;
   const totalPages = Math.ceil(totalElements / PAGE_SIZE) || 1;
@@ -260,7 +269,7 @@ const Products: React.FC<{ onNavigate: (id: string) => void }> = ({ onNavigate }
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-3xl font-black font-display text-gray-900">Quản Lý Sản Phẩm</h2>
-          <p className="text-gray-400 font-medium text-sm mt-1">Cửa hàng của bạn đang có {products.length} sản phẩm và {mysteryBoxes.length} hộp mù.</p>
+          <p className="text-gray-400 font-medium text-sm mt-1">Cửa hàng của bạn đang có {products.length} sản phẩm, {mysteryBoxes.length} hộp mù và {combos.length} combo.</p>
         </div>
         <div className="flex items-center gap-3">
           {activeTab === 'NONG_SAN' && !bulkMode && (
@@ -275,11 +284,13 @@ const Products: React.FC<{ onNavigate: (id: string) => void }> = ({ onNavigate }
             id="tour-products-add-btn"
             onClick={() => {
               if (activeTab === 'BLIND_BOX') onNavigate('mystery-box-editor');
+              else if (activeTab === 'COMBO') onNavigate('combos');
               else onNavigate('add-product');
             }}
             className="px-6 py-3 bg-primary text-white rounded-2xl font-bold flex items-center gap-2 shadow-xl shadow-primary/20 hover:bg-primary-dark transition-all"
           >
-            <Plus className="size-5" /> Thêm sản phẩm mới
+            <Plus className="size-5" />
+            {activeTab === 'COMBO' ? 'Tạo combo mới' : activeTab === 'BLIND_BOX' ? 'Tạo hộp mù mới' : 'Thêm sản phẩm mới'}
           </button>
         </div>
       </div>
@@ -297,6 +308,12 @@ const Products: React.FC<{ onNavigate: (id: string) => void }> = ({ onNavigate }
           className={`px-6 py-2.5 rounded-xl text-xs font-black transition-all ${activeTab === 'BLIND_BOX' ? 'bg-purple-500 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}
         >
           HỘP MÙ ({mysteryBoxes.length})
+        </button>
+        <button
+          onClick={() => { setActiveTab('COMBO'); setPage(0); setCategoryFilter(''); setStatusFilter(''); }}
+          className={`px-6 py-2.5 rounded-xl text-xs font-black transition-all ${activeTab === 'COMBO' ? 'bg-green-500 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}
+        >
+          COMBO ({combos.length})
         </button>
       </div>
 
@@ -432,7 +449,7 @@ const Products: React.FC<{ onNavigate: (id: string) => void }> = ({ onNavigate }
             </select>
           )}
 
-          {activeTab !== 'BLIND_BOX' && (
+          {activeTab === 'NONG_SAN' && (
             <select 
               value={statusFilter} 
               onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}
@@ -475,7 +492,7 @@ const Products: React.FC<{ onNavigate: (id: string) => void }> = ({ onNavigate }
                     />
                   </th>
                 )}
-                <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">{activeTab === 'NONG_SAN' ? 'Sản phẩm' : 'Tên Combo / Hộp mù'}</th>
+                <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">{activeTab === 'NONG_SAN' ? 'Sản phẩm' : activeTab === 'COMBO' ? 'Combo nguyên liệu' : 'Hộp mù'}</th>
                 {activeTab === 'NONG_SAN' && <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Unit / DVT</th>}
                 <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Giá bán</th>
                 {activeTab === 'NONG_SAN' && <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Tồn kho (kg)</th>}
@@ -640,6 +657,49 @@ const Products: React.FC<{ onNavigate: (id: string) => void }> = ({ onNavigate }
               );})}
               {activeTab === 'BLIND_BOX' && filteredBoxes.length === 0 && (
                 <tr><td colSpan={4} className="px-10 py-10 text-center text-gray-400 font-bold">Không tìm thấy Hộp mù nào.</td></tr>
+              )}
+
+              {/* Combo Rows */}
+              {activeTab === 'COMBO' && currentPageData.map((combo: BuildComboResponse) => {
+                const remaining = (combo.totalQuantity || 0) - (combo.soldQuantity || 0);
+                return (
+                  <tr key={combo.id} className="hover:bg-gray-50/50 transition-colors">
+                    <td className="px-6 py-5">
+                      <div className="flex items-center gap-4">
+                        <div className="size-12 rounded-2xl overflow-hidden shadow-sm bg-green-100 flex items-center justify-center text-green-600 flex-shrink-0">
+                          {combo.imageUrl
+                            ? <img src={combo.imageUrl} className="w-full h-full object-cover" />
+                            : <ChefHat className="size-6" />
+                          }
+                        </div>
+                        <div>
+                          <p className="text-sm font-black line-clamp-1 max-w-[200px] text-green-700">{combo.comboName}</p>
+                          <p className="text-[10px] text-gray-400 font-bold tracking-wider">ID: {combo.id} · {combo.items?.length || 0} nguyên liệu</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-5 text-center text-sm font-black text-gray-800">{(combo.discountPrice || 0).toLocaleString('vi-VN')}đ</td>
+                    <td className="px-6 py-5 text-center">
+                      {combo.totalQuantity != null ? (
+                        remaining > 0
+                          ? <span className="px-2 py-1 rounded-lg text-[10px] font-black uppercase bg-green-50 text-green-600">Còn {remaining}</span>
+                          : <span className="px-2 py-1 rounded-lg text-[10px] font-black uppercase bg-gray-100 text-gray-400">Hết combo</span>
+                      ) : (
+                        <span className="px-2 py-1 rounded-lg text-[10px] font-black uppercase bg-blue-50 text-blue-500">Không giới hạn</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-5">
+                      <div className="flex items-center justify-end gap-2">
+                        <button onClick={() => onNavigate(`combos/${combo.id}`)} className="size-9 bg-gray-50 text-primary rounded-xl flex items-center justify-center hover:bg-primary/10 transition-colors cursor-pointer">
+                          <Edit3 className="size-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {activeTab === 'COMBO' && filteredCombos.length === 0 && (
+                <tr><td colSpan={4} className="px-10 py-10 text-center text-gray-400 font-bold">Chưa có combo nào. Hãy tạo combo mới!</td></tr>
               )}
             </tbody>
           </table>
