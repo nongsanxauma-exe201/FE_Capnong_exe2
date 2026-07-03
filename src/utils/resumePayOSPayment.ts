@@ -32,6 +32,17 @@ export async function loadResumePaymentOptions(orderId: number): Promise<ResumeP
 export async function resumeSingleOrderPayment(orderId: number, existing?: PaymentResponse | null) {
   let payment = existing;
   if (!payment?.checkoutUrl) {
+    // Try existing PENDING payment first to avoid ORDER_NOT_PAYABLE on retry
+    try {
+      const existingRes = await paymentService.getLatestPendingByOrderId(orderId);
+      if (existingRes?.result?.checkoutUrl) {
+        payment = existingRes.result;
+      }
+    } catch {
+      // No existing pending payment, will create a new one below
+    }
+  }
+  if (!payment?.checkoutUrl) {
     const created = await paymentService.createPaymentPayOS({ orderId, amount: 0 });
     payment = created.result;
   }
@@ -79,6 +90,17 @@ export async function resumeSingleBatchOrderPayment(
   amount: number,
   triggerOrderId: number,
 ) {
+  // Try to reuse an existing PENDING payment first to avoid ORDER_NOT_PAYABLE on retry
+  try {
+    const existingRes = await paymentService.getLatestPendingByOrderId(orderId);
+    if (existingRes?.result?.checkoutUrl) {
+      redirectToPayOSCheckout(existingRes.result, triggerOrderId);
+      return;
+    }
+  } catch {
+    // No existing pending payment — proceed to create a new one
+  }
+
   const res = await paymentService.createPaymentPayOS({ orderId, amount });
   if (!res.result?.checkoutUrl) {
     throw new Error('Không thể tạo link thanh toán cho đơn hàng.');
@@ -86,14 +108,32 @@ export async function resumeSingleBatchOrderPayment(
   redirectToPayOSCheckout(res.result, triggerOrderId);
 }
 
+export type ResumePayMode = 'batch-all' | 'individual';
+
 export async function handleResumePaymentClick(
   orderId: number,
   onShowBatchModal: (options: ResumePaymentOptionsResponse) => void,
+  payMode?: ResumePayMode,
 ) {
   const options = await loadResumePaymentOptions(orderId);
+
   if (!options.isBatch) {
     await resumeSingleOrderPayment(orderId, options.singleOrderPayment);
     return;
   }
+
+  if (payMode === 'batch-all') {
+    await resumePayAllBatchPayment(options);
+    return;
+  }
+
+  if (payMode === 'individual') {
+    const unpaid = options.unpaidOrders?.find(o => o.orderId === orderId);
+    const amount = unpaid?.amount ?? 0;
+    await resumeSingleBatchOrderPayment(orderId, amount, orderId);
+    return;
+  }
+
+  // Default: show modal
   onShowBatchModal(options);
 }

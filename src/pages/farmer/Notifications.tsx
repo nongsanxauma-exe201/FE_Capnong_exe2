@@ -5,6 +5,7 @@ import { Bell, Clock, ShoppingCart, Info, TrendingUp, CheckCircle2, ChevronRight
 import { notificationService, NotificationItem } from '../../services';
 import { useResumePayment } from '../../hooks/useResumePayment';
 import ResumePaymentModal from '../../components/payment/ResumePaymentModal';
+import { globalShowAlert } from '../../contexts/PopupContext';
 
 type UiNotificationType = 'order' | 'market' | 'system' | 'info';
 
@@ -44,7 +45,9 @@ const FarmerNotifications: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedNotification, setSelectedNotification] = useState<UiNotification | null>(null);
-  const { openResumePayment, resumeOptions, closeResumePayment } = useResumePayment();
+  const { openResumePayment, resumeOptions, closeResumePayment } = useResumePayment((msg) => {
+    globalShowAlert(msg, 'Thông báo', 'warning');
+  });
 
   useEffect(() => {
     const fetchNotifications = async () => {
@@ -244,7 +247,7 @@ const FarmerNotifications: React.FC = () => {
                     <button
                       onClick={async () => {
                         setSelectedNotification(null);
-                        await openResumePayment(orderId);
+                        await openResumePayment(orderId, 'individual');
                       }}
                       className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white text-sm font-black rounded-2xl transition-all shadow-lg shadow-amber-500/20"
                     >

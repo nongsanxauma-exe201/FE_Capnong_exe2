@@ -8,6 +8,7 @@ import { useNotificationWebSocket } from '../../services/useNotificationWebSocke
 import { useAuth } from '../../contexts/AuthContext';
 import { useResumePayment } from '../../hooks/useResumePayment';
 import ResumePaymentModal from '../../components/payment/ResumePaymentModal';
+import { globalShowAlert } from '../../contexts/PopupContext';
 
 interface HeaderProps {
   // Kept for backward compatibility but mostly internal refactored
@@ -33,7 +34,9 @@ const Header: React.FC<HeaderProps> = ({
   const [cartCount, setCartCount] = useState(0);
   const [searchInput, setSearchInput] = useState('');
   const notifRef = useRef<HTMLDivElement>(null);
-  const { openResumePayment, resumeOptions, closeResumePayment } = useResumePayment();
+  const { openResumePayment, resumeOptions, closeResumePayment } = useResumePayment((msg) => {
+    globalShowAlert(msg, 'Thông báo', 'warning');
+  });
 
   // Kích hoạt WebSocket để nhận thông báo realtime
   useNotificationWebSocket({
@@ -464,7 +467,7 @@ const Header: React.FC<HeaderProps> = ({
                   <button
                     onClick={async () => {
                       setSelectedNotification(null);
-                      await openResumePayment(orderId);
+                      await openResumePayment(orderId, 'individual');
                     }}
                     className="flex-1 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-black rounded-lg transition-colors"
                   >
