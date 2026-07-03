@@ -10,6 +10,7 @@ import './App.css';
 import { useNotificationWebSocket } from './services/useNotificationWebSocket';
 import { ensurePendingPayOSRolledBack, getPendingPayOSPayment, clearPendingPayOSPayment, getRestoredPayOSCart, saveRestoredPayOSCart } from './utils/pendingPayOSPayment';
 import { paymentService } from './services';
+import { globalShowAlert } from './contexts/PopupContext';
 import { useResumePayment } from './hooks/useResumePayment';
 import ResumePaymentModal from './components/payment/ResumePaymentModal';
 
@@ -64,9 +65,13 @@ const PendingPayOSRollbackGuard: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { isAuthenticated, loading } = useAuth();
-  const [pendingInfo, setPendingInfo] = React.useState<{ orderId: number; orderCode: string } | null>(null);
+  const [pendingInfo, setPendingInfo] = React.useState<{ orderId: number; orderCode: string; orderIds?: number[] } | null>(null);
   const notifiedRef = React.useRef(false);
-  const { openResumePayment, resumeOptions, closeResumePayment } = useResumePayment();
+  const { openResumePayment, resumeOptions, closeResumePayment } = useResumePayment((msg) => {
+    // Clear stale pending data when payment can no longer proceed (already paid, cancelled, etc.)
+    clearPendingPayOSPayment();
+    globalShowAlert(msg, 'Thông báo', 'warning');
+  });
 
   const checkPending = React.useCallback(() => {
     if (loading || !isAuthenticated) return;
@@ -82,7 +87,7 @@ const PendingPayOSRollbackGuard: React.FC = () => {
       notifiedRef.current = true;
       paymentService.notifyPendingPayment(pending.orderCode).catch(() => {});
     }
-    setPendingInfo({ orderId: pending.orderId, orderCode: pending.orderCode ?? '' });
+    setPendingInfo({ orderId: pending.orderId, orderCode: pending.orderCode ?? '', orderIds: pending.orderIds });
   }, [isAuthenticated, loading, location.pathname]);
 
   React.useEffect(() => {
@@ -102,14 +107,10 @@ const PendingPayOSRollbackGuard: React.FC = () => {
 
   const handleContinuePayment = async () => {
     if (!pendingInfo) return;
-    try {
-      await openResumePayment(pendingInfo.orderId);
-      notifiedRef.current = false;
-      setPendingInfo(null);
-    } catch {
-      setPendingInfo(null);
-      clearPendingPayOSPayment();
-    }
+    const orderId = pendingInfo.orderId;
+    setPendingInfo(null);
+    notifiedRef.current = false;
+    await openResumePayment(orderId, 'individual');
   };
 
   const handleCancelPending = async () => {
@@ -141,6 +142,12 @@ const PendingPayOSRollbackGuard: React.FC = () => {
             <p className="text-xs text-amber-700 mt-0.5">
               Đơn hàng #{pendingInfo.orderId} đang chờ bạn hoàn tất thanh toán.
             </p>
+            <button
+              onClick={() => { handleDismiss(); navigate('/my-orders'); }}
+              className="text-[10px] text-amber-600 underline mt-1 hover:text-amber-800"
+            >
+              Xem tất cả đơn hàng →
+            </button>
           </div>
           <button
             onClick={handleDismiss}
