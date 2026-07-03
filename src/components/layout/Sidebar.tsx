@@ -73,6 +73,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, user, currentPath, onNavigate, 
 
   const farmerMenu = [
     { name: 'Tổng quan', icon: LayoutDashboard, id: 'overview' },
+    { name: 'Báo cáo doanh thu', icon: BarChart3, id: 'revenue-report' },
     { name: 'Sản phẩm', icon: Package, id: 'products' },
     { name: 'Đơn hàng', icon: ShoppingCart, id: 'orders' },
     { name: 'Phương tiện', icon: Truck, id: 'vehicles' },

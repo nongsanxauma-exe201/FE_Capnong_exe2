@@ -127,21 +127,45 @@ const PaymentCancel: React.FC = () => {
 
           {/* Actions */}
           <div className="w-full space-y-3">
-            <button
-              onClick={handleGoToMyOrders}
-              className="w-full py-4 bg-primary hover:bg-primary/90 text-white font-black rounded-2xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-primary/20"
-            >
-              <Package className="size-5" />
-              Tới đơn hàng của tôi
-            </button>
+            {!isExplicitPayOSCancel && orderCode && (
+              <button
+                onClick={handleGoToMyOrders}
+                className="w-full py-4 bg-primary hover:bg-primary/90 text-white font-black rounded-2xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-primary/20"
+              >
+                <Package className="size-5" />
+                Tiếp tục thanh toán
+              </button>
+            )}
 
-            <button
-              onClick={handleGoHome}
-              className="w-full py-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-2xl flex items-center justify-center gap-2 transition-all"
-            >
-              Quay lại trang chủ
-              <ArrowRight className="size-4" />
-            </button>
+            {isExplicitPayOSCancel && (
+              <button
+                onClick={handleGoToMyOrders}
+                className="w-full py-4 bg-primary hover:bg-primary/90 text-white font-black rounded-2xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-primary/20"
+              >
+                <Package className="size-5" />
+                Tới đơn hàng của tôi
+              </button>
+            )}
+
+            {!isExplicitPayOSCancel && orderCode && (
+              <button
+                onClick={handleGoHome}
+                className="w-full py-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-2xl flex items-center justify-center gap-2 transition-all"
+              >
+                Quay lại trang chủ
+                <ArrowRight className="size-4" />
+              </button>
+            )}
+
+            {isExplicitPayOSCancel && (
+              <button
+                onClick={handleGoHome}
+                className="w-full py-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-2xl flex items-center justify-center gap-2 transition-all"
+              >
+                Quay lại trang chủ
+                <ArrowRight className="size-4" />
+              </button>
+            )}
           </div>
         </div>
       </div>

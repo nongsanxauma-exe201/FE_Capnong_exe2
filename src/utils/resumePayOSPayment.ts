@@ -1,0 +1,139 @@
+import {
+  paymentService,
+  type PaymentResponse,
+  type ResumePaymentOptionsResponse,
+} from '../services/payment.service';
+import { savePendingPayOSPayment } from './pendingPayOSPayment';
+
+const formatVnd = (value: number) => `${Number(value ?? 0).toLocaleString('vi-VN')}đ`;
+
+export { formatVnd };
+
+export function redirectToPayOSCheckout(payment: PaymentResponse, triggerOrderId: number) {
+  if (!payment.checkoutUrl) {
+    throw new Error('Không tìm thấy link thanh toán.');
+  }
+
+  savePendingPayOSPayment(payment, triggerOrderId, {
+    batchId: payment.batchId ?? undefined,
+    orderIds: payment.orderIds,
+  });
+  window.location.href = payment.checkoutUrl;
+}
+
+export async function loadResumePaymentOptions(orderId: number): Promise<ResumePaymentOptionsResponse> {
+  const res = await paymentService.getResumePaymentOptions(orderId);
+  if (!res?.result) {
+    throw new Error('Không thể tải tùy chọn thanh toán.');
+  }
+  return res.result;
+}
+
+export async function resumeSingleOrderPayment(orderId: number, existing?: PaymentResponse | null) {
+  let payment = existing;
+  if (!payment?.checkoutUrl) {
+    // Try existing PENDING payment first to avoid ORDER_NOT_PAYABLE on retry
+    try {
+      const existingRes = await paymentService.getLatestPendingByOrderId(orderId);
+      if (existingRes?.result?.checkoutUrl) {
+        payment = existingRes.result;
+      }
+    } catch {
+      // No existing pending payment, will create a new one below
+    }
+  }
+  if (!payment?.checkoutUrl) {
+    const created = await paymentService.createPaymentPayOS({ orderId, amount: 0 });
+    payment = created.result;
+  }
+  if (!payment?.checkoutUrl) {
+    throw new Error('Không tìm thấy link thanh toán.');
+  }
+  redirectToPayOSCheckout(payment, orderId);
+}
+
+export async function resumePayAllBatchPayment(
+  options: ResumePaymentOptionsResponse,
+) {
+  if (!options.batchId || !options.payAllOption) {
+    throw new Error('Thiếu thông tin thanh toán batch.');
+  }
+
+  const triggerOrderId = options.triggerOrderId ?? options.unpaidOrders?.[0]?.orderId ?? 0;
+  const payAll = options.payAllOption;
+
+  if (payAll.canReuseExistingLink && payAll.checkoutUrl) {
+    redirectToPayOSCheckout({
+      checkoutUrl: payAll.checkoutUrl,
+      payosOrderCode: payAll.payosOrderCode,
+      amount: payAll.amount,
+      batchId: options.batchId,
+      orderIds: options.unpaidOrders?.map((o) => o.orderId),
+      paymentScope: 'BATCH',
+      id: 0,
+      orderId: triggerOrderId,
+      paymentGateway: 'PAYOS',
+      status: 'PENDING',
+    }, triggerOrderId);
+    return;
+  }
+
+  const res = await paymentService.createBatchPayOS(options.batchId);
+  if (!res.result?.checkoutUrl) {
+    throw new Error('Không thể tạo link thanh toán batch.');
+  }
+  redirectToPayOSCheckout(res.result, triggerOrderId);
+}
+
+export async function resumeSingleBatchOrderPayment(
+  orderId: number,
+  amount: number,
+  triggerOrderId: number,
+) {
+  // Try to reuse an existing PENDING payment first to avoid ORDER_NOT_PAYABLE on retry
+  try {
+    const existingRes = await paymentService.getLatestPendingByOrderId(orderId);
+    if (existingRes?.result?.checkoutUrl) {
+      redirectToPayOSCheckout(existingRes.result, triggerOrderId);
+      return;
+    }
+  } catch {
+    // No existing pending payment — proceed to create a new one
+  }
+
+  const res = await paymentService.createPaymentPayOS({ orderId, amount });
+  if (!res.result?.checkoutUrl) {
+    throw new Error('Không thể tạo link thanh toán cho đơn hàng.');
+  }
+  redirectToPayOSCheckout(res.result, triggerOrderId);
+}
+
+export type ResumePayMode = 'batch-all' | 'individual';
+
+export async function handleResumePaymentClick(
+  orderId: number,
+  onShowBatchModal: (options: ResumePaymentOptionsResponse) => void,
+  payMode?: ResumePayMode,
+) {
+  const options = await loadResumePaymentOptions(orderId);
+
+  if (!options.isBatch) {
+    await resumeSingleOrderPayment(orderId, options.singleOrderPayment);
+    return;
+  }
+
+  if (payMode === 'batch-all') {
+    await resumePayAllBatchPayment(options);
+    return;
+  }
+
+  if (payMode === 'individual') {
+    const unpaid = options.unpaidOrders?.find(o => o.orderId === orderId);
+    const amount = unpaid?.amount ?? 0;
+    await resumeSingleBatchOrderPayment(orderId, amount, orderId);
+    return;
+  }
+
+  // Default: show modal
+  onShowBatchModal(options);
+}

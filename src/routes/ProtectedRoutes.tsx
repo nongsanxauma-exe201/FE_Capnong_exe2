@@ -7,6 +7,7 @@ import Checkout from '../pages/auth/Checkout';
 import Success from '../pages/auth/Success';
 import Tracking from '../pages/auth/Tracking';
 import MyOrders from '../pages/auth/MyOrders';
+import OrderDetail from '../pages/auth/OrderDetail';
 import MyVouchers from '../pages/auth/MyVouchers';
 import MyReturns from '../pages/auth/MyReturns';
 import UserProfile from '../pages/auth/UserProfile';
@@ -38,7 +39,12 @@ const ProtectedRoutes = () => {
             <Route path="/checkout" element={
                 <ProtectedRoute>
                     <Checkout
-                        onComplete={(id) => navigate(`/success?orderId=${id}`)}
+                        onComplete={(id, orderIds) => {
+                          const qs = orderIds && orderIds.length > 1
+                            ? `orderId=${id}&orderIds=${orderIds.join(',')}`
+                            : `orderId=${id}`;
+                          navigate(`/success?${qs}`);
+                        }}
                         onBack={handleCheckoutBack}
                     />
                 </ProtectedRoute>
@@ -53,9 +59,17 @@ const ProtectedRoutes = () => {
                     <Tracking onBack={() => navigate(-1)} orderId={0} />
                 </ProtectedRoute>
             } />
+            <Route path="/my-orders/:orderId" element={
+                <ProtectedRoute>
+                    <OrderDetail />
+                </ProtectedRoute>
+            } />
             <Route path="/my-orders" element={
                 <ProtectedRoute>
-                    <MyOrders onBack={() => navigate('/')} onViewTracking={(id) => navigate(`/tracking/${id}`)} />
+                    <MyOrders
+                        onBack={() => navigate('/')}
+                        onViewTracking={(id) => navigate(`/tracking/${id}`)}
+                    />
                 </ProtectedRoute>
             } />
             <Route path="/my-vouchers" element={
