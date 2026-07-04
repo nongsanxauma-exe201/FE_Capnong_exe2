@@ -146,9 +146,6 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
 
                if (checkoutCart.items.length === 0) {
                   setError('Thực đơn không có combo nào để thanh toán.');
-               } else {
-                  const firstItem = checkoutCart.items[0];
-                  if ((firstItem as any).shopOwnerId) setShopId((firstItem as any).shopOwnerId);
                }
             } else {
                // Normal cart checkout
@@ -192,9 +189,6 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
 
                   if (items.length === 0) {
                      setError('Không có sản phẩm nào được chọn để thanh toán!');
-                  } else {
-                     const firstItem = items[0];
-                     if (firstItem.shopOwnerId) setShopId(firstItem.shopOwnerId);
                   }
                } else {
                   setError('Không thể tải giỏ hàng.');
@@ -813,11 +807,6 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
                                     )}
                                     <div className="flex justify-between"><span className="text-gray-500">Phí ship</span><span className="font-bold">{shop.shippingFee.toLocaleString('vi-VN')}đ</span></div>
                                  </div>
-                                 <p className="text-gray-500 font-medium">
-                                    {item.itemType === 'BUILD_COMBO'
-                                      ? `Số combo: ${Math.round(getQuantityKg(item))}`
-                                      : `Khối lượng: ${formatKg(getQuantityKg(item))} kg`}
-                                 </p>
                               </div>
                            );
                         })}
