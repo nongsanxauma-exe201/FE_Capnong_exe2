@@ -1,7 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { ArrowLeft, Camera, Info, Truck, HelpCircle, AlertTriangle, X, Star, Tag } from 'lucide-react';
 import SubmissionSuccess from './SubmissionSuccessProps';
-import { productService } from '../../services';
+import { productService, categoryService } from '../../services';
+import type { CategoryResponse } from '../../services';
 
 const MAX_IMAGES = 8;
 
@@ -10,13 +11,22 @@ const normalizeWholeNumberInput = (value: string) => {
   if (digits === '') return '';
   return digits.replace(/^0+/, '') || '0';
 };
+const normalizeDecimalInput = (value: string) => value.replace(/[^\d.]/g, '').replace(/(\..*)\./g, '$1');
 
 const parseWholeNumber = (value: string) => (value === '' ? 0 : Number(value));
+const parsePositiveDecimal = (value: string) => (value === '' ? 0 : Number(value));
 
 const getTodayDateString = () => {
   const now = new Date();
   now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
   return now.toISOString().slice(0, 10);
+};
+
+const getCurrentDatetimeLocal = () => {
+  const now = new Date();
+  now.setSeconds(0, 0);
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+  return now.toISOString().slice(0, 16);
 };
 
 const AddProduct: React.FC<{ onBack: () => void }> = ({ onBack }) => {
@@ -25,12 +35,12 @@ const AddProduct: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [price, setPrice] = useState('');
   const [stock, setStock] = useState('');
   const [description, setDescription] = useState('');
-  const [unit, setUnit] = useState('kg');
   const [categoryId, setCategoryId] = useState<number>(1);
   const [expiryDate, setExpiryDate] = useState('');
   const [discountPercent, setDiscountPercent] = useState('');
   const [discountStartDate, setDiscountStartDate] = useState('');
   const [discountEndDate, setDiscountEndDate] = useState('');
+  const [categories, setCategories] = useState<CategoryResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,6 +48,16 @@ const AddProduct: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [previews, setPreviews] = useState<string[]>([]);
   const [primaryIdx, setPrimaryIdx] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    categoryService.getAll().then(res => {
+      const list = res.result ?? [];
+      if (list.length > 0) {
+        setCategories(list);
+        setCategoryId(list[0].id);
+      }
+    }).catch(() => {});
+  }, []);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
@@ -59,9 +79,9 @@ const AddProduct: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
   const handleSubmit = async () => {
     const sellingPrice = parseWholeNumber(price);
-    const stockQuantity = parseWholeNumber(stock);
+    const stockKg = parsePositiveDecimal(stock);
 
-    if (!productName || sellingPrice <= 0 || stockQuantity <= 0) {
+    if (!productName || sellingPrice <= 0 || stockKg <= 0) {
       setError('Vui lòng điền đầy đủ thông tin sản phẩm và giá hợp lệ.');
       return;
     }
@@ -76,6 +96,19 @@ const AddProduct: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       setError('Phần trăm giảm giá phải từ 0 đến 99.');
       return;
     }
+    const minDiscountDateTime = getCurrentDatetimeLocal();
+    if (discountStartDate && discountStartDate < minDiscountDateTime) {
+      setError('Ngày bắt đầu giảm giá không được chọn trong quá khứ.');
+      return;
+    }
+    if (discountEndDate && discountEndDate < minDiscountDateTime) {
+      setError('Ngày kết thúc giảm giá không được chọn trong quá khứ.');
+      return;
+    }
+    if (discountStartDate && discountEndDate && discountEndDate < discountStartDate) {
+      setError('Ngày kết thúc giảm giá phải sau ngày bắt đầu.');
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -87,7 +120,14 @@ const AddProduct: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
       const response = await productService.createProduct(
         {
-          productName, sellingPrice, stockQuantity, description, unit, categoryId,
+          productName,
+          sellingPrice,
+          pricePerKg: sellingPrice,
+          stockQuantity: Math.floor(stockKg),
+          stockKg,
+          description,
+          unit: 'kg',
+          categoryId,
           expiryDate: expiryDate || undefined,
           discountPercent: pct,
           discountStartDate: discountStartDate ? discountStartDate + ':00' : undefined,
@@ -107,6 +147,7 @@ const AddProduct: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   if (isSubmitted) return <SubmissionSuccess onReturn={onBack} />;
 
   const minExpiryDate = getTodayDateString();
+  const minDiscountDateTime = getCurrentDatetimeLocal();
 
   return (
     <div className="flex flex-col gap-8 p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -145,23 +186,17 @@ const AddProduct: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                   placeholder="Ví dụ: Xà lách xoăn Đà Lạt"
                   className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-primary/10 focus:bg-white transition-all" />
               </div>
-              <div className="grid grid-cols-2 gap-8">
+              <div className="grid grid-cols-1 gap-8">
                 <div className="flex flex-col gap-3">
                   <label className="text-sm font-bold text-gray-700">Danh mục</label>
                   <select value={categoryId} onChange={e => setCategoryId(Number(e.target.value))}
                     className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold text-gray-600 outline-none appearance-none cursor-pointer">
-                    <option value={1}>Củ</option>
-                    <option value={2}>Trái cây</option>
-                    <option value={3}>Khác</option>
-                  </select>
-                </div>
-                <div className="flex flex-col gap-3">
-                  <label className="text-sm font-bold text-gray-700">Đơn vị tính</label>
-                  <select value={unit} onChange={e => setUnit(e.target.value)}
-                    className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold text-gray-600 outline-none appearance-none cursor-pointer">
-                    <option value="kg">Kilogram (kg)</option>
-                    <option value="túi">Túi / Bó</option>
-                    <option value="thùng">Thùng</option>
+                    {categories.length === 0
+                      ? <option value={0} disabled>Đang tải danh mục...</option>
+                      : categories.map(cat => (
+                          <option key={cat.id} value={cat.id}>{cat.name}</option>
+                        ))
+                    }
                   </select>
                 </div>
               </div>
@@ -181,9 +216,9 @@ const AddProduct: React.FC<{ onBack: () => void }> = ({ onBack }) => {
               <h4 className="font-black text-gray-800 uppercase tracking-tight">Thông số vận chuyển & Bảo quản</h4>
             </div>
             <div className="space-y-8">
-              <div className="grid grid-cols-2 gap-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="flex flex-col gap-3">
-                  <label className="text-sm font-bold text-gray-700">Giá bán (VNĐ/{unit})</label>
+                  <label className="text-sm font-bold text-gray-700">Giá bán (VNĐ/kg)</label>
                   <div className="relative">
                     <input type="text" inputMode="numeric" value={price} onChange={e => setPrice(normalizeWholeNumberInput(e.target.value))}
                       placeholder="Nhập giá"
@@ -192,12 +227,34 @@ const AddProduct: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                   </div>
                 </div>
                 <div className="flex flex-col gap-3">
-                  <label className="text-sm font-bold text-gray-700">Số lượng tồn kho ({unit})</label>
-                  <input type="text" inputMode="numeric" value={stock} onChange={e => setStock(normalizeWholeNumberInput(e.target.value))}
-                    placeholder="Nhập số lượng"
+                  <label className="text-sm font-bold text-gray-700">Tồn kho (kg)</label>
+                  <input type="text" inputMode="decimal" value={stock} onChange={e => setStock(normalizeDecimalInput(e.target.value))}
+                    placeholder="VD: 100 hoặc 25.5"
                     className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-primary/10 transition-all" />
                 </div>
               </div>
+              {/* Banner phí nền tảng 10% */}
+              <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 flex items-start gap-3">
+                <div className="size-8 bg-blue-100 rounded-xl flex items-center justify-center shrink-0 mt-0.5">
+                  <Info className="size-4 text-blue-600" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs font-black text-blue-800 mb-1">💡 Phí nền tảng 10%</p>
+                  <p className="text-[11px] text-blue-700 font-medium leading-relaxed">
+                    Hệ thống thu <span className="font-black">10%</span> trên doanh thu thuần (tiền hàng,
+                    không tính phí ship) của mỗi đơn thành công. Hãy cộng thêm khoảng{' '}
+                    <span className="font-black">10–15%</span> vào giá bán để đảm bảo lợi nhuận.
+                  </p>
+                  {parseWholeNumber(price) > 0 && (
+                    <p className="text-[10px] font-bold text-blue-600 mt-1.5">
+                      Ví dụ với giá {parseWholeNumber(price).toLocaleString('vi-VN')}đ →
+                      phí sàn ~{Math.round(parseWholeNumber(price) * 0.1).toLocaleString('vi-VN')}đ →
+                      bạn nhận ~{Math.round(parseWholeNumber(price) * 0.9).toLocaleString('vi-VN')}đ/kg
+                    </p>
+                  )}
+                </div>
+              </div>
+
               <div className="flex flex-col gap-4">
                 <label className="text-sm font-bold text-gray-700">Hạn sử dụng</label>
                 <input type="date" value={expiryDate} min={minExpiryDate}
@@ -249,6 +306,7 @@ const AddProduct: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                   <input
                     type="datetime-local"
                     value={discountStartDate}
+                    min={minDiscountDateTime}
                     onChange={e => setDiscountStartDate(e.target.value)}
                     className="w-full px-5 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-medium text-gray-600 outline-none"
                   />
@@ -259,6 +317,7 @@ const AddProduct: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                   <input
                     type="datetime-local"
                     value={discountEndDate}
+                    min={discountStartDate || minDiscountDateTime}
                     onChange={e => setDiscountEndDate(e.target.value)}
                     className="w-full px-5 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-medium text-gray-600 outline-none"
                   />

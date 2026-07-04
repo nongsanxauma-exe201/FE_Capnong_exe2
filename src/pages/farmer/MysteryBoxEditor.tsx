@@ -131,7 +131,8 @@ const MysteryBoxEditor: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const totalProductsPrice = useMemo(() => {
     return selectedProducts.reduce((sum, p) => {
       const product = availableProducts.find(ap => ap.id === p.productId);
-      return sum + (product?.sellingPrice ?? 0) * p.quantity;
+      const effectivePrice = product?.salePrice ?? product?.sellingPrice ?? 0;
+      return sum + effectivePrice * p.quantity;
     }, 0);
   }, [selectedProducts, availableProducts]);
 
@@ -155,6 +156,7 @@ const MysteryBoxEditor: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       } else {
         await mysteryBoxService.createMysteryBox({ boxType, price: priceNum, description, note, totalQuantity: qtyNum, products }, boxImage || undefined);
       }
+      await globalShowAlert(isEditMode ? 'Cập nhật hộp mù thành công!' : 'Tạo hộp mù thành công!', 'Thành công', 'success');
       onBack();
     } catch (err: any) {
       setError(err?.data?.message || 'Có lỗi xảy ra. Vui lòng thử lại.');
@@ -336,7 +338,7 @@ const MysteryBoxEditor: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         <div className="flex-1">
                           <p className="text-sm font-black text-gray-800 line-clamp-1">{p.productName}</p>
                           <p className="text-xs text-primary font-bold">
-                            {((product?.sellingPrice ?? 0) * p.quantity).toLocaleString('vi-VN')}đ
+                            {((product?.salePrice ?? product?.sellingPrice ?? 0) * p.quantity).toLocaleString('vi-VN')}đ
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
@@ -394,15 +396,15 @@ const MysteryBoxEditor: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                   {availableProducts.map((product) => {
                     const isSelected = selectedProducts.some(p => p.productId === product.id);
                     return (
-                      <button key={product.id} onClick={() => !isSelected && addProduct(product)}
+                      <button key={product.id} onClick={() => isSelected ? removeProduct(product.id) : addProduct(product)}
                         className={`w-full text-left p-3 rounded-xl border-2 transition-all ${isSelected ? 'border-primary bg-primary/5' : 'border-gray-100 bg-white hover:border-primary/30'}`}>
                         <div className="flex items-start gap-3">
                           <img src={product.imageUrl || `https://picsum.photos/seed/${product.id}/60/60`}
                             className="size-12 rounded-lg object-cover flex-shrink-0 bg-gray-50" />
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-bold text-gray-800 mb-1 truncate">{product.productName}</p>
-                            <p className="text-xs text-gray-500 mb-1">Tồn: {product.stockQuantity} {product.unit}</p>
-                            <p className="text-xs font-bold text-primary">{(product.sellingPrice || 0).toLocaleString('vi-VN')}đ/{product.unit}</p>
+                            <p className="text-xs text-gray-500 mb-1">Tồn: {(product.stockKg ?? product.stockQuantity).toLocaleString('vi-VN', { maximumFractionDigits: 2 })} kg</p>
+                            <p className="text-xs font-bold text-primary">{((product.pricePerKg ?? product.sellingPrice) || 0).toLocaleString('vi-VN')}đ/kg</p>
                           </div>
                           {isSelected && (
                             <div className="size-5 bg-primary rounded-full flex items-center justify-center flex-shrink-0 mt-1">

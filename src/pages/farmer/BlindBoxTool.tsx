@@ -178,7 +178,7 @@ const BlindBoxTool: React.FC = () => {
                   </div>
                   <div className="text-center">
                     <p className="text-xs font-black text-gray-800 uppercase truncate px-2">{item.productName}</p>
-                    <p className="text-[10px] text-primary font-bold">Tồn: {item.stockQuantity} {item.unit}</p>
+                    <p className="text-[10px] text-primary font-bold">Tồn: {(item.stockKg ?? item.stockQuantity).toLocaleString('vi-VN', { maximumFractionDigits: 2 })} kg</p>
                     {selectedItems[item.id] !== undefined && (
                       <div className="flex items-center justify-center gap-2 mt-2" onClick={e => e.stopPropagation()}>
                         <button onClick={() => setItemQuantity(item.id, (selectedItems[item.id] || 1) - 1)} className="size-5 rounded-full bg-gray-100 hover:bg-primary/10 text-gray-600 flex items-center justify-center text-xs font-black">-</button>

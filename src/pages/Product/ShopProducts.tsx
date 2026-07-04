@@ -17,15 +17,15 @@ import {
   ShieldCheck,
   Award,
   Gift,
-  ChefHat,
-  Tag,
   Share2,
   Copy,
   Check,
   X,
   Facebook,
+  ThumbsUp,
+  ThumbsDown,
 } from 'lucide-react';
-import { productService, ProductResponse, userService, UserResponse, cartService, reviewService, ReviewResponse, mysteryBoxService, MysteryBox, comboService, BuildComboResponse, voucherService, VoucherResponse } from '../../services';
+import { productService, ProductResponse, userService, UserResponse, cartService, reviewService, ReviewResponse, mysteryBoxService, MysteryBox, voucherService, VoucherResponse } from '../../services';
 import { globalShowAlert } from '../../contexts/PopupContext';
 
 interface ShopProductsProps {
@@ -44,7 +44,6 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
   const navigate = useNavigate();
   const [products, setProducts] = useState<ProductResponse[]>([]);
   const [mysteryBoxes, setMysteryBoxes] = useState<MysteryBox[]>([]);
-  const [combos, setCombos] = useState<BuildComboResponse[]>([]);
   const [shopInfo, setShopInfo] = useState<UserResponse | null>(null);
   const [reviews, setReviews] = useState<ReviewResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,7 +52,6 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [addingToCart, setAddingToCart] = useState<number | null>(null);
   const [addingBoxToCart, setAddingBoxToCart] = useState<number | null>(null);
-  const [addingComboToCart, setAddingComboToCart] = useState<number | null>(null);
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [copied, setCopied] = useState(false);
   const [shopVouchers, setShopVouchers] = useState<VoucherResponse[]>([]);
@@ -61,6 +59,7 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
   const [canReceiveMap, setCanReceiveMap] = useState<Record<string, boolean>>({});
   const [voucherLoading, setVoucherLoading] = useState(false);
   const [voucherError, setVoucherError] = useState<string | null>(null);
+  const [reactingReviewId, setReactingReviewId] = useState<number | null>(null);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
@@ -69,14 +68,12 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
   useEffect(() => {
     const fetchShopData = async () => {
       setLoading(true);
-      console.log('[ShopProducts] Fetching data for shopId:', shopId);
       try {
-        const [productsRes, shopRes, reviewsRes, boxesRes, combosRes] = await Promise.all([
+        const [productsRes, shopRes, reviewsRes, boxesRes] = await Promise.all([
           productService.getForBuyer().catch(() => ({ result: [] })),
           userService.getUserById(shopId).catch(() => ({ result: null })),
           reviewService.getByShopId(shopId).catch(() => ({ result: [] })),
           mysteryBoxService.getForBuyer().catch(() => ({ result: [] })),
-          comboService.getByShop(shopId).catch(() => ({ result: [] }))
         ]);
 
         if (productsRes.result) {
@@ -98,9 +95,6 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
             boxesRes.result.filter((b: MysteryBox) => b.shopOwnerId === shopId)
           );
         }
-        if (combosRes.result) {
-          setCombos(combosRes.result);
-        }
       } catch (error) {
         console.error('Failed to load shop data', error);
       } finally {
@@ -118,7 +112,8 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
         setVoucherError(null);
         const response = await voucherService.getBuyerShopVouchers(shopId, 0, 3);
         const result = response.result;
-        const vouchers = Array.isArray(result) ? result : result?.content || [];
+        const vouchers = (Array.isArray(result) ? result : result?.content || [])
+          .filter((voucher) => voucher.voucherType === 'SHOP' && Number(voucher.shopId) === Number(shopId));
         setShopVouchers(vouchers);
 
         if (isAuthenticated && vouchers.length > 0) {
@@ -153,7 +148,7 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
     if (!isAuthenticated) { onOpenLogin(); return; }
     setAddingToCart(productId);
     try {
-      await cartService.addToCart({ productId, quantity: 1 });
+      await cartService.addToCart({ productId, quantity: 1, quantityKg: 1 });
       window.dispatchEvent(new Event('cart-updated'));
       globalShowAlert('Đã thêm vào giỏ hàng!', 'Thành công', 'success');
     } catch (error) {
@@ -177,19 +172,6 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
     }
   };
 
-  const handleAddComboToCart = async (combo: BuildComboResponse) => {
-    if (!isAuthenticated) { onOpenLogin(); return; }
-    setAddingComboToCart(combo.id);
-    try {
-      await cartService.addToCart({ buildComboId: combo.id, quantity: 1 });
-      window.dispatchEvent(new Event('cart-updated'));
-      globalShowAlert(`Đã thêm combo "${combo.comboName}" vào giỏ hàng!`, 'Thành công', 'success');
-    } catch {
-      globalShowAlert('Không thể thêm combo vào giỏ hàng. Vui lòng thử lại.', 'Lỗi', 'error');
-    } finally {
-      setAddingComboToCart(null);
-    }
-  };
 
   const handleReceiveVoucher = async (voucherCode: string) => {
     if (!isAuthenticated) { onOpenLogin(); return; }
@@ -210,6 +192,16 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
     }
   };
 
+  const handleReact = async (reviewId: number, reactionType: 'LIKE' | 'DISLIKE') => {
+    if (!isAuthenticated) { onOpenLogin(); return; }
+    if (reactingReviewId === reviewId) return;
+    try {
+      setReactingReviewId(reviewId);
+      const res = await reviewService.reactToReview(reviewId, reactionType);
+      if (res.result) setReviews(prev => prev.map(r => r.id === reviewId ? res.result! : r));
+    } catch { } finally { setReactingReviewId(null); }
+  };
+
   const handleChatNow = () => {
     if (!isAuthenticated) { onOpenLogin(); return; }
     window.dispatchEvent(new CustomEvent('open-chat-with-user', {
@@ -218,21 +210,17 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
   };
 
   // Filter and sort products
-  const categories = Array.from(new Set(products.map(p => p.unit || 'Khác')));
-
-  let filteredProducts = selectedCategory
-    ? products.filter(p => (p.unit || 'Khác') === selectedCategory)
-    : products;
+  let filteredProducts = products;
 
   if (sortBy === 'asc') {
-    filteredProducts = [...filteredProducts].sort((a, b) => a.sellingPrice - b.sellingPrice);
+    filteredProducts = [...filteredProducts].sort((a, b) => (a.pricePerKg ?? a.sellingPrice) - (b.pricePerKg ?? b.sellingPrice));
   } else if (sortBy === 'desc') {
-    filteredProducts = [...filteredProducts].sort((a, b) => b.sellingPrice - a.sellingPrice);
+    filteredProducts = [...filteredProducts].sort((a, b) => (b.pricePerKg ?? b.sellingPrice) - (a.pricePerKg ?? a.sellingPrice));
   } else if (sortBy === 'name') {
     filteredProducts = [...filteredProducts].sort((a, b) => a.productName.localeCompare(b.productName));
   }
 
-  const activeProducts = products.filter(p => p.stockQuantity > 0).length;
+  const activeProducts = products.filter(p => (p.stockKg ?? p.stockQuantity) > 0).length;
 
   // Calculate average rating
   const calculateAverageRating = () => {
@@ -249,11 +237,6 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
     || (products.length > 0 ? products[0].shopName : null)
     || 'Cửa hàng';
 
-  console.log('[ShopProducts] Display shopName:', shopName, {
-    fromShopInfo: shopInfo?.shopName || shopInfo?.fullName,
-    fromProduct: products.length > 0 ? products[0].shopName : null,
-    productsCount: products.length
-  });
 
   if (loading) {
     return (
@@ -539,33 +522,9 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
                 <h3 className="font-black text-gray-900 text-sm">Bộ lọc</h3>
               </div>
 
-              {/* Categories */}
-              <div className="space-y-2">
-                <h4 className="font-black text-gray-700 text-xs mb-3 uppercase">Đơn vị</h4>
-                <button
-                  onClick={() => setSelectedCategory(null)}
-                  className={`w-full text-left px-3 py-2 rounded-lg font-bold text-xs transition-all ${selectedCategory === null
-                    ? 'bg-primary/10 text-primary border border-primary/20'
-                    : 'text-gray-600 hover:bg-gray-50'
-                    }`}
-                >
-                  Tất cả ({products.length})
-                </button>
-                {categories.map(cat => {
-                  const count = products.filter(p => (p.unit || 'Khác') === cat).length;
-                  return (
-                    <button
-                      key={cat}
-                      onClick={() => setSelectedCategory(cat)}
-                      className={`w-full text-left px-3 py-2 rounded-lg font-bold text-xs transition-all ${selectedCategory === cat
-                        ? 'bg-primary/10 text-primary border border-primary/20'
-                        : 'text-gray-600 hover:bg-gray-50'
-                        }`}
-                    >
-                      {cat} ({count})
-                    </button>
-                  );
-                })}
+              <div className="rounded-2xl bg-primary/5 border border-primary/10 p-4">
+                <h4 className="font-black text-gray-700 text-xs mb-2 uppercase">Đơn vị thống nhất</h4>
+                <p className="text-xs font-bold text-gray-500">Tất cả sản phẩm được bán theo kg.</p>
               </div>
             </div>
           </div>
@@ -596,7 +555,9 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
                   ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
                   : 'grid-cols-1'
                   }`}>
-                  {filteredProducts.map(product => (
+                  {filteredProducts.map(product => {
+                    const basePricePerKg = product.pricePerKg ?? product.sellingPrice ?? 0;
+                    return (
                     <div
                       key={product.id}
                       className={`group ${viewMode === 'list' ? 'flex gap-4' : ''
@@ -610,14 +571,14 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
                           alt={product.productName}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                         />
-                        {product.stockQuantity <= 0 && (
+                        {(product.stockKg ?? product.stockQuantity) <= 0 && (
                           <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
                             <span className="text-white text-xs font-black">Hết hàng</span>
                           </div>
                         )}
                         <button
                           onClick={() => handleAddToCart(product.id)}
-                          disabled={product.stockQuantity <= 0 || addingToCart === product.id}
+                          disabled={(product.stockKg ?? product.stockQuantity) <= 0 || addingToCart === product.id}
                           className={`absolute ${viewMode === 'list' ? 'bottom-2 right-2 size-8' : 'bottom-3 right-3 size-10'
                             } bg-primary text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:scale-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed`}
                         >
@@ -634,27 +595,27 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
                         <h4 className="font-bold text-gray-800 text-sm mb-1 line-clamp-2 group-hover:text-primary transition-colors">
                           {product.productName}
                         </h4>
-                        <p className="text-xs text-gray-500 font-medium mb-2">{product.unit}</p>
+                        <p className="text-xs text-gray-500 font-medium mb-2">Đơn vị: kg</p>
 
                         <div className="flex flex-col gap-0.5 mb-2">
                           {product.salePrice != null && product.salePrice > 0 ? (
                             <>
                               <div className="flex items-center gap-1.5">
-                                <span className="text-xs text-red-500 line-through font-semibold">{(product.sellingPrice || 0).toLocaleString('vi-VN')}đ</span>
+                                <span className="text-xs text-red-500 line-through font-semibold">{basePricePerKg.toLocaleString('vi-VN')}đ/kg</span>
                                 <span className="bg-primary text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">-{product.discountPercent}%</span>
                               </div>
-                              <span className="text-lg font-black text-primary">{product.salePrice.toLocaleString('vi-VN')}đ</span>
+                              <span className="text-lg font-black text-primary">{product.salePrice.toLocaleString('vi-VN')}đ/kg</span>
                             </>
                           ) : (
-                            <span className="text-lg font-black text-primary">{(product.sellingPrice || 0).toLocaleString('vi-VN')}đ</span>
+                            <span className="text-lg font-black text-primary">{basePricePerKg.toLocaleString('vi-VN')}đ/kg</span>
                           )}
                         </div>
 
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] text-gray-500 font-medium">
-                            Còn: {product.stockQuantity} {product.unit}
+                            Còn: {(product.stockKg ?? product.stockQuantity).toLocaleString('vi-VN', { maximumFractionDigits: 2 })} kg
                           </span>
-                          {product.stockQuantity > 0 ? (
+                          {(product.stockKg ?? product.stockQuantity) > 0 ? (
                             <span className="text-[10px] text-primary font-bold">Còn hàng</span>
                           ) : (
                             <span className="text-[10px] text-red-600 font-bold">Hết hàng</span>
@@ -662,7 +623,7 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
                         </div>
                       </div>
                     </div>
-                  ))}
+                  )})}
                 </div>
               ) : (
                 <div className="py-16 text-center">
@@ -743,88 +704,6 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
           </div>
         )}
 
-        {/* Combos Section */}
-        {combos.length > 0 && (
-          <div className="mt-6">
-            <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-              <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-100">
-                <div className="size-9 bg-green-100 rounded-xl flex items-center justify-center">
-                  <ChefHat className="size-5 text-primary" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-black text-gray-900">Combo Nấu Ăn</h3>
-                  <p className="text-xs text-gray-400 font-bold">{combos.length} combo đang bán</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                {combos.map((combo) => {
-                  const totalOriginal = combo.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-                  const savings = totalOriginal - combo.discountPrice;
-                  return (
-                    <div key={combo.id} onClick={() => navigate(`/combo/${combo.id}`)} className="group bg-gradient-to-br from-green-50 to-white rounded-2xl border border-green-100 overflow-hidden hover:shadow-lg hover:border-green-200 transition-all cursor-pointer">
-                      {/* Header */}
-                      <div className="p-4 flex items-center gap-3 border-b border-green-100">
-                        <div className="size-11 bg-white rounded-xl flex items-center justify-center shadow-sm border border-green-100 overflow-hidden flex-shrink-0">
-                          {combo.imageUrl
-                            ? <img src={combo.imageUrl} className="w-full h-full object-cover" alt={combo.comboName} />
-                            : <ChefHat className="size-5 text-primary" />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-black text-gray-900 text-sm truncate">{combo.comboName}</h4>
-                          {combo.region && (
-                            <span className="inline-block text-[9px] font-black px-2 py-0.5 rounded-full bg-primary/10 text-primary mt-0.5">
-                              {combo.region === 'MIEN_BAC' ? '🌿 Miền Bắc' : combo.region === 'MIEN_TRUNG' ? '🌶 Miền Trung' : '🥥 Miền Nam'}
-                            </span>
-                          )}
-                          {combo.description && (
-                            <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">{combo.description}</p>
-                          )}
-                        </div>
-                        {savings > 0 && (
-                          <span className="bg-red-100 text-red-600 text-[10px] font-black px-2 py-1 rounded-full whitespace-nowrap">
-                            -{Math.round((savings / totalOriginal) * 100)}%
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Items list */}
-                      <div className="px-4 py-3 space-y-1.5">
-                        {combo.items.map((item) => (
-                          <div key={item.productId} className="flex items-center justify-between text-xs">
-                            <span className="text-gray-700 font-medium truncate flex-1 pr-2">• {item.productName}</span>
-                            <span className="text-gray-500 font-bold">x{item.quantity}</span>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Footer */}
-                      <div className="px-4 pb-4 pt-2">
-                        <div className="flex items-center justify-between mb-3">
-                          <div>
-                            <span className="text-lg font-black text-primary">{combo.discountPrice.toLocaleString('vi-VN')}đ</span>
-                            {savings > 0 && (
-                              <p className="text-[10px] text-primary font-bold flex items-center gap-1 mt-0.5">
-                                <Tag className="size-3" /> Tiết kiệm {savings.toLocaleString('vi-VN')}đ
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); navigate(`/combo/${combo.id}`); }}
-                          className="w-full px-3 py-2 bg-primary text-white text-xs font-black rounded-xl hover:bg-primary-dark transition-colors flex items-center justify-center gap-1.5"
-                        >
-                          <ChefHat className="size-3.5" />
-                          Chọn combo này
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Reviews Section */}
         {reviews.length > 0 && (
@@ -848,56 +727,81 @@ const ShopProducts: React.FC<ShopProductsProps> = ({
               </div>
 
               <div className="space-y-6">
-                {reviews.slice(0, 5).map((review) => (
-                  <div key={review.id} className="flex gap-4 pb-6 border-b border-gray-50 last:border-0 last:pb-0">
-                    {/* Avatar */}
-                    <div className="size-10 rounded-full bg-primary/10 flex items-center justify-center font-black text-primary text-sm border border-primary/20 shrink-0">
-                      {review.fullName ? review.fullName.charAt(0).toUpperCase() : 'U'}
-                    </div>
-
-                    <div className="flex-1">
-                      <div className="flex items-start justify-between mb-2">
-                        <div>
-                          <h4 className="font-bold text-gray-900 text-sm">
-                            {review.fullName || `Khách hàng #${review.buyerId}`}
-                          </h4>
-                          <div className="flex text-yellow-400 mt-1">
-                            {[...Array(5)].map((_, i) => (
-                              <Star key={i} className={`size-3 ${i < review.ratingStar ? 'fill-yellow-400' : 'text-gray-200'}`} />
-                            ))}
-                          </div>
-                        </div>
-                        <span className="text-xs text-gray-400 font-medium">
-                          Đơn #{review.orderDetailId}
-                        </span>
+                {reviews.map((review) => {
+                  const isLiked    = review.currentUserReaction === 'LIKE';
+                  const isDisliked = review.currentUserReaction === 'DISLIKE';
+                  const isReacting = reactingReviewId === review.id;
+                  return (
+                    <div key={review.id} className="flex gap-4 pb-6 border-b border-gray-50 last:border-0 last:pb-0">
+                      {/* Avatar */}
+                      <div className="size-10 rounded-full bg-primary/10 flex items-center justify-center font-black text-primary text-sm border border-primary/20 shrink-0">
+                        {review.fullName ? review.fullName.charAt(0).toUpperCase() : 'U'}
                       </div>
 
-                      <p className="text-gray-700 text-sm leading-relaxed mb-3">{review.comment}</p>
-
-                      {/* Shop Reply */}
-                      {review.replyFromShop && (
-                        <div className="mt-3 p-4 bg-gray-50 rounded-xl border border-gray-100">
-                          <div className="flex items-center gap-2 mb-2">
-                            <div className="size-5 bg-primary rounded-full flex items-center justify-center text-white">
-                              <MessageCircle className="size-3" />
+                      <div className="flex-1">
+                        <div className="flex items-start justify-between mb-2">
+                          <div>
+                            <h4 className="font-bold text-gray-900 text-sm">
+                              {review.fullName || `Khách hàng #${review.buyerId}`}
+                            </h4>
+                            <p className="text-[10px] text-gray-400 mt-0.5">
+                              {review.createAt ? new Date(review.createAt).toLocaleDateString('vi-VN') : 'Gần đây'}
+                            </p>
+                            <div className="flex text-yellow-400 mt-1">
+                              {[...Array(5)].map((_, i) => (
+                                <Star key={i} className={`size-3 ${i < review.ratingStar ? 'fill-yellow-400' : 'text-gray-200'}`} />
+                              ))}
                             </div>
-                            <span className="text-xs font-black text-gray-900">Phản hồi từ Shop</span>
+                            {(review.productName || review.boxType) && (
+                              <p className="text-[10px] text-gray-400 mt-0.5 italic">
+                                {review.productName ? `SP: ${review.productName}` : `Túi mù: ${review.boxType}`}
+                              </p>
+                            )}
                           </div>
-                          <p className="text-gray-600 text-sm pl-7 italic">{review.replyFromShop}</p>
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Hữu ích?</span>
+                            <button
+                              onClick={() => handleReact(review.id, 'LIKE')}
+                              disabled={isReacting}
+                              className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold transition-all border ${isLiked ? 'bg-green-500 text-white border-green-500' : 'bg-white text-gray-500 border-gray-200 hover:border-green-400 hover:text-green-600'} disabled:opacity-50`}
+                            >
+                              <ThumbsUp className="size-3" />({review.likeCount ?? 0})
+                            </button>
+                            <button
+                              onClick={() => handleReact(review.id, 'DISLIKE')}
+                              disabled={isReacting}
+                              className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold transition-all border ${isDisliked ? 'bg-red-500 text-white border-red-500' : 'bg-white text-gray-500 border-gray-200 hover:border-red-400 hover:text-red-500'} disabled:opacity-50`}
+                            >
+                              <ThumbsDown className="size-3" />({review.dislikeCount ?? 0})
+                            </button>
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
 
-              {reviews.length > 5 && (
-                <div className="mt-6 pt-4 border-t border-gray-100 text-center">
-                  <p className="text-sm text-gray-500 font-medium">
-                    Hiển thị 5/{reviews.length} đánh giá
-                  </p>
-                </div>
-              )}
+                        <p className="text-gray-700 text-sm leading-relaxed mb-3">{review.comment}</p>
+
+                        {review.evidence && (
+                          <div className="mb-3 rounded-xl overflow-hidden border border-gray-200 w-24 aspect-square">
+                            <img src={review.evidence} alt="Bằng chứng" className="w-full h-full object-cover" />
+                          </div>
+                        )}
+
+                        {/* Shop Reply */}
+                        {review.replyFromShop && (
+                          <div className="mt-3 p-4 bg-gray-50 rounded-xl border border-gray-100">
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="size-5 bg-primary rounded-full flex items-center justify-center text-white">
+                                <MessageCircle className="size-3" />
+                              </div>
+                              <span className="text-xs font-black text-gray-900">Phản hồi từ Shop</span>
+                            </div>
+                            <p className="text-gray-600 text-sm pl-7 italic">{review.replyFromShop}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}

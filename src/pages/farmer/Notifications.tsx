@@ -1,7 +1,11 @@
 
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Bell, Clock, ShoppingCart, Info, TrendingUp, CheckCircle2, ChevronRight, MoreHorizontal, Trash2, AlertCircle, X } from 'lucide-react';
 import { notificationService, NotificationItem } from '../../services';
+import { useResumePayment } from '../../hooks/useResumePayment';
+import ResumePaymentModal from '../../components/payment/ResumePaymentModal';
+import { globalShowAlert } from '../../contexts/PopupContext';
 
 type UiNotificationType = 'order' | 'market' | 'system' | 'info';
 
@@ -36,10 +40,14 @@ const mapNotificationToUi = (notification: NotificationItem): UiNotification => 
 };
 
 const FarmerNotifications: React.FC = () => {
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState<UiNotification[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedNotification, setSelectedNotification] = useState<UiNotification | null>(null);
+  const { openResumePayment, resumeOptions, closeResumePayment } = useResumePayment((msg) => {
+    globalShowAlert(msg, 'Thông báo', 'warning');
+  });
 
   useEffect(() => {
     const fetchNotifications = async () => {
@@ -230,6 +238,31 @@ const FarmerNotifications: React.FC = () => {
                 </p>
               </div>
 
+              {/* Action buttons for pending payment notifications */}
+              {selectedNotification.title === 'Bạn chưa thanh toán' && selectedNotification.evidence && (() => {
+                const orderId = parseInt(selectedNotification.evidence, 10);
+                if (!orderId) return null;
+                return (
+                  <div className="mt-6 flex gap-3">
+                    <button
+                      onClick={async () => {
+                        setSelectedNotification(null);
+                        await openResumePayment(orderId, 'individual');
+                      }}
+                      className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white text-sm font-black rounded-2xl transition-all shadow-lg shadow-amber-500/20"
+                    >
+                      💳 Tiếp tục thanh toán
+                    </button>
+                    <button
+                      onClick={() => { setSelectedNotification(null); navigate('/my-orders'); }}
+                      className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-bold rounded-2xl transition-all"
+                    >
+                      📋 Xem đơn hàng
+                    </button>
+                  </div>
+                );
+              })()}
+
               <div className="mt-8 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-gray-400">
                   <Clock className="size-4" />
@@ -246,6 +279,9 @@ const FarmerNotifications: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+      {resumeOptions && (
+        <ResumePaymentModal options={resumeOptions} onClose={closeResumePayment} />
       )}
     </div>
   );

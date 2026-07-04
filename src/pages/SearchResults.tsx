@@ -468,13 +468,13 @@ const SearchResults: React.FC<SearchResultsProps> = ({ onSelectProduct }) => {
                               </div>
                               <div className="flex items-baseline gap-1">
                                 <span className="text-xl font-black text-primary">{product.salePrice.toLocaleString('vi-VN')}đ</span>
-                                <span className="text-[10px] text-gray-400 font-medium">/ {product.unit || 'kg'}</span>
+                                <span className="text-[10px] text-gray-400 font-medium">/ kg</span>
                               </div>
                             </>
                           ) : (
                             <div className="flex items-baseline gap-1">
                               <span className="text-xl font-black text-primary">{(product.sellingPrice || 0).toLocaleString('vi-VN')}đ</span>
-                              <span className="text-[10px] text-gray-400 font-medium">/ {product.unit || 'kg'}</span>
+                              <span className="text-[10px] text-gray-400 font-medium">/ kg</span>
                             </div>
                           )}
                         </div>

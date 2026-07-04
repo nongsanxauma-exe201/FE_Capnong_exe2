@@ -1,52 +1,72 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { ShoppingCart, Trash2, Plus, Minus, Info, ArrowRight, ArrowLeft, Loader2, Package, Gift, ChefHat, AlertCircle } from 'lucide-react';
+import React, { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+  ShoppingCart, Trash2, Plus, Minus, Info, ArrowRight, ArrowLeft,
+  Loader2, Package, Gift, ChefHat, AlertCircle, Clock, ShoppingBag,
+} from 'lucide-react';
 import { cartService, CartResponse, CartItemResponse } from '../../services/cart.service';
+import { orderService, OrderResponse } from '../../services/order.service';
+import { useAuth } from '../../contexts/AuthContext';
 import { globalShowConfirm, globalShowAlert } from '../../contexts/PopupContext';
-import { clearRestoredPayOSCart, consumeRestoredPayOSCart, ensurePendingPayOSRolledBack, getRestoredPayOSCartData, buildGroupedCartItems, hasPayOSCartRecovery, saveRestoredPayOSCart, PAYOS_RELOAD_CART_ON_ARRIVAL_KEY } from '../../utils/pendingPayOSPayment';
+import { useResumePayment } from '../../hooks/useResumePayment';
+import ResumePaymentModal from '../../components/payment/ResumePaymentModal';
+import {
+  clearRestoredPayOSCart, buildGroupedCartItems, saveRestoredPayOSCart,
+  PAYOS_RELOAD_CART_ON_ARRIVAL_KEY,
+} from '../../utils/pendingPayOSPayment';
+import { groupCartItemsByShop, type ShopCartGroup } from '../../utils/cartShopGroups';
 
 interface CartProps {
   onProceedToCheckout: (selectedKeys?: string[]) => void;
   onBackToShopping: () => void;
+  onNavigateToOrders?: () => void;
 }
-
-type GroupedCart = Record<string, CartItemResponse[]>;
 
 interface CartState {
   cart: CartResponse | null;
-  groupedItems: GroupedCart;
+  shopGroups: ShopCartGroup[];
 }
 
-const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) => {
-  const snapshotHoldUntilRef = useRef(0);
-  const hasVisibleItemsRef = useRef(false);
+const getQuantityKg = (item: CartItemResponse) => Number(item.quantityKg ?? item.quantity ?? 0);
+const getPricePerKg = (item: CartItemResponse) => Number(item.salePrice ?? item.pricePerKg ?? item.price ?? 0);
+const getItemTotal  = (item: CartItemResponse) => Number(item.itemTotal ?? getPricePerKg(item) * getQuantityKg(item));
+const formatKg      = (value: number) => value.toLocaleString('vi-VN', { maximumFractionDigits: 2 });
+const fmtVnd        = (value: number) => value.toLocaleString('vi-VN') + 'đ';
 
-  const [cartState, setCartState] = useState<CartState>(() => {
-    const snapshot = getRestoredPayOSCartData();
-    if (snapshot?.items?.length) {
-      snapshotHoldUntilRef.current = Date.now() + 60000;
-      hasVisibleItemsRef.current = true;
-      return {
-        cart: snapshot,
-        groupedItems: buildGroupedCartItems(snapshot.items),
-      };
+function fmtOrderDate(dateStr: string): string {
+  const d = new Date(dateStr);
+  const now = new Date();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  const isToday = d.toDateString() === now.toDateString();
+  if (isToday) return `${hh}:${mm} Hôm nay`;
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mo = String(d.getMonth() + 1).padStart(2, '0');
+  return `${hh}:${mm} ${dd}/${mo}`;
+}
+
+const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping, onNavigateToOrders }) => {
+  const { user }   = useAuth();
+  const navigate   = useNavigate();
+
+  const navigateToItemDetail = (item: CartItemResponse) => {
+    const type = (item.itemType || '').toUpperCase();
+    if (type === 'MYSTERY_BOX') {
+      const id = item.mysteryBoxId || (item as any).id;
+      if (id) navigate(`/mystery-box/${id}`);
+    } else if (type !== 'BUILD_COMBO' && type !== 'COMBO') {
+      const id = item.productId || (item as any).id;
+      if (id) navigate(`/san-pham/${id}`);
     }
-    return { cart: null, groupedItems: {} };
-  });
-  const [loading, setLoading] = useState(() => !getRestoredPayOSCartData()?.items?.length);
-  const [updatingKey, setUpdatingKey] = useState<string | null>(null);
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => {
-    const snapshot = getRestoredPayOSCartData();
-    if (!snapshot?.items?.length) return new Set();
-    return new Set(snapshot.items.map((item) => {
-      const type = item.itemType || '';
-      let id: any = null;
-      if (type === 'MYSTERY_BOX') id = item.mysteryBoxId || (item as any).id;
-      else if (type === 'BUILD_COMBO' || type === 'COMBO') id = item.buildComboId || (item as any).comboId || (item as any).id;
-      else id = item.productId || (item as any).id;
-      if (type === 'MYSTERY_BOX') return `b-${id}`;
-      if (type === 'BUILD_COMBO' || type === 'COMBO') return `c-${id}`;
-      return `p-${id}`;
-    }));
+  };
+
+  const [cartState,    setCartState]    = useState<CartState>({ cart: null, shopGroups: [] });
+  const [pendingOrders, setPendingOrders] = useState<OrderResponse[]>([]);
+  const [loading,      setLoading]      = useState(true);
+  const [updatingKey,  setUpdatingKey]  = useState<string | null>(null);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const { openResumePayment, resuming: payingOrder, resumeOptions, closeResumePayment } = useResumePayment((message) => {
+    globalShowAlert(message, 'Lỗi', 'error');
   });
 
   useEffect(() => {
@@ -69,145 +89,76 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
   };
 
   const applyCartData = (cartData: CartResponse, autoSelect: boolean) => {
-    const grouped = cartData.items.reduce((acc: GroupedCart, item) => {
-      const key = item.shopName || 'Nông Trại Khác';
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(item);
-      return acc;
-    }, {});
-    hasVisibleItemsRef.current = cartData.items.length > 0;
-    setCartState({ cart: cartData, groupedItems: grouped });
+    const shopGroups = groupCartItemsByShop(cartData.items);
+    setCartState({ cart: cartData, shopGroups });
     if (autoSelect) {
       setSelectedKeys(new Set(cartData.items.map(buildItemKey)));
     }
   };
 
-  const fetchCart = async (isSilent = false, keepSnapshot = false) => {
+  const fetchCart = useCallback(async (isSilent = false) => {
     if (!isSilent) setLoading(true);
     try {
-      const resp = await cartService.getCart();
-      const cartData = resp.result;
-      const snapshot = getRestoredPayOSCartData();
+      const [cartResp, orderResp] = await Promise.allSettled([
+        cartService.getCart(),
+        user?.id
+          ? orderService.getOrdersByUserIdPaged(Number(user.id), 0, 20, ['AWAITING_PAYMENT'])
+          : Promise.resolve(null),
+      ]);
 
-      if (!cartData || !cartData.items) {
-        if (snapshot?.items?.length) {
-          snapshotHoldUntilRef.current = Date.now() + 60000;
-          applyCartData(snapshot, !isSilent);
-          return;
+      // Cart
+      if (cartResp.status === 'fulfilled') {
+        const cartData = cartResp.value.result;
+        if (!cartData || !cartData.items) {
+          setCartState({ cart: null, shopGroups: [] });
+          setSelectedKeys(new Set());
+        } else {
+          if (cartData.items.length > 0) clearRestoredPayOSCart();
+          applyCartData(cartData, !isSilent);
         }
-        if (!hasVisibleItemsRef.current) {
-          setCartState({ cart: null, groupedItems: {} });
-        }
-        return;
       }
 
-      if (cartData.items.length === 0 && snapshot?.items?.length) {
-        snapshotHoldUntilRef.current = Date.now() + 60000;
-        applyCartData(snapshot, !isSilent);
-        return;
+      // Pending order
+      if (orderResp.status === 'fulfilled' && orderResp.value) {
+        const content = (orderResp.value as any)?.result?.content ?? [];
+        setPendingOrders(content ?? []);
       }
-
-      if (
-        keepSnapshot
-        && hasVisibleItemsRef.current
-        && cartData.items.length === 0
-        && Date.now() < snapshotHoldUntilRef.current
-      ) {
-        return;
-      }
-
-      if (cartData.items.length > 0) {
-        clearRestoredPayOSCart();
-      }
-
-      applyCartData(cartData, !isSilent);
     } catch (error) {
       console.error('Failed to load cart', error);
-      const snapshot = getRestoredPayOSCartData();
-      if (snapshot?.items?.length) {
-        applyCartData(snapshot, !isSilent);
-      }
     } finally {
       setLoading(false);
     }
-  };
+  }, [user?.id]);
 
   useEffect(() => {
     let cancelled = false;
-
-    const syncCartAfterPayOS = async () => {
-      const snapshot = consumeRestoredPayOSCart();
-      if (snapshot?.items?.length) {
-        snapshotHoldUntilRef.current = Date.now() + 60000;
-        applyCartData(snapshot, true);
-        setLoading(false);
-      }
-
-      if (hasPayOSCartRecovery()) {
-        await ensurePendingPayOSRolledBack();
-      }
+    const run = async () => {
       if (cancelled) return;
-
-      await fetchCart(!!snapshot?.items?.length, true);
-
-      // Tiếp tục poll BE trong nền nếu vẫn đang hiển thị snapshot.
-      if (!getRestoredPayOSCartData()?.items?.length) return;
-
-      for (let attempt = 0; attempt < 30; attempt += 1) {
-        if (cancelled) return;
-        await new Promise((resolve) => window.setTimeout(resolve, 500));
-        try {
-          const resp = await cartService.getCart();
-          if (resp.result?.items?.length) {
-            clearRestoredPayOSCart();
-            applyCartData(resp.result, false);
-            window.dispatchEvent(new Event('cart-updated'));
-            return;
-          }
-        } catch (error) {
-          console.warn('Background cart restore poll failed', error);
-        }
-      }
+      await fetchCart(false);
     };
-
-    void syncCartAfterPayOS();
-
-    const handleCartUpdate = () => fetchCart(true, true);
+    void run();
+    const handleCartUpdate = () => fetchCart(true);
     window.addEventListener('cart-updated', handleCartUpdate);
     return () => {
       cancelled = true;
       window.removeEventListener('cart-updated', handleCartUpdate);
     };
-  }, []);
+  }, [fetchCart]);
 
   useEffect(() => {
-    const handleReturnToCart = async () => {
-      const snapshot = getRestoredPayOSCartData();
-      if (snapshot?.items?.length) {
-        snapshotHoldUntilRef.current = Date.now() + 60000;
-        applyCartData(snapshot, true);
-      }
-      if (hasPayOSCartRecovery()) {
-        await ensurePendingPayOSRolledBack();
-      }
-      void fetchCart(true, true);
-    };
+    const handleReturnToCart = () => { void fetchCart(true); };
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        void handleReturnToCart();
-      }
+      if (document.visibilityState === 'visible') void fetchCart(true);
     };
-
     window.addEventListener('pageshow', handleReturnToCart);
     window.addEventListener('focus', handleReturnToCart);
     document.addEventListener('visibilitychange', handleVisibilityChange);
-
     return () => {
       window.removeEventListener('pageshow', handleReturnToCart);
       window.removeEventListener('focus', handleReturnToCart);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, []);
+  }, [fetchCart]);
 
   const itemKey = (item: CartItemResponse) => {
     const type = item.itemType || '';
@@ -215,7 +166,6 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
     if (type === 'MYSTERY_BOX') id = item.mysteryBoxId || (item as any).id || (item as any).mysteryBoxId;
     else if (type === 'BUILD_COMBO' || type === 'COMBO') id = item.buildComboId || (item as any).comboId || (item as any).id;
     else id = item.productId || (item as any).id || (item as any).productId;
-
     if (type === 'MYSTERY_BOX') return `b-${id}`;
     if (type === 'BUILD_COMBO' || type === 'COMBO') return `c-${id}`;
     return `p-${id}`;
@@ -230,22 +180,19 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
     });
   };
 
-  const handleToggleShop = (shopName: string, items: CartItemResponse[]) => {
+  const handleToggleShop = (items: CartItemResponse[]) => {
     const shopItemKeys = items.map(itemKey);
     setSelectedKeys(prev => {
       const next = new Set(prev);
       const allSelected = shopItemKeys.every(k => next.has(k));
-      if (allSelected) {
-        shopItemKeys.forEach(k => next.delete(k));
-      } else {
-        shopItemKeys.forEach(k => next.add(k));
-      }
+      if (allSelected) shopItemKeys.forEach(k => next.delete(k));
+      else shopItemKeys.forEach(k => next.add(k));
       return next;
     });
   };
 
   const handleUpdateQuantity = async (item: CartItemResponse, change: number) => {
-    const currentQty = Number(item.quantity) || 0;
+    const currentQty = getQuantityKg(item);
     const newQty = currentQty + change;
     if (newQty < 1) return;
 
@@ -253,7 +200,6 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
     setUpdatingKey(key);
     try {
       const type = (item.itemType || '').toUpperCase();
-      
       if (type === 'MYSTERY_BOX') {
         const id = item.mysteryBoxId || (item as any).id;
         if (id) await cartService.updateMysteryBoxQuantity(Number(id), newQty);
@@ -279,9 +225,9 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
     setUpdatingKey(key);
     try {
       const type = (item.itemType || '').toUpperCase();
-      const mysteryBoxId = item.mysteryBoxId || (type === 'MYSTERY_BOX' ? (item as any).id : null);
-      const buildComboId = item.buildComboId || ((type === 'BUILD_COMBO' || type === 'COMBO') ? ((item as any).comboId || (item as any).id) : null);
-      const productId = item.productId || (type === 'PRODUCT' ? (item as any).id : null);
+      const mysteryBoxId  = item.mysteryBoxId  || (type === 'MYSTERY_BOX'                       ? (item as any).id : null);
+      const buildComboId  = item.buildComboId  || ((type === 'BUILD_COMBO' || type === 'COMBO') ? ((item as any).comboId || (item as any).id) : null);
+      const productId     = item.productId     || (type === 'PRODUCT'                           ? (item as any).id : null);
 
       if (type === 'MYSTERY_BOX' && mysteryBoxId) {
         await cartService.removeMysteryBox(mysteryBoxId);
@@ -316,6 +262,25 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
     }
   };
 
+  const handleContinuePayment = async (orderId: number, payMode?: 'batch-all' | 'individual') => {
+    await openResumePayment(orderId, payMode);
+  };
+
+  const handleCheckout = () => {
+    if (selectedKeys.size === 0) {
+      globalShowAlert('Vui lòng chọn ít nhất một sản phẩm để thanh toán', 'Thông báo', 'info');
+      return;
+    }
+    if (cart?.items?.length) {
+      const selected = cart.items.filter((it) => selectedKeys.has(itemKey(it)));
+      if (selected.length > 0) {
+        const total = selected.reduce((sum, it) => sum + getItemTotal(it), 0);
+        saveRestoredPayOSCart({ items: selected, totalAmount: total });
+      }
+    }
+    onProceedToCheckout(Array.from(selectedKeys));
+  };
+
   if (loading && !cartState.cart) {
     return (
       <div className="flex-1 bg-background flex items-center justify-center min-h-[60vh]">
@@ -327,37 +292,15 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
     );
   }
 
-  const { cart, groupedItems } = cartState;
-  const totalItems = cart?.items.length || 0;
-  
+  const { cart, shopGroups } = cartState;
+  const totalItems    = cart?.items.length || 0;
   const selectedItems = cart?.items.filter(it => selectedKeys.has(itemKey(it))) || [];
-  const selectedTotal = selectedItems.reduce((sum, it) => sum + ((it.salePrice ?? it.price) * it.quantity), 0);
-  const selectedShops = Array.from(new Set(selectedItems.map(it => it.shopName)));
-  const isMultiShop = selectedShops.length > 1;
-  const shopsCount = Object.keys(groupedItems).length;
+  const selectedTotal = selectedItems.reduce((sum, it) => sum + getItemTotal(it), 0);
+  const selectedShopIds = Array.from(new Set(selectedItems.map(it => it.shopOwnerId).filter(Boolean)));
+  const isMultiShop   = selectedShopIds.length > 1;
+  const shopsCount    = shopGroups.length;
 
-  const handleCheckout = () => {
-    if (selectedKeys.size === 0) {
-      globalShowAlert('Vui lòng chọn ít nhất một sản phẩm để thanh toán', 'Thông báo', 'info');
-      return;
-    }
-    if (isMultiShop) {
-      globalShowAlert('Hệ thống hiện tại chưa hỗ trợ gộp đơn từ nhiều nhà vườn. Vui lòng chỉ chọn sản phẩm từ một nhà vườn để thanh toán.', 'Không thể gộp đơn', 'warning');
-      return;
-    }
-    if (cart?.items?.length) {
-      const selectedItems = cart.items.filter((it) => selectedKeys.has(itemKey(it)));
-      if (selectedItems.length > 0) {
-        const selectedTotal = selectedItems.reduce((sum, it) => sum + ((it.salePrice ?? it.price) * it.quantity), 0);
-        saveRestoredPayOSCart({
-          items: selectedItems,
-          totalAmount: selectedTotal,
-        });
-      }
-    }
-    onProceedToCheckout(Array.from(selectedKeys));
-  };
-
+  /* ── render ─────────────────────────────────────────────────────── */
   return (
     <div className="bg-background pb-20 animate-in fade-in duration-500">
       <div className="max-w-[1280px] mx-auto px-4 md:px-10 lg:px-40 py-12">
@@ -377,7 +320,7 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
           </div>
           {totalItems > 0 && (
             <div className="flex items-center gap-6">
-              <button 
+              <button
                 onClick={() => {
                   if (selectedKeys.size === totalItems) setSelectedKeys(new Set());
                   else {
@@ -396,38 +339,62 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
           )}
         </div>
 
+        {/* ── 3 trạng thái ──────────────────────────────────────────── */}
         {totalItems === 0 ? (
-          <div className="bg-white rounded-[40px] border border-gray-100 shadow-sm p-16 text-center flex flex-col items-center justify-center">
-            <div className="size-24 bg-gray-50 rounded-full flex items-center justify-center text-gray-300 mb-6">
-              <ShoppingCart className="size-10" />
+          pendingOrders.length > 0 ? (
+            /* Giỏ trống + có đơn AWAITING_PAYMENT → nhắc thanh toán */
+            <PendingOrderFullPage
+              orders={pendingOrders}
+              onContinuePayment={handleContinuePayment}
+              onBackToShopping={onBackToShopping}
+              onNavigateToOrders={onNavigateToOrders}
+              paying={payingOrder}
+            />
+          ) : (
+            /* Giỏ hoàn toàn trống */
+            <div className="bg-white rounded-[40px] border border-gray-100 shadow-sm p-16 text-center flex flex-col items-center justify-center">
+              <div className="size-24 bg-gray-50 rounded-full flex items-center justify-center text-gray-300 mb-6">
+                <ShoppingCart className="size-10" />
+              </div>
+              <h3 className="text-2xl font-black text-gray-900 mb-2">Chưa có sản phẩm nào!</h3>
+              <p className="text-gray-500 mb-8 max-w-sm">Hãy khám phá thêm các loại nông sản tươi ngon đang chờ bạn mang về nhé.</p>
+              <button onClick={onBackToShopping} className="px-8 py-4 bg-primary text-white font-black rounded-2xl shadow-xl shadow-primary/20 hover:bg-primary-dark transition-all transform active:scale-95">
+                Khám phá Nông sản ngay
+              </button>
             </div>
-            <h3 className="text-2xl font-black text-gray-900 mb-2">Chưa có sản phẩm nào!</h3>
-            <p className="text-gray-500 mb-8 max-w-sm">Hãy khám phá thêm các loại nông sản tươi ngon đang chờ bạn mang về nhé.</p>
-            <button onClick={onBackToShopping} className="px-8 py-4 bg-primary text-white font-black rounded-2xl shadow-xl shadow-primary/20 hover:bg-primary-dark transition-all transform active:scale-95">
-              Khám phá Nông sản ngay
-            </button>
-          </div>
+          )
         ) : (
+          /* Giỏ có hàng */
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
 
             {/* Danh sách sản phẩm */}
             <div className="lg:col-span-8 flex flex-col gap-8">
-              {Object.entries(groupedItems).map(([shopName, items]) => {
+
+              {/* Banners đơn chưa thanh toán — grouped by batch */}
+              {groupPendingOrders(pendingOrders).map(entry => (
+                <PendingOrderBanner
+                  key={`single-${entry.order.id}`}
+                  order={entry.order}
+                  onContinuePayment={() => handleContinuePayment(entry.order.id, 'individual')}
+                  paying={payingOrder}
+                />
+              ))}
+
+              {shopGroups.map((group) => {
+                const { shopOwnerId, shopName, items } = group;
                 const shopKeys = items.map(itemKey);
                 const isShopSelected = shopKeys.every(k => selectedKeys.has(k));
-                const isShopPartial = !isShopSelected && shopKeys.some(k => selectedKeys.has(k));
+                const isShopPartial  = !isShopSelected && shopKeys.some(k => selectedKeys.has(k));
 
                 return (
-                  <div key={shopName} className="bg-white rounded-[40px] border border-gray-100 shadow-sm overflow-hidden">
+                  <div key={shopOwnerId} className="bg-white rounded-[40px] border border-gray-100 shadow-sm overflow-hidden">
                     <div className="px-8 py-5 border-b border-gray-50 flex items-center justify-between">
                       <div className="flex items-center gap-4">
                         <input
                           type="checkbox"
                           checked={isShopSelected}
-                          ref={el => {
-                            if (el) el.indeterminate = isShopPartial;
-                          }}
-                          onChange={() => handleToggleShop(shopName, items)}
+                          ref={el => { if (el) el.indeterminate = isShopPartial; }}
+                          onChange={() => handleToggleShop(items)}
                           className="size-5 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
                         />
                         <h3 className="text-lg font-black text-gray-900 uppercase tracking-tight">{shopName}</h3>
@@ -436,9 +403,11 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
                     <div className="p-8 space-y-8">
                       {items.map((item, idx) => {
                         const key = itemKey(item);
-                        const isUpdating = updatingKey === key;
+                        const isUpdating   = updatingKey === key;
                         const isMysteryBox = item.itemType === 'MYSTERY_BOX';
-                        const isCombo = item.itemType === 'BUILD_COMBO' || item.itemType === 'COMBO';
+                        const isCombo      = item.itemType === 'BUILD_COMBO' || item.itemType === 'COMBO';
+                        const isNavigable  = !isCombo;
+
                         return (
                           <div key={key} className={`flex items-center gap-6 ${idx > 0 ? 'pt-6 border-t border-gray-50' : ''}`}>
                             <div className="flex items-center gap-4 flex-shrink-0">
@@ -448,7 +417,13 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
                                 onChange={() => handleToggleItem(key)}
                                 className="size-5 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
                               />
-                              <div className="size-24 rounded-[32px] overflow-hidden bg-gray-50 flex-shrink-0 border border-gray-100 relative">
+                              {/* Ảnh sản phẩm — click để xem chi tiết */}
+                              <button
+                                type="button"
+                                onClick={() => isNavigable && navigateToItemDetail(item)}
+                                disabled={!isNavigable}
+                                className={`size-24 rounded-[32px] overflow-hidden bg-gray-50 flex-shrink-0 border border-gray-100 relative ${isNavigable ? 'cursor-pointer hover:opacity-90 transition-opacity' : 'cursor-default'}`}
+                              >
                                 {item.imageUrl ? (
                                   <img src={item.imageUrl} className="w-full h-full object-cover" alt={item.productName} />
                                 ) : isMysteryBox ? (
@@ -472,7 +447,7 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
                                     <ChefHat className="size-3 text-white" />
                                   </div>
                                 )}
-                              </div>
+                              </button>
                             </div>
                             <div className="flex-1">
                               <div className="flex justify-between items-start mb-2">
@@ -480,7 +455,13 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
                                   <p className="text-[10px] font-black text-primary uppercase mb-1">
                                     {isMysteryBox ? '🎁 Túi mù nông sản' : isCombo ? '🍳 Combo nấu ăn' : 'Nông sản'}
                                   </p>
-                                  <h4 className="text-lg font-black text-gray-900">{item.productName}</h4>
+                                  {/* Tên sản phẩm — click để xem chi tiết */}
+                                  <h4
+                                    onClick={() => isNavigable && navigateToItemDetail(item)}
+                                    className={`text-lg font-black ${isNavigable ? 'text-primary cursor-pointer hover:underline' : 'text-gray-900'}`}
+                                  >
+                                    {item.productName}
+                                  </h4>
                                 </div>
                                 <div className="text-right">
                                   {item.salePrice != null && item.discountPercent ? (
@@ -494,25 +475,23 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
                                   ) : (
                                     <p className="text-lg font-black text-primary">{(item.price || 0).toLocaleString('vi-VN')}đ</p>
                                   )}
-                                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
-                                    {isMysteryBox ? 'Mỗi túi' : isCombo ? 'Mỗi combo' : 'Mỗi đơn vị'}
-                                  </p>
+                                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{isCombo ? 'VNĐ/combo' : 'VNĐ/kg'}</p>
                                 </div>
                               </div>
                               <div className="flex items-center justify-between mt-4">
                                 <div className="flex items-center gap-4 bg-gray-50 p-1.5 rounded-xl border border-gray-100">
-                                  <button disabled={isUpdating || item.quantity <= 1} onClick={() => handleUpdateQuantity(item, -1)} className="size-8 flex items-center justify-center text-gray-400 hover:text-primary disabled:opacity-50">
+                                  <button disabled={isUpdating || getQuantityKg(item) <= 1} onClick={() => handleUpdateQuantity(item, -1)} className="size-8 flex items-center justify-center text-gray-400 hover:text-primary disabled:opacity-50">
                                     <Minus className="size-3" />
                                   </button>
                                   <span className="text-sm font-black text-gray-900 w-4 text-center">
-                                    {isUpdating ? <Loader2 className="size-3 animate-spin mx-auto text-primary" /> : item.quantity}
+                                    {isUpdating ? <Loader2 className="size-3 animate-spin mx-auto text-primary" /> : formatKg(getQuantityKg(item))}
                                   </span>
                                   <button disabled={isUpdating} onClick={() => handleUpdateQuantity(item, 1)} className="size-8 flex items-center justify-center text-gray-400 hover:text-primary disabled:opacity-50">
                                     <Plus className="size-3" />
                                   </button>
                                 </div>
                                 <div className="flex items-center gap-4">
-                                  <span className="text-xl font-black text-primary">{(((item.salePrice ?? item.price) || 0) * item.quantity).toLocaleString('vi-VN')}đ</span>
+                                  <span className="text-xl font-black text-primary">{getItemTotal(item).toLocaleString('vi-VN')}đ</span>
                                   <button disabled={isUpdating} onClick={() => handleRemoveItem(item)} className="size-10 bg-red-50 rounded-2xl flex items-center justify-center text-red-400 hover:bg-red-500 hover:text-white transition-colors disabled:opacity-50">
                                     <Trash2 className="size-4" />
                                   </button>
@@ -539,18 +518,11 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
                   </div>
                   <div className="flex justify-between items-center text-sm font-bold text-gray-500">
                     <span>Số nhà vườn</span>
-                    <span className="text-gray-900 font-black">{selectedShops.length}</span>
+                    <span className="text-gray-900 font-black">{selectedShopIds.length}</span>
                   </div>
                 </div>
 
-                {isMultiShop && (
-                  <div className="p-4 bg-red-50 rounded-2xl border border-red-100 flex items-start gap-3">
-                    <AlertCircle className="size-5 text-red-500 shrink-0 mt-0.5" />
-                    <p className="text-[10px] text-red-600 font-bold leading-relaxed">
-                      Lưu ý: Bạn chỉ có thể thanh toán sản phẩm từ một nhà vườn trong mỗi lần đặt hàng. Vui lòng lọc lại lựa chọn.
-                    </p>
-                  </div>
-                )}
+              
 
                 <div className="pt-8 border-t border-gray-50 flex justify-between items-end">
                   <div>
@@ -562,12 +534,12 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
                   </div>
                 </div>
 
-                <button 
-                  onClick={handleCheckout} 
-                  disabled={selectedKeys.size === 0 || isMultiShop}
+                <button
+                  onClick={handleCheckout}
+                  disabled={selectedKeys.size === 0}
                   className="w-full py-5 bg-primary text-white font-black rounded-2xl flex items-center justify-center gap-3 shadow-xl shadow-primary/20 hover:bg-primary-dark transition-all transform active:scale-[0.98] disabled:opacity-50 disabled:grayscale disabled:cursor-not-allowed"
                 >
-                  {isMultiShop ? 'Không thể gộp đơn' : 'Tiến hành đặt hàng'} <ArrowRight className="size-5" />
+                  Tiến hành đặt hàng <ArrowRight className="size-5" />
                 </button>
                 <button onClick={onBackToShopping} className="text-sm font-black text-primary hover:underline mx-auto uppercase tracking-widest">
                   Tiếp tục mua sắm
@@ -589,6 +561,268 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping }) =>
           </div>
         )}
       </div>
+      {resumeOptions && (
+        <ResumePaymentModal options={resumeOptions} onClose={closeResumePayment} />
+      )}
+    </div>
+  );
+};
+
+/* ── Grouping utility ───────────────────────────────────────────────── */
+
+interface BatchGroup {
+  type: 'batch';
+  batchId: number;
+  orders: OrderResponse[];
+  totalAmount: number;
+}
+interface SingleEntry {
+  type: 'single';
+  order: OrderResponse;
+}
+type PendingEntry = BatchGroup | SingleEntry;
+
+function groupPendingOrders(orders: OrderResponse[]): PendingEntry[] {
+  return orders.map(order => ({ type: 'single' as const, order }));
+}
+
+/* ── Pending full page ──────────────────────────────────────────────── */
+
+interface PendingOrderFullPageProps {
+  orders: OrderResponse[];
+  onContinuePayment: (orderId: number, payMode?: 'batch-all' | 'individual') => void;
+  onBackToShopping: () => void;
+  onNavigateToOrders?: () => void;
+  paying: boolean;
+}
+
+const PendingOrderFullPage: React.FC<PendingOrderFullPageProps> = ({
+  orders, onContinuePayment, onBackToShopping, onNavigateToOrders, paying,
+}) => {
+  const entries = groupPendingOrders(orders);
+
+  return (
+    <div className="flex flex-col items-center justify-center py-16 px-4">
+      <div className="relative mb-8">
+        <div className="size-28 bg-primary/5 rounded-full flex items-center justify-center">
+          <ShoppingCart className="size-14 text-primary/40" />
+        </div>
+        <div className="absolute -top-1 -right-1 size-10 bg-amber-400 rounded-full flex items-center justify-center shadow-md">
+          <Clock className="size-5 text-white" />
+        </div>
+      </div>
+
+      <h2 className="text-3xl font-black text-primary text-center leading-tight mb-3">
+        Đơn hàng của bạn<br />vẫn đang chờ!
+      </h2>
+      <p className="text-gray-500 text-center max-w-sm mb-8 leading-relaxed">
+        Hoàn tất thanh toán ngay để không bỡ lỡ sản phẩm ngon với giá tốt nhé!
+      </p>
+
+      <div className="w-full max-w-md flex flex-col gap-4 mb-8">
+        {entries.map(entry => (
+          <PendingSingleOrderCard
+            key={`single-${entry.order.id}`}
+            order={entry.order}
+            onContinuePayment={(orderId) => onContinuePayment(orderId, 'individual')}
+            paying={paying}
+          />
+        ))}
+      </div>
+
+      <div className="w-full max-w-md flex flex-col gap-3">
+        <button
+          onClick={onBackToShopping}
+          className="w-full py-4 border border-gray-200 text-gray-600 font-black rounded-2xl hover:bg-gray-50 transition-all"
+        >
+          Tiếp tục mua sắm
+        </button>
+        {onNavigateToOrders && (
+          <button
+            onClick={onNavigateToOrders}
+            className="text-sm font-bold text-gray-400 hover:text-primary text-center transition-colors mt-1"
+          >
+            Xem tất cả đơn hàng →
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* Card cho nhóm batch (nhiều đơn cùng 1 lần checkout) */
+const PendingBatchGroupCard: React.FC<{
+  entry: BatchGroup;
+  onContinuePayment: (orderId: number) => void;
+  paying: boolean;
+}> = ({ entry, onContinuePayment, paying }) => {
+  const triggerOrderId = entry.orders[0].id;
+  const totalItems = entry.orders.reduce((sum, o) => sum + (o.items ?? []).length, 0);
+
+  return (
+    <div className="bg-white rounded-[24px] border border-blue-100 shadow-sm p-5">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="size-2 rounded-full bg-blue-400" />
+        <p className="text-[11px] font-black text-blue-500 uppercase tracking-widest">
+          {entry.orders.length} đơn đặt cùng lúc
+        </p>
+      </div>
+
+      {entry.orders.map(order => {
+        const shopName = order.shopOwner?.shopName ?? order.shopOwner?.fullName;
+        const itemCount = (order.items ?? []).length;
+        return (
+          <div key={order.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+            <div className="min-w-0">
+              {shopName && <p className="text-xs font-bold text-gray-700 truncate">{shopName}</p>}
+              <p className="text-[11px] text-gray-400">Đơn #{order.id} · {itemCount} sản phẩm</p>
+            </div>
+            <p className="text-xs font-black text-gray-600 shrink-0 ml-3">{fmtVnd(order.totalAmount ?? 0)}</p>
+          </div>
+        );
+      })}
+
+      <div className="flex items-center justify-between mt-3 pt-2">
+        <div>
+          <p className="text-[11px] text-gray-400">{totalItems} sản phẩm · tổng cộng</p>
+          <p className="text-base font-black text-primary">{fmtVnd(entry.totalAmount)}</p>
+        </div>
+        <button
+          onClick={() => onContinuePayment(triggerOrderId)}
+          disabled={paying}
+          className="px-4 py-2 bg-primary text-white text-xs font-black rounded-xl flex items-center gap-1.5 hover:bg-primary-dark transition-colors disabled:opacity-60"
+        >
+          {paying ? <Loader2 className="size-3 animate-spin" /> : null}
+          Thanh toán
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/* Card cho đơn lẻ (không thuộc batch) */
+const PendingSingleOrderCard: React.FC<{
+  order: OrderResponse;
+  onContinuePayment: (orderId: number) => void;
+  paying: boolean;
+}> = ({ order, onContinuePayment, paying }) => {
+  const orderItems  = order.items ?? [];
+  const itemCount   = orderItems.length;
+  const previewImgs = orderItems.slice(0, 2).map(it => it.imageUrl).filter(Boolean) as string[];
+  const updatedAt   = (order as any).updatedAt ?? order.createdAt;
+  const shopName    = order.shopOwner?.shopName ?? order.shopOwner?.fullName;
+
+  return (
+    <div className="bg-white rounded-[24px] border border-gray-100 shadow-sm p-5">
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Đơn #{order.id}</p>
+          {shopName && <p className="text-sm font-black text-gray-700">{shopName}</p>}
+        </div>
+        {updatedAt && (
+          <span className="text-[10px] font-bold text-gray-400 shrink-0 mt-1">{fmtOrderDate(updatedAt)}</span>
+        )}
+      </div>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {previewImgs.length > 0 ? (
+            previewImgs.map((uri, i) => (
+              <img key={i} src={uri} alt="" className="size-14 rounded-xl object-cover border border-gray-100" />
+            ))
+          ) : (
+            <div className="size-14 rounded-xl bg-gray-50 flex items-center justify-center">
+              <ShoppingBag className="size-6 text-gray-300" />
+            </div>
+          )}
+          {itemCount > 2 && (
+            <div className="size-14 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center">
+              <span className="text-xs font-black text-gray-400">+{itemCount - 2}</span>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="text-right">
+            <p className="text-[11px] font-bold text-gray-400">{itemCount} sản phẩm</p>
+            <p className="text-base font-black text-primary">{fmtVnd(order.totalAmount ?? 0)}</p>
+          </div>
+          <button
+            onClick={() => onContinuePayment(order.id)}
+            disabled={paying}
+            className="px-4 py-2 bg-primary text-white text-xs font-black rounded-xl flex items-center gap-1.5 hover:bg-primary-dark transition-colors disabled:opacity-60"
+          >
+            {paying ? <Loader2 className="size-3 animate-spin" /> : null}
+            Thanh toán
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ── Pending banners (khi giỏ có hàng) ───────────────────────────── */
+
+/* Banner cho nhóm batch */
+const PendingBatchGroupBanner: React.FC<{
+  entry: BatchGroup;
+  onContinuePayment: () => void;
+  paying: boolean;
+}> = ({ entry, onContinuePayment, paying }) => (
+  <div className="bg-blue-50 border border-blue-200 rounded-[24px] p-5 flex items-center justify-between gap-4">
+    <div className="flex items-center gap-4 min-w-0">
+      <div className="size-10 bg-blue-100 rounded-2xl flex items-center justify-center shrink-0">
+        <Clock className="size-5 text-blue-600" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-sm font-black text-blue-800 truncate">
+          {entry.orders.length} đơn đặt cùng lúc chưa thanh toán
+        </p>
+        <p className="text-xs font-bold text-blue-600 mt-0.5">
+          Tổng: {fmtVnd(entry.totalAmount)}
+          {' · '}
+          {entry.orders.map(o => `#${o.id}`).join(', ')}
+        </p>
+      </div>
+    </div>
+    <button
+      onClick={onContinuePayment}
+      disabled={paying}
+      className="shrink-0 px-4 py-2 bg-primary text-white text-xs font-black rounded-xl flex items-center gap-2 hover:bg-primary-dark transition-colors disabled:opacity-60"
+    >
+      {paying ? <Loader2 className="size-3 animate-spin" /> : null}
+      Thanh toán →
+    </button>
+  </div>
+);
+
+/* Banner cho đơn lẻ */
+const PendingOrderBanner: React.FC<{
+  order: OrderResponse;
+  onContinuePayment: () => void;
+  paying: boolean;
+}> = ({ order, onContinuePayment, paying }) => {
+  const itemCount = (order.items ?? []).length;
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-[24px] p-5 flex items-center justify-between gap-4">
+      <div className="flex items-center gap-4 min-w-0">
+        <div className="size-10 bg-amber-100 rounded-2xl flex items-center justify-center shrink-0">
+          <Clock className="size-5 text-amber-600" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-black text-amber-800 truncate">Đơn #{order.id} chưa thanh toán</p>
+          <p className="text-xs font-bold text-amber-600 mt-0.5">
+            {fmtVnd(order.totalAmount ?? 0)}
+            {itemCount > 0 ? `  ·  ${itemCount} sản phẩm` : ''}
+          </p>
+        </div>
+      </div>
+      <button
+        onClick={onContinuePayment}
+        disabled={paying}
+        className="shrink-0 px-4 py-2 bg-primary text-white text-xs font-black rounded-xl flex items-center gap-2 hover:bg-primary-dark transition-colors disabled:opacity-60"
+      >
+        {paying ? <Loader2 className="size-3 animate-spin" /> : null}
+        Thanh toán →
+      </button>
     </div>
   );
 };

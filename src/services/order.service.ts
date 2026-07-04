@@ -18,6 +18,7 @@ export interface OrderItemRequest {
     mysteryBoxId?: number;
     buildComboId?: number;
     quantity: number;
+    quantityKg?: number;
 }
 
 export interface OrderCreationRequest {
@@ -27,12 +28,47 @@ export interface OrderCreationRequest {
     note?: string;
     paymentMethod: string;
     voucherUserId?: string;
+    voucherUserIds?: string[];
+    voucherCodes?: string[];
     items: OrderItemRequest[];
+}
+
+export interface ShopOrderRequest {
+    shopOwnerId?: number;
+    voucherUserId?: string;
+    voucherUserIds?: string[];
+    voucherCodes?: string[];
+    items: OrderItemRequest[];
+}
+
+export interface CheckoutBatchRequest {
+    recipientName: string;
+    recipientPhone: string;
+    shippingAddress: string;
+    note?: string;
+    paymentMethod: string;
+    shopOrders: ShopOrderRequest[];
+    batchVoucherUserId?: string;
+}
+
+export interface CheckoutBatchResponse {
+    batchId: number;
+    orders: OrderResponse[];
+    orderIds: number[];
+    totalAmount: number;
+    paymentMethod?: string;
+    checkoutUrl?: string;
+    qrCodeUrl?: string;
+    payosOrderCode?: string;
 }
 
 export interface OrderUpdateRequest {
     status: string;
     [key: string]: any;
+}
+
+export interface QcBuyerDecisionRequest {
+    acceptRemaining: boolean;
 }
 
 export interface OrderItemResponse {
@@ -43,8 +79,12 @@ export interface OrderItemResponse {
     productName?: string;
     mysteryBoxType?: string;
     quantity: number;
+    quantityKg?: number;
     unit?: string;
     unitPrice: number;
+    pricePerKg?: number;
+    unitWeightKg?: number;
+    rescuedWeightKg?: number;
     itemType: 'PRODUCT' | 'MYSTERY_BOX';
     category?: string;
     imageUrl?: string;
@@ -107,7 +147,13 @@ export interface OrderResponse {
     paymentMethod: string;
     note: string;
     shippingFee: number;
+  shippingDiscountAmount?: number;
     totalAmount: number;
+    totalKg?: number;
+    rescuedKg?: number;
+    rescuedWeight?: number;
+    rewardPoints?: number;
+    rewardApplied?: boolean;
     status: string;
     createdAt: string;
     items: OrderItemResponse[];
@@ -117,8 +163,42 @@ export interface OrderResponse {
     refundAmount?: number | null;
     refundReason?: string | null;
     codAmount?: number | null;
+    codPrepaidAmount?: number | null;
+    codPaymentOption?: 'CASH' | 'WALLET' | null;
+    codPaymentStatus?: string | null;
     codSettled?: boolean | null;
     codSettledAt?: string | null;
+    qcRefundedAmount?: number | null;
+    qcBuyerDecisionDeadline?: string | null;
+    qcBuyerAcceptedRemaining?: boolean | null;
+    checkoutBatchId?: number | null;
+    batchUnpaidCount?: number | null;
+}
+
+export interface ShopReportOrderDay {
+    label?: string;
+    fromDate?: string;
+    toDate?: string;
+    completed?: number;
+    processing?: number;
+    cancelled?: number;
+    total?: number;
+}
+
+export interface ShopReportTopSold {
+    productId?: number;
+    productName?: string;
+    sold?: number;
+    price?: number;
+}
+
+export interface OrderShopReport {
+    totalRevenue?: number;
+    totalOrder?: number;
+    averagePrice?: number;
+    averageReview?: number;
+    reportOrderWeek?: ShopReportOrderDay[];
+    topSold?: ShopReportTopSold[];
 }
 
 /** Báo cáo đơn cho staff — khớp `StaffOrderReportResponse` (BE). */
@@ -144,16 +224,22 @@ class OrderService {
         return httpClient.get<OrderResponse[]>('/orders');
     }
 
-    async getAllOrdersPaged(page = 0, size = 10): Promise<ApiResponse<PageResponse<OrderResponse>>> {
-        return httpClient.get<PageResponse<OrderResponse>>(`/orders/paged?page=${page}&size=${size}`);
+    async getAllOrdersPaged(page = 0, size = 10, statuses?: string[]): Promise<ApiResponse<PageResponse<OrderResponse>>> {
+        const statusParam = statuses && statuses.length > 0
+            ? `&${statuses.map(s => `statuses=${s}`).join('&')}`
+            : '';
+        return httpClient.get<PageResponse<OrderResponse>>(`/orders/paged?page=${page}&size=${size}${statusParam}`);
     }
 
     async getOrdersByUserId(userId: number): Promise<ApiResponse<OrderResponse[]>> {
         return httpClient.get<OrderResponse[]>(`/orders/user/${userId}`);
     }
 
-    async getOrdersByUserIdPaged(userId: number, page = 0, size = 10): Promise<ApiResponse<PageResponse<OrderResponse>>> {
-        return httpClient.get<PageResponse<OrderResponse>>(`/orders/user/${userId}/paged?page=${page}&size=${size}`);
+    async getOrdersByUserIdPaged(userId: number, page = 0, size = 10, statuses?: string[]): Promise<ApiResponse<PageResponse<OrderResponse>>> {
+        const statusParam = statuses && statuses.length > 0
+            ? `&${statuses.map(s => `statuses=${s}`).join('&')}`
+            : '';
+        return httpClient.get<PageResponse<OrderResponse>>(`/orders/user/${userId}/paged?page=${page}&size=${size}${statusParam}`);
     }
 
     async getOrdersForStaff(page = 0, size = 10, status?: string): Promise<ApiResponse<PageResponse<OrderResponse>>> {
@@ -171,8 +257,16 @@ class OrderService {
         return httpClient.get<StaffOrderReportResponse>('/orders/staff/report');
     }
 
+    async getShopReport(type: 'week' | 'month' | 'all'): Promise<ApiResponse<OrderShopReport>> {
+        return httpClient.get<OrderShopReport>('/orders/shop/reports', { params: { type } });
+    }
+
     async createOrder(data: OrderCreationRequest): Promise<ApiResponse<OrderResponse>> {
         return httpClient.post<OrderResponse>('/orders', data);
+    }
+
+    async checkoutBatch(data: CheckoutBatchRequest): Promise<ApiResponse<CheckoutBatchResponse>> {
+        return httpClient.post<CheckoutBatchResponse>('/orders/checkout-batch', data);
     }
 
     async updateOrder(
@@ -194,6 +288,10 @@ class OrderService {
 
         console.log('[OrderService] Updating order:', id, 'with data:', request);
         return httpClient.patch<OrderResponse>(`/orders/${id}`, formData);
+    }
+
+    async qcBuyerDecision(id: number, request: QcBuyerDecisionRequest): Promise<ApiResponse<OrderResponse>> {
+        return httpClient.post<OrderResponse>(`/orders/${id}/qc-buyer-decision`, request);
     }
 
     async deleteOrder(id: number): Promise<ApiResponse<string>> {

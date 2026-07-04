@@ -16,8 +16,11 @@ import {
   XCircle,
   LogOut,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  Download,
+  FileText,
 } from 'lucide-react';
+import { exportService } from '../../services/export.service';
 import { userService, orderService, productService, UserResponse, OrderResponse, ProductResponse } from '../../services';
 import { getOrderStatusBadgeClass, getOrderStatusLabel } from '../../constants/orderStatusLabels';
 
@@ -27,6 +30,41 @@ const AdminDashboard: React.FC = () => {
   const [products, setProducts] = useState<ProductResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Export state — default: last 30 days
+  const defaultTo = new Date().toISOString().slice(0, 10);
+  const defaultFrom = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const [exportFrom, setExportFrom] = useState(defaultFrom);
+  const [exportTo, setExportTo] = useState(defaultTo);
+  const [exportingExcel, setExportingExcel] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  const handleExportExcel = async () => {
+    setExportingExcel(true);
+    setExportError(null);
+    try {
+      await exportService.exportAdminTransactionsExcel({ from: exportFrom, to: exportTo });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Xuất Excel thất bại';
+      setExportError(msg);
+    } finally {
+      setExportingExcel(false);
+    }
+  };
+
+  const handleExportPdf = async () => {
+    setExportingPdf(true);
+    setExportError(null);
+    try {
+      await exportService.exportAdminTransactionsPdf({ from: exportFrom, to: exportTo });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Xuất PDF thất bại';
+      setExportError(msg);
+    } finally {
+      setExportingPdf(false);
+    }
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -241,6 +279,58 @@ const AdminDashboard: React.FC = () => {
               </div>
             </div>
           </div>
+        </div>
+      </div>
+      {/* Export section */}
+      <div className="bg-white rounded-[40px] border border-gray-100 shadow-sm p-10">
+        <div className="flex items-center gap-3 mb-6">
+          <Download className="size-6 text-emerald-600" />
+          <h4 className="font-black text-gray-800 uppercase tracking-tight">Xuất báo cáo giao dịch</h4>
+        </div>
+
+        {exportError && (
+          <div className="mb-4 bg-red-50 border border-red-100 p-3 rounded-2xl flex items-center gap-2 text-red-600 font-bold text-sm">
+            <AlertCircle className="size-4 shrink-0" /> {exportError}
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Từ ngày</label>
+            <input
+              type="date"
+              value={exportFrom}
+              max={exportTo}
+              onChange={e => setExportFrom(e.target.value)}
+              className="px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-200 transition-all"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Đến ngày</label>
+            <input
+              type="date"
+              value={exportTo}
+              min={exportFrom}
+              onChange={e => setExportTo(e.target.value)}
+              className="px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-200 transition-all"
+            />
+          </div>
+          <button
+            onClick={handleExportExcel}
+            disabled={exportingExcel || exportingPdf}
+            className="flex items-center gap-2 px-6 py-2.5 bg-emerald-600 text-white rounded-2xl text-sm font-black hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+          >
+            {exportingExcel ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+            Xuất Excel
+          </button>
+          <button
+            onClick={handleExportPdf}
+            disabled={exportingExcel || exportingPdf}
+            className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-2xl text-sm font-black hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+          >
+            {exportingPdf ? <Loader2 className="size-4 animate-spin" /> : <FileText className="size-4" />}
+            Xuất Hóa Đơn PDF
+          </button>
         </div>
       </div>
     </div>

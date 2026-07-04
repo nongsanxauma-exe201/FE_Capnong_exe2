@@ -33,7 +33,8 @@ const ShopVouchers: React.FC = () => {
       setLoading(true);
       const response = await voucherService.getBuyerShopVouchers(shopIdNum, page, PAGE_SIZE);
       const result = response.result;
-      const list = result?.content || [];
+      const list = (result?.content || [])
+        .filter((voucher) => voucher.voucherType === 'SHOP' && Number(voucher.shopId) === Number(shopIdNum));
       setVouchers(list);
       setTotalPages(result?.totalPages || 0);
 

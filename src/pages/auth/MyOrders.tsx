@@ -1,18 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import {
   Package, Clock, Truck, CheckCircle2, XCircle, Eye,
-  ArrowLeft, RefreshCw, AlertCircle, Search
+  ArrowLeft, RefreshCw, AlertCircle, Search, Download, Loader2 as ReceiptLoader, Sprout, Award, FileText
 } from 'lucide-react';
+import { exportService } from '../../services/export.service';
 import { orderService, OrderResponse, OrderItemResponse } from '../../services/order.service';
-import { authService } from '../../services/auth.service';
 import { reviewService } from '../../services/review.service';
 import { returnService } from '../../services/return.service';
 import { Star, Camera, X, Loader2 } from 'lucide-react';
 import Pagination, { PageInfo } from '../../components/ui/Pagination';
 import { globalShowAlert, globalShowConfirm } from '../../contexts/PopupContext';
 import ReturnRequestModal from '../../components/ReturnRequestModal';
+import ResumePaymentModal from '../../components/payment/ResumePaymentModal';
+import { useResumePayment } from '../../hooks/useResumePayment';
 
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
 
 const PAGE_SIZE = 10;
 
@@ -23,52 +26,66 @@ interface MyOrdersProps {
 
 type OrderStatusFilter =
   | 'ALL'
-  | 'WAITING'
-  | 'PROCESSING'
+  | 'PENDING'
   | 'SHIPPING'
   | 'DELIVERED'
-  | 'CANCELLED';
+  | 'CANCELLED'
+  | 'FAILED';
 
 const BUYER_STATUS_GROUPS: Record<OrderStatusFilter, string[]> = {
   ALL: [],
-  WAITING: ['PENDING', 'PAID'],
-  PROCESSING: [
+  PENDING: ['PENDING', 'PAID', 'AWAITING_PAYMENT'],
+  SHIPPING: [
     'CONFIRMED',
     'READY_FOR_PICKUP',
+    'SHIPPING',
     'SHIPPING_TO_WAREHOUSE',
     'ARRIVED_AT_WAREHOUSE',
     'QUALITY_CHECKING',
     'QUALITY_CHECKED',
+    'QC_PENDING_BUYER',
     'READY',
   ],
-  SHIPPING: ['SHIPPING'],
   DELIVERED: ['DELIVERED'],
-  CANCELLED: ['CANCELLED', 'FAILED'],
+  CANCELLED: ['CANCELLED'],
+  FAILED: ['FAILED'],
 };
 
 const BUYER_FILTERS: Array<{ key: OrderStatusFilter; label: string }> = [
   { key: 'ALL', label: 'Tất cả' },
-  { key: 'WAITING', label: 'Chờ xử lý' },
-  { key: 'PROCESSING', label: 'Đang chuẩn bị' },
-  { key: 'SHIPPING', label: 'Đang giao' },
-  { key: 'DELIVERED', label: 'Đã giao' },
-  { key: 'CANCELLED', label: 'Đã hủy / lỗi' },
+  { key: 'PENDING', label: 'Chờ xác nhận' },
+  { key: 'SHIPPING', label: 'Đang vận chuyển' },
+  { key: 'DELIVERED', label: 'Đã nhận' },
+  { key: 'CANCELLED', label: 'Đã hủy' },
+  { key: 'FAILED', label: 'Giao thất bại' },
 ];
 
-const getFilterLabel = (filter: OrderStatusFilter) => {
-  return BUYER_FILTERS.find(item => item.key === filter)?.label ?? 'Tất cả';
+const getQcRefundHint = (paymentMethod?: string) => {
+  if (paymentMethod?.toUpperCase() === 'COD') {
+    return 'Nếu bạn chọn không nhận, phần còn lại sẽ bị hủy và số tiền COD khi nhận hàng sẽ được giảm tương ứng.';
+  }
+  return 'Nếu bạn chọn không nhận, phần còn lại sẽ bị hủy và tiền hoàn sẽ được cộng vào ví (đơn thanh toán online).';
 };
 
+const getQcRejectButtonLabel = (paymentMethod?: string) =>
+  paymentMethod?.toUpperCase() === 'COD'
+    ? 'Không nhận phần còn lại'
+    : 'Không nhận, hoàn tiền phần còn lại';
+
 const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const orderIdFromUrl = searchParams.get('orderId');
   const [orders, setOrders] = useState<OrderResponse[]>([]);
+  const [searchResults, setSearchResults] = useState<OrderResponse[]>([]);
+  const [serverPageInfo, setServerPageInfo] = useState<PageInfo>({
+    page: 0, size: PAGE_SIZE, totalElements: 0, totalPages: 1, first: true, last: true,
+  });
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<OrderStatusFilter>('ALL');
   const [searchQuery, setSearchQuery] = useState(orderIdFromUrl || '');
+  const [debouncedSearch, setDebouncedSearch] = useState(orderIdFromUrl || '');
   const [page, setPage] = useState(0);
-  const [pageInfo, setPageInfo] = useState<PageInfo | null>(null);
-  const [userId, setUserId] = useState<number | null>(null);
 
   // Review state
   const [selectedItem, setSelectedItem] = useState<OrderItemResponse | null>(null);
@@ -77,51 +94,98 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
   const [comment, setComment] = useState('');
   const [evidence, setEvidence] = useState<File | null>(null);
   const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewedOrderDetailIds, setReviewedOrderDetailIds] = useState<Set<number>>(new Set());
+  const [reviewedMysteryBoxIds, setReviewedMysteryBoxIds] = useState<Set<number>>(new Set());
   const [selectedReturnItem, setSelectedReturnItem] = useState<OrderItemResponse | null>(null);
   const [orderReturnModal, setOrderReturnModal] = useState<{ orderId: number; orderNum: number } | null>(null);
   const [orderReturnReason, setOrderReturnReason] = useState('');
   const [orderReturnEvidence, setOrderReturnEvidence] = useState<File | null>(null);
   const [submittingOrderReturn, setSubmittingOrderReturn] = useState(false);
+  const [downloadingReceiptId, setDownloadingReceiptId] = useState<number | null>(null);
+  const [qcDecisionModal, setQcDecisionModal] = useState<{
+    orderId: number;
+    deadline?: string | null;
+    paymentMethod?: string;
+  } | null>(null);
+  const { openResumePayment, resuming, resumeOptions, closeResumePayment } = useResumePayment((message) => {
+    globalShowAlert(message, 'Lỗi', 'error');
+  });
+
+  const handleDownloadReceipt = async (orderId: number) => {
+    setDownloadingReceiptId(orderId);
+    try {
+      await exportService.exportOrderReceiptPdf(orderId);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Tải hóa đơn thất bại. Vui lòng thử lại.';
+      globalShowAlert(msg, 'Lỗi', 'error');
+    } finally {
+      setDownloadingReceiptId(null);
+    }
+  };
+
+  const formatImpactNumber = (value?: number | null) =>
+    Number(value ?? 0).toLocaleString('vi-VN', { maximumFractionDigits: 2 });
+
+  const loadReviewedIds = async () => {
+    try {
+      const res = await reviewService.getMyReviews();
+      const reviews = res.result ?? [];
+      setReviewedOrderDetailIds(new Set(
+        reviews.filter(r => r.orderDetailId != null).map(r => r.orderDetailId!)
+      ));
+      setReviewedMysteryBoxIds(new Set(
+        reviews.filter(r => r.mysteryBoxId != null && r.orderDetailId == null).map(r => r.mysteryBoxId!)
+      ));
+    } catch { }
+  };
 
   const fetchOrders = async () => {
+    const uid = user?.id ? parseInt(user.id, 10) : NaN;
+    if (!Number.isFinite(uid)) return;
+
+    const isSearching = debouncedSearch.trim().length > 0;
+
     try {
       setLoading(true);
-      const userInfo = await authService.getMyInfo();
-      if (!userInfo.result) {
-        console.error('No user info found');
+
+      if (orderIdFromUrl) {
+        const response = await orderService.getOrderById(parseInt(orderIdFromUrl, 10));
+        const list = response.result ? [response.result] : [];
+        setOrders(list);
+        setSearchResults([]);
+        setServerPageInfo({
+          page: 0, size: PAGE_SIZE, totalElements: list.length, totalPages: 1, first: true, last: true,
+        });
         return;
       }
 
-      const uid = userInfo.result.id;
-      setUserId(uid);
-
-      if (orderIdFromUrl) {
-        const response = await orderService.getOrderById(parseInt(orderIdFromUrl));
-        if (response.result) {
-          setOrders([response.result]);
-          setPageInfo(null);
-          return;
-        }
+      if (isSearching) {
+        const response = await orderService.getOrdersByUserId(uid);
+        const q = debouncedSearch.trim().toLowerCase();
+        const filtered = (response.result ?? [])
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          .filter(order =>
+            order.id.toString().includes(q) ||
+            order.recipientName.toLowerCase().includes(q)
+          );
+        setSearchResults(filtered);
+        setOrders([]);
+        return;
       }
-      const response = await orderService.getOrdersByUserIdPaged(uid, page, PAGE_SIZE);
 
+      const statuses = filter === 'ALL' ? undefined : BUYER_STATUS_GROUPS[filter];
+      const response = await orderService.getOrdersByUserIdPaged(uid, page, PAGE_SIZE, statuses);
       if (response.result) {
-        const myOrders = response.result.content;
-
-        myOrders.forEach(order => {
-          console.log(`Order #${order.id} items:`, order.items);
-        });
-
-        setOrders(myOrders.sort((a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        ));
-        setPageInfo({
-          page: response.result.page,
-          size: response.result.size,
-          totalElements: response.result.totalElements,
-          totalPages: response.result.totalPages,
-          first: response.result.first,
-          last: response.result.last,
+        const r = response.result;
+        setOrders(r.content);
+        setSearchResults([]);
+        setServerPageInfo({
+          page: r.page,
+          size: r.size,
+          totalElements: r.totalElements,
+          totalPages: Math.max(1, r.totalPages),
+          first: r.first,
+          last: r.last,
         });
       }
     } catch (error: any) {
@@ -154,37 +218,35 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
         comment: comment.trim()
       };
 
-      console.log('Selected item for review:', selectedItem);
-
       if (selectedItem.itemType === 'MYSTERY_BOX') {
         if (!selectedItem.mysteryBoxId) {
-          console.error('Mystery box item missing mysteryBoxId:', selectedItem);
           globalShowAlert('Lỗi: Không tìm thấy ID hộp mù để đánh giá. Vui lòng liên hệ hỗ trợ.', 'Lỗi hệ thống', 'error');
           return;
         }
         reviewData.mysteryBoxId = selectedItem.mysteryBoxId;
-        console.log('Creating mystery box review with mysteryBoxId:', selectedItem.mysteryBoxId);
       } else {
         if (!selectedItem.orderDetailId) {
-          console.error('Product item missing orderDetailId:', selectedItem);
           globalShowAlert('Lỗi: Không tìm thấy ID chi tiết đơn hàng để đánh giá. Vui lòng liên hệ hỗ trợ.', 'Lỗi hệ thống', 'error');
           return;
         }
         reviewData.orderDetailId = selectedItem.orderDetailId;
-        console.log('Creating product review with orderDetailId:', selectedItem.orderDetailId);
       }
 
-      console.log('Review data being sent:', reviewData);
       const res = await reviewService.createReview(reviewData, evidence || undefined);
 
       if (res.result) {
         globalShowAlert(`Cảm ơn bạn đã đánh giá ${selectedItem.itemType === 'MYSTERY_BOX' ? 'hộp mù' : 'sản phẩm'}!`, 'Thành công', 'success');
+        // Đánh dấu item đã review
+        if (selectedItem.itemType === 'MYSTERY_BOX' && selectedItem.mysteryBoxId) {
+          setReviewedMysteryBoxIds(prev => new Set([...prev, selectedItem.mysteryBoxId!]));
+        } else if (selectedItem.orderDetailId) {
+          setReviewedOrderDetailIds(prev => new Set([...prev, selectedItem.orderDetailId!]));
+        }
         setShowReviewModal(false);
         setSelectedItem(null);
         setRating(5);
         setComment('');
         setEvidence(null);
-        fetchOrders(); // Refresh to update UI if needed
       }
     } catch (err: any) {
       console.error('Failed to submit review:', err);
@@ -227,6 +289,29 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
     }
   };
 
+  const handleQcDecision = async (acceptRemaining: boolean) => {
+    if (!qcDecisionModal) return;
+    try {
+      setLoading(true);
+      await orderService.qcBuyerDecision(qcDecisionModal.orderId, { acceptRemaining });
+      globalShowAlert(
+        acceptRemaining
+          ? 'Bạn đã chọn nhận phần hàng còn lại. Đơn sẽ được đóng gói và giao.'
+          : qcDecisionModal.paymentMethod?.toUpperCase() === 'COD'
+            ? 'Bạn đã từ chối nhận phần còn lại. Số tiền COD khi nhận hàng sẽ được cập nhật.'
+            : 'Bạn đã từ chối nhận phần còn lại. Tiền hoàn (nếu có) sẽ được cộng vào ví.',
+        'Thành công',
+        'success'
+      );
+      setQcDecisionModal(null);
+      fetchOrders();
+    } catch (err: any) {
+      globalShowAlert(err?.data?.message || err?.message || 'Không thể gửi lựa chọn. Vui lòng thử lại.', 'Lỗi', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleOrderReturn = async () => {
     if (!orderReturnModal) return;
     if (!orderReturnReason.trim()) {
@@ -258,73 +343,99 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
   };
 
   useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setPage(0);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    if (!user?.id) return;
     fetchOrders();
-  }, [page, orderIdFromUrl]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, orderIdFromUrl, page, filter, debouncedSearch]);
+
+  useEffect(() => {
+    loadReviewedIds();
+  }, []);
 
   const getStatusConfig = (status: string) => {
     const configs: Record<string, { label: string; color: string; icon: any; bg: string }> = {
       PENDING: {
-        label: 'Chờ thanh toán/duyệt',
-        color: 'text-yellow-600',
+        label: 'Chờ xác nhận',
+        color: 'text-blue-600',
         icon: Clock,
-        bg: 'bg-yellow-50',
+        bg: 'bg-blue-50',
+      },
+      AWAITING_PAYMENT: {
+        label: 'Đang thanh toán',
+        color: 'text-amber-600',
+        icon: Clock,
+        bg: 'bg-amber-50',
       },
       PAID: {
-        label: 'Chờ shop xác nhận',
-        color: 'text-yellow-600',
+        label: 'Đã thanh toán',
+        color: 'text-blue-600',
         icon: Clock,
-        bg: 'bg-yellow-50',
+        bg: 'bg-blue-50',
       },
       CONFIRMED: {
-        label: 'Shop đã xác nhận',
-        color: 'text-blue-600',
+        label: 'Đã xác nhận',
+        color: 'text-yellow-600',
         icon: CheckCircle2,
-        bg: 'bg-blue-50',
+        bg: 'bg-yellow-50',
       },
       READY_FOR_PICKUP: {
-        label: 'Chờ lấy hàng',
-        color: 'text-blue-600',
+        label: 'Sẵn sàng lấy hàng',
+        color: 'text-yellow-600',
         icon: Package,
-        bg: 'bg-blue-50',
+        bg: 'bg-yellow-50',
       },
       SHIPPING_TO_WAREHOUSE: {
-        label: 'Đang gom hàng',
-        color: 'text-blue-600',
+        label: 'Đang vận chuyển kho',
+        color: 'text-yellow-600',
         icon: Truck,
-        bg: 'bg-blue-50',
+        bg: 'bg-yellow-50',
       },
       ARRIVED_AT_WAREHOUSE: {
         label: 'Đã đến kho',
-        color: 'text-indigo-600',
+        color: 'text-yellow-600',
         icon: Package,
-        bg: 'bg-indigo-50',
+        bg: 'bg-yellow-50',
       },
       QUALITY_CHECKING: {
-        label: 'Đang kiểm tra hàng',
-        color: 'text-indigo-600',
+        label: 'Đang kiểm tra',
+        color: 'text-yellow-600',
         icon: Package,
-        bg: 'bg-indigo-50',
+        bg: 'bg-yellow-50',
       },
       QUALITY_CHECKED: {
-        label: 'Đã kiểm tra hàng',
-        color: 'text-indigo-600',
+        label: 'Đã kiểm tra',
+        color: 'text-yellow-600',
         icon: CheckCircle2,
-        bg: 'bg-indigo-50',
+        bg: 'bg-yellow-50',
+      },
+      QC_PENDING_BUYER: {
+        label: 'Chờ bạn xác nhận',
+        color: 'text-orange-700',
+        icon: AlertCircle,
+        bg: 'bg-orange-50',
       },
       READY: {
-        label: 'Chờ giao đến bạn',
-        color: 'text-purple-600',
+        label: 'Sẵn sàng giao',
+        color: 'text-yellow-600',
         icon: Package,
-        bg: 'bg-purple-50',
+        bg: 'bg-yellow-50',
       },
       SHIPPING: {
-        label: 'Đang giao đến bạn',
+        label: 'Đang giao hàng',
         color: 'text-blue-600',
         icon: Truck,
         bg: 'bg-blue-50',
       },
       DELIVERED: {
-        label: 'Đã giao',
+        label: 'Đã nhận hàng',
         color: 'text-green-600',
         icon: CheckCircle2,
         bg: 'bg-green-50',
@@ -341,6 +452,12 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
         icon: XCircle,
         bg: 'bg-red-50',
       },
+      RETURNED: {
+        label: 'Đã hoàn hàng',
+        color: 'text-red-600',
+        icon: XCircle,
+        bg: 'bg-red-50',
+      },
     };
 
     return configs[status] || {
@@ -353,24 +470,45 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
 
   const canTrack = (status: string) => {
     return [
+      'CONFIRMED',
+      'READY_FOR_PICKUP',
+      'SHIPPING_TO_WAREHOUSE',
+      'ARRIVED_AT_WAREHOUSE',
+      'QUALITY_CHECKING',
+      'QUALITY_CHECKED',
+      'QC_PENDING_BUYER',
+      'READY',
       'SHIPPING',
-      'DELIVERED',
     ].includes(status);
   };
 
-  const filteredOrders = orders.filter(order => {
-    const statuses = BUYER_STATUS_GROUPS[filter];
+  const isSearching = debouncedSearch.trim().length > 0 && !orderIdFromUrl;
 
-    const matchesFilter =
-      filter === 'ALL' || statuses.includes(order.status);
+  const searchFiltered = isSearching
+    ? searchResults.filter(o => filter === 'ALL' || BUYER_STATUS_GROUPS[filter].includes(o.status))
+    : [];
 
-    const matchesSearch =
-      searchQuery === '' ||
-      order.id.toString().includes(searchQuery) ||
-      order.recipientName.toLowerCase().includes(searchQuery.toLowerCase());
+  const paginatedOrders = isSearching
+    ? searchFiltered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+    : orders;
 
-    return matchesFilter && matchesSearch;
-  });
+  const pageInfo: PageInfo = isSearching
+    ? (() => {
+        const totalElements = searchFiltered.length;
+        const totalPages = Math.max(1, Math.ceil(totalElements / PAGE_SIZE));
+        const safePage = Math.min(page, totalPages - 1);
+        return {
+          page: safePage,
+          size: PAGE_SIZE,
+          totalElements,
+          totalPages,
+          first: safePage === 0,
+          last: safePage >= totalPages - 1,
+        };
+      })()
+    : serverPageInfo;
+
+  const totalPages = pageInfo.totalPages;
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleString('vi-VN', {
@@ -414,7 +552,7 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
             </p>
           </div>
           <button
-            onClick={fetchOrders}
+            onClick={() => fetchOrders()}
             disabled={loading}
             className="px-6 py-3 bg-white border border-gray-100 rounded-2xl flex items-center gap-2 text-sm font-bold text-gray-600 hover:bg-gray-50 transition-all shadow-sm disabled:opacity-50"
           >
@@ -443,7 +581,7 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
               {BUYER_FILTERS.map(({ key, label }) => (
                 <button
                   key={key}
-                  onClick={() => setFilter(key)}
+                  onClick={() => { setFilter(key); setPage(0); }}
                   className={`px-6 py-3 rounded-[18px] text-[11px] font-black uppercase tracking-wider transition-all transform hover:scale-105 active:scale-95 ${
                     filter === key
                       ? 'bg-primary text-white shadow-xl shadow-primary/20 scale-105'
@@ -463,7 +601,7 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
             <div className="size-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
             <p className="text-sm font-bold text-gray-400">Đang tải đơn hàng...</p>
           </div>
-        ) : filteredOrders.length === 0 ? (
+        ) : paginatedOrders.length === 0 ? (
           <div className="bg-white rounded-[40px] border border-gray-100 shadow-sm p-16 text-center">
             <div className="size-24 bg-gray-50 rounded-full flex items-center justify-center text-gray-300 mb-6 mx-auto">
               <Package className="size-12" />
@@ -484,7 +622,7 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
           </div>
         ) : (
           <div className="space-y-6">
-            {filteredOrders.map((order) => {
+            {paginatedOrders.map((order) => {
               const statusConfig = getStatusConfig(order.status);
               const StatusIcon = statusConfig.icon;
               const trackable = canTrack(order.status);
@@ -539,17 +677,34 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
                         <div className="space-y-2">
                           {order.items?.slice(0, 3).map((item, idx) => (
                             <div key={idx} className="flex justify-between items-center text-sm py-1">
-                              <span className="text-gray-600">{item.productName} x{item.quantity}</span>
+                              <span className="text-gray-600">
+                                {item.productName} - {item.itemType === 'MYSTERY_BOX'
+                                  ? `${(item.quantity ?? 0).toLocaleString('vi-VN')} túi`
+                                  : `${(item.quantityKg ?? item.quantity).toLocaleString('vi-VN', { maximumFractionDigits: 2 })} kg`}
+                              </span>
                               <div className="flex items-center gap-4">
-                                <span className="font-bold text-gray-900">{item.unitPrice.toLocaleString('vi-VN')}đ</span>
+                                <span className="font-bold text-gray-900">
+                                  {item.itemType === 'MYSTERY_BOX'
+                                    ? `${(item.unitPrice ?? item.pricePerKg ?? 0).toLocaleString('vi-VN')}đ/túi`
+                                    : `${(item.pricePerKg ?? item.unitPrice).toLocaleString('vi-VN')}đ/kg`}
+                                </span>
                                 {order.status === 'DELIVERED' && (
                                   <div className="flex gap-3">
-                                    <button
-                                      onClick={() => { setSelectedItem(item); setShowReviewModal(true); }}
-                                      className="text-primary font-black text-[10px] uppercase tracking-wider hover:underline"
-                                    >
-                                      Đánh giá
-                                    </button>
+                                    {(() => {
+                                      const alreadyReviewed =
+                                        (item.itemType === 'MYSTERY_BOX' && item.mysteryBoxId && reviewedMysteryBoxIds.has(item.mysteryBoxId)) ||
+                                        (item.itemType !== 'MYSTERY_BOX' && item.orderDetailId && reviewedOrderDetailIds.has(item.orderDetailId));
+                                      return alreadyReviewed ? (
+                                        <span className="text-green-600 font-black text-[10px] uppercase tracking-wider">✓ Đã đánh giá</span>
+                                      ) : (
+                                        <button
+                                          onClick={() => { setSelectedItem(item); setShowReviewModal(true); }}
+                                          className="text-primary font-black text-[10px] uppercase tracking-wider hover:underline"
+                                        >
+                                          Đánh giá
+                                        </button>
+                                      );
+                                    })()}
                                     {item.isRequestedReturn ? (
                                       <span className={`font-black text-[10px] uppercase tracking-wider italic ${item.returnStatus === 'REJECTED' ? 'text-red-500' :
                                         item.returnStatus === 'COMPLETED' ? 'text-green-500' : 'text-orange-500'
@@ -592,8 +747,30 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
                       </div>
                     )}
 
+                    {order.rewardApplied && Number(order.rescuedWeight ?? 0) > 0 && (
+                      <div className="mb-6 p-5 bg-gradient-to-r from-green-50 to-emerald-50 rounded-3xl border border-green-100">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <div className="flex items-start gap-3">
+                            <div className="size-11 bg-white rounded-2xl flex items-center justify-center shadow-sm text-primary shrink-0">
+                              <Sprout className="size-5" />
+                            </div>
+                            <div>
+                              <p className="text-xs font-black text-primary uppercase tracking-widest mb-1">Đóng góp từ đơn hàng</p>
+                              <p className="text-sm font-bold text-green-800 leading-relaxed">
+                                Bạn đã góp phần giải cứu {formatImpactNumber(order.rescuedWeight)} kg nông sản giúp người nông dân.
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 rounded-2xl bg-white/80 px-4 py-3 text-sm font-black text-amber-600">
+                            <Award className="size-5" />
+                            +{formatImpactNumber(order.rewardPoints)} điểm
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Actions */}
-                    <div className="flex items-center justify-between pt-6 border-t border-gray-50">
+                    <div className="flex items-center justify-between pt-6 border-t border-gray-50 flex-wrap gap-3">
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-bold text-gray-400">Phương thức:</span>
                         <span className="px-3 py-1 bg-gray-50 text-gray-700 text-xs font-black rounded-full uppercase">
@@ -601,20 +778,66 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
                         </span>
                       </div>
 
-                      {order.status === 'DELIVERED' ? (
+                      <div className="flex items-center gap-3 flex-wrap justify-end">
+                        <Link
+                          to={`/my-orders/${order.id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="px-5 py-3 bg-gray-50 text-gray-700 font-black text-xs rounded-2xl border border-gray-100 hover:bg-gray-100 transition-all flex items-center gap-2 uppercase tracking-wider"
+                        >
+                          <FileText className="size-3.5" />
+                          Chi tiết đơn
+                        </Link>
+
+                        {order.status === 'DELIVERED' ? (
                         <div className="flex items-center gap-3 flex-wrap">
                           <div className="flex items-center gap-2 px-6 py-3 bg-green-50 text-green-700 rounded-2xl border border-green-100">
                             <CheckCircle2 className="size-4" />
                             <span className="text-sm font-black uppercase tracking-wider">Đã nhận được hàng</span>
                           </div>
-                          {/* Return whole order button — only shown if NO item has been returned yet */}
-                          {!order.items?.some(i => i.isRequestedReturn) && (
+                          <button
+                            onClick={() => handleDownloadReceipt(order.id)}
+                            disabled={downloadingReceiptId === order.id}
+                            className="px-5 py-3 bg-blue-50 text-blue-600 font-black text-xs rounded-2xl border border-blue-100 hover:bg-blue-100 transition-all flex items-center gap-2 uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {downloadingReceiptId === order.id
+                              ? <ReceiptLoader className="size-3.5 animate-spin" />
+                              : <Download className="size-3.5" />}
+                            Tải hóa đơn
+                          </button>
+                          {/* {!order.items?.some(i => i.isRequestedReturn) && (
                             <button
                               onClick={() => setOrderReturnModal({ orderId: order.id, orderNum: order.id })}
                               className="px-5 py-3 bg-orange-50 text-orange-600 font-black text-xs rounded-2xl border border-orange-100 hover:bg-orange-100 transition-all flex items-center gap-2 uppercase tracking-wider"
                             >
                               <RefreshCw className="size-3.5" />
                               Trả toàn bộ đơn
+                            </button>
+                          )} */}
+                        </div>
+                      ) : order.status === 'QC_PENDING_BUYER' ? (
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <button
+                            onClick={() => setQcDecisionModal({
+                              orderId: order.id,
+                              deadline: order.qcBuyerDecisionDeadline,
+                              paymentMethod: order.paymentMethod,
+                            })}
+                            className="px-6 py-3 bg-orange-500 text-white font-black rounded-2xl flex items-center gap-2 shadow-lg shadow-orange-500/20 hover:bg-orange-600 transition-all"
+                          >
+                            <AlertCircle className="size-4" />
+                            Xác nhận QC
+                          </button>
+                          <div className="flex items-center gap-2 px-6 py-3 bg-orange-50 text-orange-700 rounded-2xl border border-orange-100">
+                            <AlertCircle className="size-4" />
+                            <span className="text-sm font-bold">Chờ bạn xác nhận</span>
+                          </div>
+                          {canTrack(order.status) && (
+                            <button
+                              onClick={() => onViewTracking(order.id)}
+                              className="px-5 py-3 bg-primary/10 text-primary font-black rounded-2xl border border-primary/20 hover:bg-primary/15 transition-all flex items-center gap-2"
+                            >
+                              <Eye className="size-4" />
+                              Theo dõi
                             </button>
                           )}
                         </div>
@@ -626,6 +849,21 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
                           <Eye className="size-4" />
                           Theo dõi đơn hàng
                         </button>
+                      ) : order.status === 'AWAITING_PAYMENT' ? (
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => openResumePayment(order.id, 'individual')}
+                            disabled={resuming}
+                            className="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-2xl flex items-center gap-2 shadow-lg shadow-amber-500/20 transition-all disabled:opacity-60"
+                          >
+                            {resuming ? <ReceiptLoader className="size-4 animate-spin" /> : '💳'}
+                            Tiếp tục thanh toán
+                          </button>
+                          <div className="flex items-center gap-2 px-6 py-3 bg-amber-50 text-amber-700 rounded-2xl border border-amber-100">
+                            <AlertCircle className="size-4" />
+                            <span className="text-sm font-bold">Chờ thanh toán</span>
+                          </div>
+                        </div>
                       ) : order.status === 'PENDING' || order.status === 'PAID' ? (
                         <div className="flex items-center gap-3">
                           <button
@@ -645,6 +883,7 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
                           <span className="text-sm font-bold">Không thể theo dõi</span>
                         </div>
                       )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -652,8 +891,55 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
             })}
           </div>
         )}
-        {pageInfo && <Pagination pageInfo={pageInfo} onPageChange={setPage} className="mt-6" />}
+        {totalPages > 1 && <Pagination pageInfo={pageInfo} onPageChange={setPage} className="mt-6" />}
       </div>
+
+      {/* QC Decision Modal */}
+      {qcDecisionModal && (
+        <div className="fixed inset-0 z-[120] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-[32px] shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="px-8 py-6 border-b border-gray-50 flex items-start justify-between">
+              <div>
+                <h3 className="text-lg font-black text-gray-900">Xác nhận kiểm định chất lượng</h3>
+                <p className="text-xs text-gray-400 font-medium mt-1">
+                  Một phần hàng bị hư nặng. Bạn muốn nhận phần còn lại hay không?
+                </p>
+                {qcDecisionModal.deadline && (
+                  <p className="text-[11px] text-orange-600 font-bold mt-2">
+                    Hạn xác nhận: {new Date(qcDecisionModal.deadline).toLocaleString('vi-VN')}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => setQcDecisionModal(null)}
+                className="size-9 rounded-2xl border border-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-50"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+
+            <div className="p-8 space-y-4">
+              <button
+                disabled={loading}
+                onClick={() => handleQcDecision(true)}
+                className="w-full py-4 bg-primary text-white font-black rounded-2xl hover:bg-primary-dark transition-all disabled:opacity-60"
+              >
+                Nhận phần còn lại
+              </button>
+              <button
+                disabled={loading}
+                onClick={() => handleQcDecision(false)}
+                className="w-full py-4 bg-red-50 text-red-700 font-black rounded-2xl border border-red-100 hover:bg-red-100 transition-all disabled:opacity-60"
+              >
+                {getQcRejectButtonLabel(qcDecisionModal.paymentMethod)}
+              </button>
+              <p className="text-[11px] text-gray-400 font-medium">
+                {getQcRefundHint(qcDecisionModal.paymentMethod)}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Review Modal */}
       {showReviewModal && selectedItem && (
@@ -828,6 +1114,9 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
             </div>
           </div>
         </div>
+      )}
+      {resumeOptions && (
+        <ResumePaymentModal options={resumeOptions} onClose={closeResumePayment} />
       )}
     </div>
   );

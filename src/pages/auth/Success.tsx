@@ -1,14 +1,62 @@
 
-import React from 'react';
-import { CheckCircle2, Clock, Home, ShoppingBag, Eye } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Award, CheckCircle2, Clock, Home, ShoppingBag, Eye, Sprout } from 'lucide-react';
+import { orderService } from '../../services/order.service';
+import type { OrderResponse } from '../../services/order.service';
 
 interface SuccessProps {
   onViewMyOrders: () => void;
   onGoHome: () => void;
   orderId?: number;
+  orderIds?: number[];
 }
 
-const Success: React.FC<SuccessProps> = ({ onViewMyOrders, onGoHome, orderId }) => {
+const Success: React.FC<SuccessProps> = ({ onViewMyOrders, onGoHome, orderId, orderIds }) => {
+  const urlOrderId = useMemo(() => {
+    const raw = new URLSearchParams(window.location.search).get('orderId');
+    const parsed = raw ? Number(raw) : 0;
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }, []);
+  const urlOrderIds = useMemo(() => {
+    const raw = new URLSearchParams(window.location.search).get('orderIds');
+    if (!raw) return [];
+    return raw
+      .split(',')
+      .map((v) => Number(v.trim()))
+      .filter((v) => !Number.isNaN(v) && v > 0);
+  }, []);
+  const resolvedOrderIds = useMemo(() => {
+    if (orderIds && orderIds.length > 0) {
+      return Array.from(new Set(orderIds.filter((v) => Number.isFinite(v) && v > 0)));
+    }
+    if (urlOrderIds.length > 0) {
+      return Array.from(new Set(urlOrderIds));
+    }
+    if (orderId && orderId > 0) return [orderId];
+    if (urlOrderId > 0) return [urlOrderId];
+    return [];
+  }, [orderIds, urlOrderIds, orderId, urlOrderId]);
+
+  const [orderSummaries, setOrderSummaries] = useState<OrderResponse[]>([]);
+  const primaryOrderId = resolvedOrderIds[0] ?? 0;
+
+  useEffect(() => {
+    if (resolvedOrderIds.length === 0) return;
+    Promise.all(resolvedOrderIds.map((id) => orderService.getOrderById(id)))
+      .then((results) => {
+        const summaries = results
+          .map((res) => res.result)
+          .filter((v): v is OrderResponse => Boolean(v));
+        setOrderSummaries(summaries);
+      })
+      .catch((err) => console.error('Failed to load COD rescue summary', err));
+  }, [resolvedOrderIds]);
+
+  const rescuedWeight = orderSummaries.reduce((sum, order) => sum + Number(order.rescuedWeight ?? 0), 0);
+  const rewardPoints = orderSummaries.reduce((sum, order) => sum + Number(order.rewardPoints ?? 0), 0);
+  const rewardApplied = orderSummaries.some((order) => Boolean(order.rewardApplied));
+  const formatKg = (value: number) => value.toLocaleString('vi-VN', { maximumFractionDigits: 2 });
+
   return (
     <div className="min-h-screen bg-white flex items-center justify-center py-20 px-4 animate-in fade-in zoom-in-95 duration-500">
       <div className="max-w-md w-full text-center flex flex-col items-center">
@@ -19,8 +67,38 @@ const Success: React.FC<SuccessProps> = ({ onViewMyOrders, onGoHome, orderId }) 
         
         <h2 className="text-3xl font-black text-gray-900 font-display uppercase tracking-tight mb-4">Đặt hàng thành công!</h2>
         <p className="text-gray-500 font-medium leading-relaxed mb-10">
-          Cảm ơn bạn đã đồng hành cùng <span className="text-primary font-black">XẤU MÃ</span> để cứu nông sản. Đơn hàng <span className="font-bold text-gray-900">#{orderId || 'XM-XXXX'}</span> đã được gửi đến nhà vườn để duyệt.
+          Cảm ơn bạn đã đồng hành cùng <span className="text-primary font-black">XẤU MÃ</span> để cứu nông sản.
+          {' '}
+          {resolvedOrderIds.length > 1 ? (
+            <>Các đơn hàng <span className="font-bold text-gray-900">{resolvedOrderIds.map((id) => `#${id}`).join(', ')}</span> đã được gửi đến nhà vườn để duyệt.</>
+          ) : (
+            <>Đơn hàng <span className="font-bold text-gray-900">#{primaryOrderId || 'XM-XXXX'}</span> đã được gửi đến nhà vườn để duyệt.</>
+          )}
         </p>
+
+        {orderSummaries.length > 0 && rescuedWeight > 0 && (
+          <div className="w-full p-6 bg-gradient-to-br from-green-50 to-emerald-50 rounded-[32px] border border-green-100 mb-8 text-left">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="size-12 bg-white rounded-2xl flex items-center justify-center shadow-sm">
+                <Sprout className="size-6 text-primary" />
+              </div>
+              <div>
+                <p className="text-[10px] font-black text-primary uppercase tracking-widest">Giải cứu nông sản</p>
+                <p className="text-lg font-black text-gray-900">{formatKg(rescuedWeight)} kg</p>
+              </div>
+            </div>
+            <p className="text-sm text-green-800 font-bold leading-relaxed">
+              Với đơn hàng này, bạn đã góp phần giải cứu {formatKg(rescuedWeight)} kg nông sản, giúp nông dân giảm lãng phí.
+            </p>
+            <div className="mt-4 flex items-center gap-2 rounded-2xl bg-white/80 px-4 py-3 text-sm font-black text-amber-600">
+              <Award className="size-5" />
+              {rewardApplied
+                ? `+${formatKg(rewardPoints)} điểm tích lũy`
+                : `${formatKg(rewardPoints)} điểm dự kiến, sẽ cộng khi đơn hoàn tất`
+              }
+            </div>
+          </div>
+        )}
 
         <div className="w-full p-8 bg-yellow-50 rounded-[40px] border border-yellow-100 mb-10 flex flex-col gap-6">
            <div className="flex items-center gap-3 pb-4 border-b border-yellow-100">
@@ -36,7 +114,11 @@ const Success: React.FC<SuccessProps> = ({ onViewMyOrders, onGoHome, orderId }) 
            <div className="space-y-3">
               <div className="flex justify-between items-center text-sm">
                 <span className="text-gray-400 font-bold uppercase tracking-widest text-[10px]">Mã đơn hàng:</span>
-                <span className="text-gray-900 font-black">#{orderId || 'XM-XXXX'}</span>
+                {resolvedOrderIds.length > 1 ? (
+                  <span className="text-gray-900 font-black text-right">{resolvedOrderIds.map((id) => `#${id}`).join(', ')}</span>
+                ) : (
+                  <span className="text-gray-900 font-black">#{primaryOrderId || 'XM-XXXX'}</span>
+                )}
               </div>
               <div className="flex justify-between items-center text-sm">
                 <span className="text-gray-400 font-bold uppercase tracking-widest text-[10px]">Trạng thái:</span>

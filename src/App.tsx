@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, useLocation } from 'react-router-dom';
+import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ChatBotProvider, ChatBot } from './components/ChatBot';
 import ChatWidget from './components/chat/ChatWidget';
@@ -8,7 +8,11 @@ import ScrollToTop from './components/layout/ScrollToTop';
 import { PopupProvider } from './contexts/PopupContext';
 import './App.css';
 import { useNotificationWebSocket } from './services/useNotificationWebSocket';
-import { ensurePendingPayOSRolledBack, hasPendingPayOSRollback } from './utils/pendingPayOSPayment';
+import { ensurePendingPayOSRolledBack, getPendingPayOSPayment, clearPendingPayOSPayment, getRestoredPayOSCart, saveRestoredPayOSCart } from './utils/pendingPayOSPayment';
+import { paymentService } from './services';
+import { globalShowAlert } from './contexts/PopupContext';
+import { useResumePayment } from './hooks/useResumePayment';
+import ResumePaymentModal from './components/payment/ResumePaymentModal';
 
 const ChatBotWrapper: React.FC = () => {
   const { user, isAuthenticated } = useAuth();
@@ -32,7 +36,7 @@ const ChatBotWrapper: React.FC = () => {
       userRole={getChatBotRole(user.role)}
     >
       <ChatBot
-        title="Trợ lý AI FoodMarket"
+        title="Chat Box CapNong"
         className="z-50"
       />
     </ChatBotProvider>
@@ -59,46 +63,125 @@ const NotificationWebSocketWrapper: React.FC = () => {
 
 const PendingPayOSRollbackGuard: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const { isAuthenticated, loading } = useAuth();
-  const isRedirectingToCartRef = React.useRef(false);
+  const [pendingInfo, setPendingInfo] = React.useState<{ orderId: number; orderCode: string; orderIds?: number[] } | null>(null);
+  const notifiedRef = React.useRef(false);
+  const { openResumePayment, resumeOptions, closeResumePayment } = useResumePayment((msg) => {
+    // Clear stale pending data when payment can no longer proceed (already paid, cancelled, etc.)
+    clearPendingPayOSPayment();
+    globalShowAlert(msg, 'Thông báo', 'warning');
+  });
 
-  const cancelPendingPayOS = React.useCallback(async () => {
+  const checkPending = React.useCallback(() => {
     if (loading || !isAuthenticated) return;
-    if (location.pathname.startsWith('/payment/') || isRedirectingToCartRef.current) return;
-
-    const hadPending = hasPendingPayOSRollback();
-    const restored = await ensurePendingPayOSRolledBack();
-
-    if ((restored || hadPending) && !location.pathname.startsWith('/cart')) {
-      isRedirectingToCartRef.current = true;
-      window.location.replace(`/cart?payosReload=${Date.now()}`);
+    // On cart or payment pages, let existing rollback logic handle it
+    if (location.pathname.startsWith('/payment/') || location.pathname.startsWith('/cart')) {
+      setPendingInfo(null);
+      return;
     }
+    const pending = getPendingPayOSPayment();
+    if (!pending?.orderId) { setPendingInfo(null); return; }
+
+    if (!notifiedRef.current && pending.orderCode) {
+      notifiedRef.current = true;
+      paymentService.notifyPendingPayment(pending.orderCode).catch(() => {});
+    }
+    setPendingInfo({ orderId: pending.orderId, orderCode: pending.orderCode ?? '', orderIds: pending.orderIds });
   }, [isAuthenticated, loading, location.pathname]);
 
   React.useEffect(() => {
-    void cancelPendingPayOS();
+    checkPending();
+  }, [checkPending]);
 
-    const handleReturn = () => {
-      void cancelPendingPayOS();
-    };
-    const handleVisibilityChange = () => {
+  React.useEffect(() => {
+    const onVisibility = () => {
       if (document.visibilityState === 'visible') {
-        void cancelPendingPayOS();
+        notifiedRef.current = false;
+        checkPending();
       }
     };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [checkPending]);
 
-    window.addEventListener('pageshow', handleReturn);
-    window.addEventListener('focus', handleReturn);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+  const handleContinuePayment = async () => {
+    if (!pendingInfo) return;
+    const orderId = pendingInfo.orderId;
+    setPendingInfo(null);
+    notifiedRef.current = false;
+    await openResumePayment(orderId, 'individual');
+  };
 
-    return () => {
-      window.removeEventListener('pageshow', handleReturn);
-      window.removeEventListener('focus', handleReturn);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [cancelPendingPayOS]);
+  const handleCancelPending = async () => {
+    setPendingInfo(null);
+    await ensurePendingPayOSRolledBack();
+    window.dispatchEvent(new Event('cart-updated'));
+    window.location.replace(`/cart?payosReload=${Date.now()}`);
+  };
 
-  return null;
+  const handleDismiss = () => {
+    setPendingInfo(null);
+    clearPendingPayOSPayment();
+    // Also clear orderCode from cart snapshot so cart button doesn't trigger rollback
+    const snapshot = getRestoredPayOSCart();
+    if (snapshot?.cart) {
+      saveRestoredPayOSCart(snapshot.cart, { orderCode: null, orderId: null });
+    }
+  };
+
+  if (!pendingInfo) return null;
+
+  return (
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[200] w-full max-w-md px-4 pointer-events-none">
+      <div className="bg-amber-50 border border-amber-200 rounded-2xl shadow-2xl p-4 pointer-events-auto">
+        <div className="flex items-start gap-3 mb-3">
+          <span className="text-xl shrink-0">⏳</span>
+          <div className="flex-1">
+            <p className="text-sm font-black text-amber-900">Đơn hàng chờ thanh toán</p>
+            <p className="text-xs text-amber-700 mt-0.5">
+              Đơn hàng #{pendingInfo.orderId} đang chờ bạn hoàn tất thanh toán.
+            </p>
+            <button
+              onClick={() => { handleDismiss(); navigate('/my-orders'); }}
+              className="text-[10px] text-amber-600 underline mt-1 hover:text-amber-800"
+            >
+              Xem tất cả đơn hàng →
+            </button>
+          </div>
+          <button
+            onClick={handleDismiss}
+            className="text-amber-400 hover:text-amber-700 transition-colors shrink-0 text-lg font-bold leading-none"
+          >
+            ×
+          </button>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={handleContinuePayment}
+            className="flex-1 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-black rounded-xl transition-all"
+          >
+            💳 Tiếp tục thanh toán
+          </button>
+          <button
+            onClick={() => { handleDismiss(); navigate('/my-orders'); }}
+            className="flex-1 py-2 bg-white border border-amber-200 text-amber-800 text-xs font-bold rounded-xl hover:bg-amber-50 transition-all"
+          >
+            Xem đơn hàng
+          </button>
+          <button
+            onClick={handleCancelPending}
+            className="py-2 px-3 bg-red-50 border border-red-200 text-red-600 text-xs font-bold rounded-xl hover:bg-red-100 transition-all"
+          >
+            Hủy
+          </button>
+        </div>
+      </div>
+      {resumeOptions && (
+        <ResumePaymentModal options={resumeOptions} onClose={closeResumePayment} />
+      )}
+    </div>
+  );
 };
 
 const App: React.FC = () => {

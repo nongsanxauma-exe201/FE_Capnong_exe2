@@ -24,7 +24,9 @@ const Packing: React.FC = () => {
     setError(null);
     try {
       const res = await orderService.getOrdersForStaff(0, 50, 'QUALITY_CHECKED');
-      setOrders(res.result?.content ?? []);
+      const all = res.result?.content ?? [];
+      // Chỉ hiện đơn còn hàng để đóng gói (không phải tất cả dòng bị hủy do QC)
+      setOrders(all.filter((ord) => (ord.items ?? []).some((it) => !it.qualityResult?.lineCancelled)));
     } catch (err: any) {
       setError(err?.data?.message || err?.message || 'Không thể tải danh sách đơn');
     } finally {

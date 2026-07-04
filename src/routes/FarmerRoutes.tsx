@@ -2,6 +2,7 @@ import React from 'react';
 import { Route, Navigate, useNavigate, useParams } from 'react-router-dom';
 import FarmerLayout from './FarmerLayout';
 import ProtectedRoute from './ProtectedRoute';
+import FarmerRevenueReport from '../pages/farmer/RevenueReport';
 import FarmerDashboard from '../pages/farmer/Dashboard';
 import Products from '../pages/farmer/Products';
 import AddProduct from '../pages/farmer/AddProduct';
@@ -24,8 +25,11 @@ import TripJoinRequestDetail from '../pages/farmer/TripJoinRequestDetail';
 import SendJoinRequest from '../pages/farmer/SendJoinRequest';
 import FarmerDisputes from '../pages/farmer/FarmerDisputes';
 import Vouchers from '../pages/farmer/Vouchers';
+import ComboBuilder from '../pages/farmer/ComboBuilder';
 import { AppRole, KYCStatus } from '../types';
 // ── Wrapper components ──────────────────────────────────────────────────────
+
+const RevenueReportWrapper = () => <FarmerRevenueReport />;
 
 const DashboardWrapper = () => {
     const navigate = useNavigate();
@@ -52,6 +56,11 @@ const EditProductWrapper = () => {
 const MysteryBoxEditorWrapper = () => {
     const navigate = useNavigate();
     return <MysteryBoxEditor onBack={() => navigate('/farmer/products')} />;
+};
+
+const ComboBuilderWrapper = () => {
+    const navigate = useNavigate();
+    return <ComboBuilder onBack={() => navigate('/farmer/products')} />;
 };
 
 const VehiclesWrapper = () => {
@@ -96,11 +105,14 @@ const FarmerRoutes = () => {
         >
             <Route index element={<DashboardWrapper />} />
             <Route path="overview" element={<DashboardWrapper />} />
+            <Route path="revenue-report" element={<RevenueReportWrapper />} />
             <Route path="products" element={<ProductsWrapper />} />
             <Route path="add-product" element={<AddProductWrapper />} />
             <Route path="edit-product/:productId" element={<EditProductWrapper />} />
             <Route path="mystery-box-editor" element={<MysteryBoxEditorWrapper />} />
             <Route path="mystery-box-editor/:boxId" element={<MysteryBoxEditorWrapper />} />
+            <Route path="combos" element={<ComboBuilderWrapper />} />
+            <Route path="combos/:comboId" element={<ComboBuilderWrapper />} />
             <Route path="vehicles" element={<VehiclesWrapper />} />
             <Route path="wallet" element={<Wallet />} />
             <Route path="orders" element={<OrdersWrapper />} />

@@ -1,13 +1,14 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, Link, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { AppRole, User, KYCStatus } from '../../types/index';
-import { Search, ShoppingCart, Bell, Menu, User as UserIcon, LogOut, Phone, X, CheckCircle2, Trash2, Store, Truck, LayoutDashboard, Package, MessageSquare, RefreshCw, Ticket } from 'lucide-react';
+import { Search, ShoppingCart, Bell, Menu, User as UserIcon, LogOut, Phone, X, CheckCircle2, Trash2, Store, Truck, LayoutDashboard, Package, MessageSquare, RefreshCw, Ticket, UtensilsCrossed } from 'lucide-react';
 import { notificationService, NotificationItem, cartService } from '../../services';
 import { useNotificationWebSocket } from '../../services/useNotificationWebSocket';
-import { getRestoredPayOSCartData, hasPendingPayOSRollback, redirectToCartAfterPayOSCancel } from '../../utils/pendingPayOSPayment';
-
 import { useAuth } from '../../contexts/AuthContext';
+import { useResumePayment } from '../../hooks/useResumePayment';
+import ResumePaymentModal from '../../components/payment/ResumePaymentModal';
+import { globalShowAlert, globalShowConfirm } from '../../contexts/PopupContext';
 
 interface HeaderProps {
   // Kept for backward compatibility but mostly internal refactored
@@ -22,12 +23,22 @@ const Header: React.FC<HeaderProps> = ({
   const navigate = useNavigate();
   const location = useLocation();
 
-  const handleOpenCart = () => {
-    if (hasPendingPayOSRollback()) {
-      void redirectToCartAfterPayOSCancel();
-      return;
+  const isPlanCheckout = location.pathname === '/checkout' && new URLSearchParams(location.search).get('mode') === 'plan';
+
+  const planGuardNavigate = async (path: string) => {
+    if (isPlanCheckout) {
+      const confirmed = await globalShowConfirm(
+        'Nếu rời khỏi trang, các combo trong thực đơn sẽ không được giữ lại. Bạn sẽ cần vào lại "Lên kế hoạch" và bấm "Mua tất cả" để thanh toán lại.',
+        'Rời khỏi trang thanh toán?'
+      );
+      if (!confirmed) return;
+      sessionStorage.removeItem('planCheckoutData');
     }
-    navigate('/cart');
+    navigate(path);
+  };
+
+  const handleOpenCart = () => {
+    planGuardNavigate('/cart');
   };
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -37,6 +48,9 @@ const Header: React.FC<HeaderProps> = ({
   const [cartCount, setCartCount] = useState(0);
   const [searchInput, setSearchInput] = useState('');
   const notifRef = useRef<HTMLDivElement>(null);
+  const { openResumePayment, resumeOptions, closeResumePayment } = useResumePayment((msg) => {
+    globalShowAlert(msg, 'Thông báo', 'warning');
+  });
 
   // Kích hoạt WebSocket để nhận thông báo realtime
   useNotificationWebSocket({
@@ -82,11 +96,9 @@ const Header: React.FC<HeaderProps> = ({
         setCartCount(res.result.items.length);
         return;
       }
-      const snapshot = getRestoredPayOSCartData();
-      setCartCount(snapshot?.items?.length || 0);
+      setCartCount(0);
     } catch (err) {
-      const snapshot = getRestoredPayOSCartData();
-      setCartCount(snapshot?.items?.length || 0);
+      setCartCount(0);
       console.error('Failed to fetch cart count', err);
     }
   };
@@ -152,22 +164,21 @@ const Header: React.FC<HeaderProps> = ({
     [AppRole.ADMIN]: 'Quản trị viên',
   };
 
-  const handleDashboardRedirect = () => {
+  const handleDashboardRedirect = async () => {
     setShowProfileMenu(false);
     if (!user) return;
 
-    // Block PENDING farmers/shippers from dashboard
+    let path = '/';
     if (user.kycStatus === KYCStatus.PENDING && (user.role === AppRole.FARMER || user.role === AppRole.SHIPPER)) {
-      navigate('/kyc');
-      return;
+      path = '/kyc';
+    } else {
+      switch (user.role) {
+        case AppRole.ADMIN: path = '/admin'; break;
+        case AppRole.FARMER: path = '/farmer'; break;
+        case AppRole.SHIPPER: path = '/shipper'; break;
+      }
     }
-
-    switch (user.role) {
-      case AppRole.ADMIN: navigate('/admin'); break;
-      case AppRole.FARMER: navigate('/farmer'); break;
-      case AppRole.SHIPPER: navigate('/shipper'); break;
-      default: navigate('/'); break;
-    }
+    await planGuardNavigate(path);
   };
 
   // Sync search input with URL if user navigates back or types directly
@@ -177,13 +188,10 @@ const Header: React.FC<HeaderProps> = ({
     setSearchInput(q);
   }, [location.search]);
 
-  const handleSearch = (e?: React.FormEvent) => {
+  const handleSearch = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (searchInput.trim()) {
-      navigate(`/search?q=${encodeURIComponent(searchInput.trim())}`);
-    } else {
-      navigate('/');
-    }
+    const path = searchInput.trim() ? `/search?q=${encodeURIComponent(searchInput.trim())}` : '/';
+    await planGuardNavigate(path);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -201,10 +209,10 @@ const Header: React.FC<HeaderProps> = ({
       <div className={`bg-[#5DBE61] text-white ${outerPaddingClass} py-4 w-full`}>
         <div className={`flex items-center justify-between ${containerClass} gap-4 md:gap-10`}>
           {/* Logo Area */}
-          <Link to="/" className="flex items-center gap-3 shrink-0 cursor-pointer">
+          <button onClick={() => planGuardNavigate('/')} className="flex items-center gap-3 shrink-0 cursor-pointer">
             <img src="/logo.png" alt="Logo" className="size-10 object-contain rounded-full bg-white" />
             <h2 className="text-white text-xl font-black leading-tight tracking-tighter uppercase font-display italic">NÔNG SẢN XẤU MÃ</h2>
-          </Link>
+          </button>
 
           {/* Search Bar */}
           <form onSubmit={handleSearch} className="flex-1 max-w-[700px] relative">
@@ -345,24 +353,27 @@ const Header: React.FC<HeaderProps> = ({
                       )}
 
                       <button
-                        onClick={() => {
+                        onClick={async () => {
                           setShowProfileMenu(false);
-                          if (user?.role === AppRole.FARMER) {
-                            navigate('/farmer/profile');
-                          } else {
-                            navigate('/profile');
-                          }
+                          await planGuardNavigate(user?.role === AppRole.FARMER ? '/farmer/profile' : '/profile');
                         }}
                         className="w-full px-5 py-3 text-left text-xs font-bold hover:bg-gray-50 flex items-center gap-3 transition-colors"
                       >
                         <UserIcon className="size-4 text-gray-400" /> Hồ sơ của tôi
                       </button>
-                      <button onClick={() => { setShowProfileMenu(false); navigate('/my-orders'); }} className="w-full px-5 py-3 text-left text-xs font-bold hover:bg-gray-50 flex items-center gap-3 transition-colors">
+                      <button onClick={async () => { setShowProfileMenu(false); await planGuardNavigate('/my-orders'); }} className="w-full px-5 py-3 text-left text-xs font-bold hover:bg-gray-50 flex items-center gap-3 transition-colors">
                         <Package className="size-4 text-gray-400" /> Đơn hàng của tôi
                       </button>
                       {user?.role === AppRole.BUYER && (
-                        <button onClick={() => { setShowProfileMenu(false); navigate('/my-vouchers'); }} className="w-full px-5 py-3 text-left text-xs font-bold hover:bg-gray-50 flex items-center gap-3 transition-colors">
+                        <button onClick={async () => { setShowProfileMenu(false); await planGuardNavigate('/my-vouchers'); }} className="w-full px-5 py-3 text-left text-xs font-bold hover:bg-gray-50 flex items-center gap-3 transition-colors">
                           <Ticket className="size-4 text-gray-400" /> Kho voucher
+                        </button>
+                      )}
+                      {user?.role === AppRole.BUYER && (
+                        <button onClick={async () => { setShowProfileMenu(false); await planGuardNavigate('/meal-plan'); }} className="w-full px-5 py-3 text-left text-xs font-bold hover:bg-emerald-50 flex items-center gap-3 transition-colors text-gray-700">
+                          <UtensilsCrossed className="size-4 text-emerald-500" />
+                          <span className="flex-1">Lên kế hoạch ăn uống</span>
+                          <span className="bg-emerald-100 text-emerald-600 text-[8px] font-black px-1.5 py-0.5 rounded-full tracking-widest">BETA</span>
                         </button>
                       )}
                       {/* <button onClick={() => { setShowProfileMenu(false); navigate('/my-returns'); }} className="w-full px-5 py-3 text-left text-xs font-bold hover:bg-gray-50 flex items-center gap-3 transition-colors">
@@ -374,7 +385,15 @@ const Header: React.FC<HeaderProps> = ({
                         </button>
                       )} */}
                       <div className="h-px bg-gray-50 mx-3 my-1" />
-                      <button onClick={() => { setShowProfileMenu(false); onLogout(); }} className="w-full px-5 py-3 text-left text-xs font-black text-red-500 hover:bg-red-50 flex items-center gap-3 transition-colors">
+                      <button onClick={async () => {
+                        if (isPlanCheckout) {
+                          const ok = await globalShowConfirm('Nếu rời khỏi trang, các combo trong thực đơn sẽ không được giữ lại. Bạn sẽ cần vào lại "Lên kế hoạch" và bấm "Mua tất cả" để thanh toán lại.', 'Rời khỏi trang thanh toán?');
+                          if (!ok) return;
+                          sessionStorage.removeItem('planCheckoutData');
+                        }
+                        setShowProfileMenu(false);
+                        onLogout();
+                      }} className="w-full px-5 py-3 text-left text-xs font-black text-red-500 hover:bg-red-50 flex items-center gap-3 transition-colors">
                         <LogOut className="size-4" /> Đăng xuất
                       </button>
                     </div>
@@ -406,24 +425,24 @@ const Header: React.FC<HeaderProps> = ({
         <div className={`flex items-center justify-between w-full ${containerClass}`}>
           <div className="flex-1" />
           <nav className="flex items-center gap-10">
-            <Link
-              to="/mystery-boxes"
+            <button
+              onClick={() => planGuardNavigate('/mystery-boxes')}
               className={`text-xs font-bold uppercase tracking-tight transition-all ${location.pathname.includes('/mystery-box') ? 'text-gray-900 border-b-2 border-[#29a33d] pb-1' : 'text-gray-600 hover:text-primary'}`}
             >
               GÓI MÙ
-            </Link>
-            <Link
-              to="/"
+            </button>
+            <button
+              onClick={() => planGuardNavigate('/')}
               className={`text-xs font-black pb-1 uppercase tracking-tight text-nowrap transition-all ${activeTab === 'home' ? 'text-gray-900 border-b-2 border-[#29a33d]' : 'text-gray-600 hover:text-primary'}`}
             >
               TRANG CHỦ
-            </Link>
-            <Link
-              to="/news"
+            </button>
+            <button
+              onClick={() => planGuardNavigate('/news')}
               className={`text-xs font-bold uppercase tracking-tight transition-all ${activeTab === 'news' ? 'text-gray-900 border-b-2 border-[#29a33d] pb-1' : 'text-gray-600 hover:text-primary'}`}
             >
               TIN TỨC
-            </Link>
+            </button>
             {/* <Link
               to="/meal-plan"
               className={`text-xs font-bold uppercase tracking-tight transition-all ${location.pathname === '/meal-plan' ? 'text-gray-900 border-b-2 border-[#29a33d] pb-1' : 'text-gray-600 hover:text-primary'}`}
@@ -461,6 +480,34 @@ const Header: React.FC<HeaderProps> = ({
                 {selectedNotification.createAt ? new Date(selectedNotification.createAt).toLocaleString('vi-VN') : ''}
               </p>
             </div>
+            {selectedNotification.title === 'Bạn chưa thanh toán' && selectedNotification.evidence && (() => {
+              const orderId = parseInt(selectedNotification.evidence, 10);
+              if (!orderId) return null;
+              return (
+                <div className="px-6 pb-4 flex gap-2">
+                  <button
+                    onClick={async () => {
+                      if (isPlanCheckout) {
+                        const ok = await globalShowConfirm('Nếu rời khỏi trang, các combo trong thực đơn sẽ không được giữ lại. Bạn sẽ cần vào lại "Lên kế hoạch" và bấm "Mua tất cả" để thanh toán lại.', 'Rời khỏi trang thanh toán?');
+                        if (!ok) return;
+                        sessionStorage.removeItem('planCheckoutData');
+                      }
+                      setSelectedNotification(null);
+                      await openResumePayment(orderId, 'individual');
+                    }}
+                    className="flex-1 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-black rounded-lg transition-colors"
+                  >
+                    💳 Tiếp tục thanh toán
+                  </button>
+                  <button
+                    onClick={async () => { setSelectedNotification(null); await planGuardNavigate('/my-orders'); }}
+                    className="flex-1 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition-colors"
+                  >
+                    📋 Xem đơn hàng
+                  </button>
+                </div>
+              );
+            })()}
             <div className="bg-gray-50 px-6 py-4 border-t border-gray-100 flex justify-end">
               <button
                 onClick={() => setSelectedNotification(null)}
@@ -471,6 +518,9 @@ const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
         </div>
+      )}
+      {resumeOptions && (
+        <ResumePaymentModal options={resumeOptions} onClose={closeResumePayment} />
       )}
     </header>
   );

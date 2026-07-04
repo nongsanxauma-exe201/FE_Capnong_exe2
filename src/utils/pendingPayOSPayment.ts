@@ -1,6 +1,7 @@
 import { paymentService, type PaymentResponse } from '../services/payment.service';
 import { cartService, type CartItemResponse, type CartResponse } from '../services/cart.service';
 import { orderService } from '../services/order.service';
+import { USER_INFO_KEY } from '../services/api.config';
 
 export const PENDING_PAYOS_PAYMENT_KEY = 'pendingPayOSPayment';
 export const PAYOS_RESTORED_CART_KEY = 'payOSRestoredCartSnapshot';
@@ -9,6 +10,8 @@ export const PAYOS_RELOAD_CART_ON_ARRIVAL_KEY = 'payOSReloadCartOnArrival';
 export type PendingPayOSPayment = {
   orderCode?: string | null;
   orderId?: number | null;
+  batchId?: number | null;
+  orderIds?: number[];
   createdAt?: number;
 };
 
@@ -17,6 +20,7 @@ export type PayOSCartSnapshot = {
   orderCode?: string | null;
   orderId?: number | null;
   savedAt?: number;
+  ownerKey?: string | null;
 };
 
 const PENDING_EXPIRES_MS = 2 * 60 * 60 * 1000;
@@ -25,12 +29,28 @@ const writeStorages = [localStorage, sessionStorage];
 
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
+function getCurrentCartOwnerKey(): string | null {
+  try {
+    const raw = localStorage.getItem(USER_INFO_KEY) || sessionStorage.getItem(USER_INFO_KEY);
+    if (!raw) return null;
+    const user = JSON.parse(raw) as { id?: string | number; email?: string };
+    if (user?.id != null) return `id:${user.id}`;
+    if (user?.email) return `email:${user.email}`;
+  } catch {}
+  return null;
+}
+
 export function clearPendingPayOSPayment() {
   for (const storage of writeStorages) {
     try {
       storage.removeItem(PENDING_PAYOS_PAYMENT_KEY);
     } catch {}
   }
+}
+
+export function clearPayOSRecoveryState() {
+  clearPendingPayOSPayment();
+  clearRestoredPayOSCart();
 }
 
 export function getPendingPayOSPayment(): PendingPayOSPayment | null {
@@ -70,11 +90,17 @@ export function resolvePayOSOrderCode(payment: PaymentResponse): string | null {
   }
 }
 
-export function savePendingPayOSPayment(payment: PaymentResponse, orderId: number) {
+export function savePendingPayOSPayment(
+  payment: PaymentResponse,
+  orderId: number,
+  extra?: { batchId?: number; orderIds?: number[] },
+) {
   const orderCode = resolvePayOSOrderCode(payment);
   const payload = JSON.stringify({
     orderCode,
     orderId,
+    batchId: extra?.batchId ?? null,
+    orderIds: extra?.orderIds ?? (orderId ? [orderId] : []),
     createdAt: Date.now(),
   });
 
@@ -89,11 +115,12 @@ function parseSnapshotPayload(raw: string): PayOSCartSnapshot | null {
   try {
     const parsed = JSON.parse(raw) as PayOSCartSnapshot | CartResponse;
     if (parsed && 'cart' in parsed && parsed.cart?.items?.length) {
+      const currentOwnerKey = getCurrentCartOwnerKey();
+      if (!parsed.ownerKey || parsed.ownerKey !== currentOwnerKey) {
+        clearRestoredPayOSCart();
+        return null;
+      }
       return parsed;
-    }
-    const legacy = parsed as CartResponse;
-    if (legacy?.items?.length) {
-      return { cart: legacy, savedAt: Date.now() };
     }
   } catch {}
   return null;
@@ -113,6 +140,7 @@ export function saveRestoredPayOSCart(
     orderCode: nextOrderCode ?? null,
     orderId: nextOrderId ?? null,
     savedAt: Date.now(),
+    ownerKey: getCurrentCartOwnerKey(),
   } satisfies PayOSCartSnapshot);
 
   for (const storage of writeStorages) {

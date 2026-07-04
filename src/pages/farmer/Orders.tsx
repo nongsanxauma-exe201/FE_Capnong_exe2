@@ -1,30 +1,45 @@
 import React, { useState, useEffect } from 'react';
-import { Truck, CheckCircle2, XCircle, User, AlertTriangle, X, Loader2, AlertCircle, Trash2, PackageCheck, PackageX, Gift, Eye, Navigation, CheckCircle, Clock } from 'lucide-react';
+import { Truck, CheckCircle2, XCircle, User, AlertTriangle, X, Loader2, AlertCircle, PackageCheck, PackageX, Gift, Eye, Navigation, CheckCircle, Download } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { orderService, OrderResponse, type OrderItemResponse } from '../../services';
 import { ImageLightbox } from '../../components/ui';
 import Pagination, { PageInfo } from '../../components/ui/Pagination';
-import { globalShowAlert, globalShowConfirm } from '../../contexts/PopupContext';
+import { globalShowAlert } from '../../contexts/PopupContext';
+import { exportService } from '../../services/export.service';
+
+// Định nghĩa ngoài component để fetchOrders có thể dùng mà không lo TDZ
+// Chỉ dùng các status tồn tại trong BE OrderStatus enum
+const ORDER_TABS = [
+  // Liệt kê rõ để loại AWAITING_PAYMENT (chỉ dành cho buyer)
+  { label: 'Tất cả', statuses: ['PENDING', 'PAID', 'CONFIRMED', 'READY_FOR_PICKUP', 'READY', 'SHIPPING_TO_WAREHOUSE', 'ARRIVED_AT_WAREHOUSE', 'QUALITY_CHECKING', 'QUALITY_CHECKED', 'SHIPPING', 'DELIVERED', 'CANCELLED', 'FAILED'] },
+  { label: 'Chờ xác nhận',      statuses: ['PENDING', 'PAID'] },        // AWAITING_PAYMENT chỉ dành cho buyer
+  { label: 'Đang chuẩn bị',     statuses: ['CONFIRMED', 'READY_FOR_PICKUP'] },
+  { label: 'Chờ shipper lấy',   statuses: ['READY'] },
+  { label: 'Giao tới kho',      statuses: ['SHIPPING_TO_WAREHOUSE'] },
+  { label: 'Đã tới kho',        statuses: ['ARRIVED_AT_WAREHOUSE'] },
+  { label: 'Đang kiểm định',    statuses: ['QUALITY_CHECKING'] },
+  { label: 'Đã kiểm tra',       statuses: ['QUALITY_CHECKED'] },
+  { label: 'Đang giao',         statuses: ['SHIPPING'] },
+  { label: 'Đã giao',           statuses: ['DELIVERED'] },
+  { label: 'Đã hủy',            statuses: ['CANCELLED'] },
+  { label: 'Thất bại',          statuses: ['FAILED'] },
+];
 
 const getStatusLabel = (status: string) => {
   const map: Record<string, string> = {
-    SHIPPING_TO_WAREHOUSE: 'Đang giao tới kho', ARRIVED_AT_WAREHOUSE: 'Đã tới kho',
-    QUALITY_CHECKING: 'Đang kiểm định', QUALITY_APPROVED: 'Đạt chất lượng',
-    QUALITY_CHECKED: 'Đã kiểm tra', QUALITY_REJECTED: 'Không đạt chất lượng',
-    PENDING: 'Chờ xác nhận', CONFIRMED: 'Đã xác nhận', SHIPPING: 'Đang giao',
-    DELIVERED: 'Đã giao', CANCELLED: 'Đã hủy', FAILED: 'Thất bại', PAID: 'Đã thanh toán',
-    READY_FOR_PICKUP: 'Đã sẵn sàng để lấy hàng',
+    PENDING: 'Chờ xác nhận', PAID: 'Đã thanh toán', CONFIRMED: 'Đã xác nhận',
+    READY_FOR_PICKUP: 'Chờ shipper lấy hàng', READY: 'Đã đóng gói xong',
+    SHIPPING: 'Đang giao', SHIPPING_TO_WAREHOUSE: 'Đang giao tới kho',
+    ARRIVED_AT_WAREHOUSE: 'Đã tới kho', QUALITY_CHECKING: 'Đang kiểm định',
+    QUALITY_CHECKED: 'Đã kiểm tra xong',
+    DELIVERED: 'Đã giao', CANCELLED: 'Đã hủy', FAILED: 'Thất bại',
   };
   return map[status] || status.replace(/_/g, ' ');
 };
 
 const PAGE_SIZE = 10;
 
-interface OrdersProps {
-  onPrepareOrder?: (orderId: string) => void;
-}
-
-const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
+const Orders: React.FC = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('Tất cả');
   const [orders, setOrders] = useState<OrderResponse[]>([]);
@@ -33,9 +48,39 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
   const [page, setPage] = useState(0);
   const [pageInfo, setPageInfo] = useState<PageInfo | null>(null);
 
+  const [search, setSearch] = useState('');
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancellingOrderId, setCancellingOrderId] = useState<number | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [confirmedWeightAgreement, setConfirmedWeightAgreement] = useState<Set<number>>(new Set());
+
+  const toggleWeightAgreement = (orderId: number) => {
+    setConfirmedWeightAgreement(prev => {
+      const next = new Set(prev);
+      if (next.has(orderId)) next.delete(orderId);
+      else next.add(orderId);
+      return next;
+    });
+  };
+
+  // Export state — default: last 30 days
+  const [shopExportFrom, setShopExportFrom] = useState(
+    new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  );
+  const [shopExportTo, setShopExportTo] = useState(new Date().toISOString().slice(0, 10));
+  const [exportingShopExcel, setExportingShopExcel] = useState(false);
+
+  const handleShopExportExcel = async () => {
+    setExportingShopExcel(true);
+    try {
+      await exportService.exportShopOrdersExcel({ from: shopExportFrom, to: shopExportTo });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Xuất Excel thất bại';
+      globalShowAlert(msg, 'Lỗi', 'error');
+    } finally {
+      setExportingShopExcel(false);
+    }
+  };
 
   // Tracking modal
   const [trackingOrderId, setTrackingOrderId] = useState<number | null>(null);
@@ -56,7 +101,9 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
   const fetchOrders = async () => {
     try {
       setIsLoading(true);
-      const res = await orderService.getAllOrdersPaged(page, PAGE_SIZE);
+      const activeTabDef = ORDER_TABS.find(t => t.label === activeTab);
+      const statuses = activeTabDef?.statuses?.length ? activeTabDef.statuses : undefined;
+      const res = await orderService.getAllOrdersPaged(page, PAGE_SIZE, statuses);
       if (res.result) {
         setOrders(res.result.content.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
         setPageInfo({
@@ -76,7 +123,8 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
     }
   };
 
-  useEffect(() => { fetchOrders(); }, [page]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchOrders(); }, [page, activeTab]);
 
   const handleOpenCancelModal = (orderId: number) => {
     setCancellingOrderId(orderId);
@@ -99,37 +147,20 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
     }
   };
 
-  const handleDeleteOrder = async (orderId: number) => {
-    if (!await globalShowConfirm(`Bạn có chắc chắn muốn XÓA VĨNH VIỄN đơn hàng #${orderId} không?`, 'Xác nhận xóa')) return;
-    try {
-      setIsProcessing(true);
-      await orderService.deleteOrder(orderId);
-      globalShowAlert(`Đã xóa vĩnh viễn đơn hàng #${orderId}`, 'Thành công', 'success');
-      fetchOrders();
-    } catch (err: any) {
-      globalShowAlert(err?.data?.message || 'Có lỗi khi xóa đơn hàng', 'Lỗi', 'error');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-  // xác nhậnd dơn hàng đang vận chuyển tới kho 
-  const hancleDeliveringWarehouse = async (orderId: number) => {
-    try {
-      setIsProcessing(true);
-      await orderService.updateOrder(orderId, { status: 'SHIPPING_TO_WAREHOUSE' });
-      globalShowAlert(`Đã cập nhật trạng thái đơn hàng #${orderId}`, 'Thành công', 'success');
-      fetchOrders();
-    } catch (err: any) {
-      globalShowAlert(err?.data?.message || 'Có lỗi khi cập nhật trạng thái  đơn hàng', 'Lỗi', 'error');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
   const handleConfirmOrder = async (orderId: number) => {
+    if (!confirmedWeightAgreement.has(orderId)) {
+      globalShowAlert('Vui lòng đồng ý với cam kết đảm bảo cân nặng trước khi xác nhận đơn.', 'Chưa xác nhận', 'warning');
+      return;
+    }
     try {
       setIsProcessing(true);
       await orderService.updateOrder(orderId, { status: 'CONFIRMED' });
       globalShowAlert(`Đã xác nhận đơn hàng #${orderId}`, 'Thành công', 'success');
+      setConfirmedWeightAgreement(prev => {
+        const next = new Set(prev);
+        next.delete(orderId);
+        return next;
+      });
       fetchOrders();
     } catch (err: any) {
       globalShowAlert(err?.data?.message || 'Có lỗi khi xác nhận đơn hàng', 'Lỗi', 'error');
@@ -138,55 +169,12 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
     }
   };
 
-  const tabs = [
-    { label: 'Tất cả', statuses: [] },
-
-    // Chờ nông dân xác nhận
-    { label: 'Chờ xác nhận', statuses: ['PENDING', 'PAID'] },
-
-     { label: 'Đã sẵn sàng', statuses: ['READY_FOR_PICKUP'] },
-
-    // Nông dân chuẩn bị hàng
-    { label: 'Đang chuẩn bị', statuses: ['CONFIRMED'] },
-
-    // Nông dân giao tới kho
-    { label: 'Đang giao tới kho', statuses: ['SHIPPING_TO_WAREHOUSE'] },
-
-    // Kho đã nhận hàng
-    { label: 'Đã tới kho', statuses: ['ARRIVED_AT_WAREHOUSE'] },
-
-    // Đang kiểm tra chất lượng
-    { label: 'Đang kiểm định', statuses: ['QUALITY_CHECKING'] },
-
-    // Đã kiểm tra chất lượng
-    { label: 'Đã kiểm tra', statuses: ['QUALITY_CHECKED'] },
-
-    // Đạt chuẩn chất lượng
-    { label: 'Đạt chất lượng', statuses: ['QUALITY_APPROVED'] },
-
-    // Không đạt chất lượng
-    { label: 'Không đạt chất lượng', statuses: ['QUALITY_REJECTED'] },
-
-    // Đang giao cho khách
-    { label: 'Đang giao', statuses: ['SHIPPING'] },
-
-    // Giao thành công
-    { label: 'Đã giao', statuses: ['DELIVERED'] },
-
-    // Đơn bị hủy
-    { label: 'Đã hủy', statuses: ['CANCELLED'] },
-
-    // Giao thất bại
-    { label: 'Thất bại', statuses: ['FAILED'] },
-  ];
-
-  const getFilteredOrders = () => {
-    const activeTabDef = tabs.find(t => t.label === activeTab);
-    if (!activeTabDef || activeTabDef.statuses.length === 0) return orders;
-    return orders.filter(o => activeTabDef.statuses.includes(o.status));
-  };
-
-  const filteredOrders = getFilteredOrders();
+  const filteredOrders = search.trim()
+    ? orders.filter(o =>
+        `#ORD-${o.id}`.toLowerCase().includes(search.toLowerCase()) ||
+        (o.recipientName || '').toLowerCase().includes(search.toLowerCase())
+      )
+    : orders;
 
   if (isLoading) {
     return (
@@ -206,12 +194,46 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
         </div>
         <div className="flex items-center gap-4">
           <div className="relative">
-            <input type="text" placeholder="Tìm mã đơn, khách hàng..." className="pl-10 pr-4 py-2.5 bg-white border border-gray-100 rounded-full text-sm outline-none focus:ring-2 focus:ring-primary/20 transition-all w-64 shadow-sm" />
+            <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Tìm mã đơn, khách hàng..." className="pl-10 pr-4 py-2.5 bg-white border border-gray-100 rounded-full text-sm outline-none focus:ring-2 focus:ring-primary/20 transition-all w-64 shadow-sm" />
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xl">search</span>
           </div>
           <button className="size-11 bg-white border border-gray-100 rounded-full flex items-center justify-center text-gray-400 relative shadow-sm hover:text-primary transition-colors">
             <span className="material-symbols-outlined fill-1">notifications</span>
             <span className="absolute top-2 right-2 size-2 bg-red-500 border-2 border-white rounded-full"></span>
+          </button>
+        </div>
+      </div>
+
+      {/* Export Excel section */}
+      <div className="bg-white rounded-[32px] border border-gray-100 shadow-sm p-6">
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Từ ngày</label>
+            <input
+              type="date"
+              value={shopExportFrom}
+              max={shopExportTo}
+              onChange={e => setShopExportFrom(e.target.value)}
+              className="px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Đến ngày</label>
+            <input
+              type="date"
+              value={shopExportTo}
+              min={shopExportFrom}
+              onChange={e => setShopExportTo(e.target.value)}
+              className="px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+            />
+          </div>
+          <button
+            onClick={handleShopExportExcel}
+            disabled={exportingShopExcel}
+            className="flex items-center gap-2 px-6 py-2.5 bg-emerald-600 text-white rounded-2xl text-sm font-black hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+          >
+            {exportingShopExcel ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+            Xuất Excel
           </button>
         </div>
       </div>
@@ -225,14 +247,12 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
       <div className="bg-white rounded-[40px] border border-gray-100 shadow-sm overflow-hidden">
         {/* Tabs */}
         <div id="tour-orders-tabs" className="px-10 py-2 border-b border-gray-50 flex items-center gap-8 overflow-x-auto custom-scrollbar">
-          {tabs.map((tab) => {
-            const count = tab.statuses.length === 0
-              ? orders.length
-              : orders.filter(o => tab.statuses.includes(o.status)).length;
+          {ORDER_TABS.map((tab) => {
+            const isActive = activeTab === tab.label;
             return (
-              <button key={tab.label} onClick={() => setActiveTab(tab.label)}
-                className={`py-5 text-xs font-black whitespace-nowrap transition-all border-b-2 ${activeTab === tab.label ? 'text-primary border-primary' : 'text-gray-400 border-transparent hover:text-gray-600'}`}>
-                {tab.label} ({count})
+              <button key={tab.label} onClick={() => { setActiveTab(tab.label); setPage(0); }}
+                className={`py-5 text-xs font-black whitespace-nowrap transition-all border-b-2 ${isActive ? 'text-primary border-primary' : 'text-gray-400 border-transparent hover:text-gray-600'}`}>
+                {tab.label}{isActive && pageInfo ? ` (${pageInfo.totalElements})` : ''}
               </button>
             );
           })}
@@ -255,8 +275,8 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
             const isFailed = order.status === 'FAILED';
             const isQualityChecking = order.status === 'QUALITY_CHECKING';
             const isQualityChecked = order.status === 'QUALITY_CHECKED';
-            const isQualityApproved = order.status === 'QUALITY_APPROVED';
-            const isQualityRejected = order.status === 'QUALITY_REJECTED';
+            const isReadyForPickup = order.status === 'READY_FOR_PICKUP';
+            const isReady = order.status === 'READY';
             const needsFarmerConfirm = isPending || isPaid;
 
             return (
@@ -268,7 +288,9 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
                     <span className="text-[11px] text-gray-400 font-bold">Ngày đặt: {new Date(order.createdAt).toLocaleString('vi-VN')}</span>
                     {isPending && <span className="px-2 py-0.5 bg-yellow-50 text-yellow-600 text-[10px] font-black uppercase rounded-md">Chờ xác nhận</span>}
                     {isPaid && <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[10px] font-black uppercase rounded-md">✅ Đã thanh toán QR</span>}
-                    {isConfirmed && <span className="px-2 py-0.5 bg-purple-50 text-purple-700 text-[10px] font-black uppercase rounded-md">🔄 Đang chuẩn bị</span>}
+                    {isConfirmed &&<span className="px-2 py-0.5 bg-purple-50 text-purple-700 text-[10px] font-black uppercase rounded-md">🔄 Đang chuẩn bị</span>}
+                    {isReadyForPickup && <span className="px-2 py-0.5 bg-amber-50 text-amber-700 text-[10px] font-black uppercase rounded-md">🚛 Chờ xe lên kho lấy</span>}
+                    {isReady && <span className="px-2 py-0.5 bg-teal-50 text-teal-700 text-[10px] font-black uppercase rounded-md">📦 Chờ shipper lấy hàng</span>}
                     {isShipping && <span className="px-2 py-0.5 bg-blue-50 text-blue-500 text-[10px] font-black uppercase rounded-md">🚚 Đang giao</span>}
                     {isDelivered && <span className="px-2 py-0.5 bg-green-50 text-emerald-600 text-[10px] font-black uppercase rounded-md">✅ Đã giao</span>}
                     {isCancelled && <span className="px-2 py-0.5 bg-red-50 text-red-500 text-[10px] font-black uppercase rounded-md">Đã hủy</span>}
@@ -297,17 +319,6 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
                       </span>
                     )}
 
-                    {isQualityApproved && (
-                      <span className="px-2 py-0.5 bg-green-50 text-green-700 text-[10px] font-black uppercase rounded-md">
-                        🌱 Đạt chất lượng
-                      </span>
-                    )}
-
-                    {isQualityRejected && (
-                      <span className="px-2 py-0.5 bg-red-50 text-red-700 text-[10px] font-black uppercase rounded-md">
-                        ❌ Không đạt chất lượng
-                      </span>
-                    )}
                     {order.paymentMethod && <span className="px-2 py-0.5 bg-gray-100 text-gray-500 text-[10px] font-bold uppercase rounded-md">{order.paymentMethod}</span>}
                   </div>
                   <span className="text-base font-black text-gray-900">{(order.totalAmount || 0).toLocaleString('vi-VN')}đ</span>
@@ -355,7 +366,7 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
                               <div>
                                 <p className="text-xs font-bold text-gray-800 line-clamp-1">{item.productName}</p>
                                 <p className="text-[10px] text-gray-400 font-bold">
-                                  {item.quantity} x {(item.unitPrice || 0).toLocaleString('vi-VN')}đ
+                                  {(item.quantityKg ?? item.quantity).toLocaleString('vi-VN', { maximumFractionDigits: 2 })} kg x {((item.pricePerKg ?? item.unitPrice) || 0).toLocaleString('vi-VN')}đ/kg
                                 </p>
                               </div>
                             </div>
@@ -381,10 +392,55 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
                             <p className="text-[10px] text-blue-500 font-bold mt-0.5">Hãy xác nhận và bắt đầu chuẩn bị hàng</p>
                           </div>
                         )}
-                        <button disabled={isProcessing} onClick={() => handleConfirmOrder(order.id)}
-                          className="w-full py-4 bg-primary text-white font-black rounded-2xl flex items-center justify-center gap-2 shadow-xl shadow-primary/20 hover:bg-primary-dark transition-all transform active:scale-95 disabled:opacity-50">
+
+                        {/* Ô tích cam kết cân nặng */}
+                        <label
+                          htmlFor={`weight-agreement-${order.id}`}
+                          className={`flex items-start gap-3 p-4 rounded-2xl border cursor-pointer transition-all select-none ${
+                            confirmedWeightAgreement.has(order.id)
+                              ? 'bg-green-50 border-green-200'
+                              : 'bg-amber-50 border-amber-200 hover:border-amber-300'
+                          }`}
+                        >
+                          <div className="relative mt-0.5 shrink-0">
+                            <input
+                              id={`weight-agreement-${order.id}`}
+                              type="checkbox"
+                              checked={confirmedWeightAgreement.has(order.id)}
+                              onChange={() => toggleWeightAgreement(order.id)}
+                              className="sr-only"
+                            />
+                            <div
+                              className={`size-5 rounded flex items-center justify-center border-2 transition-all ${
+                                confirmedWeightAgreement.has(order.id)
+                                  ? 'bg-green-500 border-green-500'
+                                  : 'bg-white border-amber-400'
+                              }`}
+                            >
+                              {confirmedWeightAgreement.has(order.id) && (
+                                <CheckCircle className="size-3 text-white" />
+                              )}
+                            </div>
+                          </div>
+                          <p className="text-[11px] font-medium leading-relaxed text-gray-700">
+                            <span className="font-black text-gray-900">Tôi đồng ý — </span>
+                            Vì tính chất của trái cây, củ quả sẽ bị hao hụt nước, tôi cam kết đảm bảo
+                            giao đúng cân khi đến tay khách hàng.
+                          </p>
+                        </label>
+
+                        <button
+                          disabled={isProcessing || !confirmedWeightAgreement.has(order.id)}
+                          onClick={() => handleConfirmOrder(order.id)}
+                          className={`w-full py-4 font-black rounded-2xl flex items-center justify-center gap-2 shadow-xl transition-all transform active:scale-95 ${
+                            confirmedWeightAgreement.has(order.id)
+                              ? 'bg-primary text-white shadow-primary/20 hover:bg-primary-dark'
+                              : 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none'
+                          } disabled:opacity-70`}
+                        >
                           <CheckCircle2 className="size-5" /> Chuẩn bị hàng
                         </button>
+
                         <div id={filteredOrders.indexOf(order) === 0 ? 'tour-orders-contact-btns' : undefined} className="grid grid-cols-2 gap-3">
                           <button
                             onClick={() => navigate(`/farmer/messages?userId=${order.buyerId}&userName=${order.recipientName}`)}
@@ -470,17 +526,27 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
                       </div>
                     )}
 
-                    {isQualityApproved && (
-                      <div className="p-5 bg-green-50 rounded-3xl border border-green-100 text-center">
-                        <CheckCircle2 className="size-8 text-green-600 mx-auto mb-3" />
-                        <p className="text-sm font-black text-green-700">Sản phẩm đạt chất lượng</p>
+                    {isQualityChecked && (
+                      <div className="p-5 bg-indigo-50 rounded-3xl border border-indigo-100 text-center">
+                        <PackageCheck className="size-8 text-indigo-600 mx-auto mb-3" />
+                        <p className="text-sm font-black text-indigo-700">Đã kiểm tra chất lượng</p>
+                        <p className="text-[11px] text-indigo-500 font-bold mt-1">Đang chờ kết quả phê duyệt</p>
                       </div>
                     )}
 
-                    {isQualityRejected && (
-                      <div className="p-5 bg-red-50 rounded-3xl border border-red-100 text-center">
-                        <XCircle className="size-8 text-red-600 mx-auto mb-3" />
-                        <p className="text-sm font-black text-red-700">Không đạt chất lượng</p>
+                    {isReadyForPickup && (
+                      <div className="p-5 bg-amber-50 rounded-3xl border border-amber-100 text-center">
+                        <Truck className="size-8 text-amber-500 mx-auto mb-3" />
+                        <p className="text-sm font-black text-amber-700">Chờ xe vận chuyển lên kho</p>
+                        <p className="text-[11px] text-amber-500 font-bold mt-1">Xe đang trên đường tới lấy hàng</p>
+                      </div>
+                    )}
+
+                    {isReady && (
+                      <div className="p-5 bg-teal-50 rounded-3xl border border-teal-100 text-center">
+                        <PackageCheck className="size-8 text-teal-600 mx-auto mb-3" />
+                        <p className="text-sm font-black text-teal-700">Kho đã đóng gói xong</p>
+                        <p className="text-[11px] text-teal-500 font-bold mt-1">Đang chờ shipper lấy hàng giao tới khách</p>
                       </div>
                     )}
 
@@ -545,7 +611,7 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
                         <img src={item.imageUrl || fallback} alt="" className="size-10 rounded-xl object-cover shrink-0" onError={(e) => { e.currentTarget.src = fallback; }} />
                         <div className="min-w-0">
                           <p className="text-sm font-black text-gray-800 truncate">{item.productName || item.mysteryBoxType || 'Sản phẩm'}</p>
-                          <p className="text-[11px] text-gray-400 font-medium mt-0.5">{item.quantity} x {(item.unitPrice || 0).toLocaleString('vi-VN')}đ</p>
+                          <p className="text-[11px] text-gray-400 font-medium mt-0.5">{(item.quantityKg ?? item.quantity).toLocaleString('vi-VN', { maximumFractionDigits: 2 })} kg x {((item.pricePerKg ?? item.unitPrice) || 0).toLocaleString('vi-VN')}đ/kg</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
@@ -555,7 +621,7 @@ const Orders: React.FC<OrdersProps> = ({ onPrepareOrder }) => {
                             Xem kiểm duyệt
                           </button>
                         )}
-                        <span className="text-sm font-black text-primary">{((item.quantity || 0) * (item.unitPrice || 0)).toLocaleString('vi-VN')}đ</span>
+                        <span className="text-sm font-black text-primary">{(((item.quantityKg ?? item.quantity) || 0) * ((item.pricePerKg ?? item.unitPrice) || 0)).toLocaleString('vi-VN')}đ</span>
                       </div>
                     </div>
                   );

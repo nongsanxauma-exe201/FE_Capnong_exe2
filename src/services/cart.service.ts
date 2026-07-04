@@ -4,7 +4,8 @@ export interface AddCartItemRequest {
     productId?: number;
     mysteryBoxId?: number;
     buildComboId?: number;
-    quantity: number;
+    quantity?: number;
+    quantityKg?: number;
 }
 
 export interface CartItemResponse {
@@ -13,7 +14,11 @@ export interface CartItemResponse {
     buildComboId?: number;
     productName: string;
     quantity: number;
+    quantityKg?: number;
     price: number;
+    pricePerKg?: number;
+    itemTotal?: number;
+    stockKg?: number;
     imageUrl?: string;
     shopName?: string;
     itemType: 'PRODUCT' | 'MYSTERY_BOX' | 'BUILD_COMBO' | 'COMBO';

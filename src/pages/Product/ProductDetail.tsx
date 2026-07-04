@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Star,
@@ -10,16 +10,18 @@ import {
   Loader2,
   AlertCircle,
   MessageSquare,
-  ChefHat,
   ChevronLeft,
   X,
   ZoomIn,
   Share2,
   Copy,
   Check,
-  Facebook
+  Facebook,
+  ThumbsUp,
+  ThumbsDown,
+  ChevronDown,
 } from 'lucide-react';
-import { productService, ProductResponse, ProductImageResponse, cartService, reviewService, ReviewResponse, comboService, BuildComboResponse } from '../../services';
+import { productService, ProductResponse, ProductImageResponse, cartService, reviewService, ReviewResponse } from '../../services';
 import { userService } from '../../services';
 import { UserResponse } from '../../services/auth.service';
 import { globalShowAlert } from '../../contexts/PopupContext';
@@ -161,7 +163,6 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId: propProductId,
 
   const [product, setProduct] = useState<ProductResponse | null>(null);
   const [relatedProducts, setRelatedProducts] = useState<ProductResponse[]>([]);
-  const [shopCombos, setShopCombos] = useState<BuildComboResponse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -177,7 +178,16 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId: propProductId,
   const [showShareMenu,     setShowShareMenu]     = useState(false);
   const [showShopShareMenu, setShowShopShareMenu] = useState(false);
   const [copied,            setCopied]            = useState(false);
+  const [reactingReviewId,  setReactingReviewId]  = useState<number | null>(null);
   const [shopCopied,        setShopCopied]        = useState(false);
+  const detailSectionRef = useRef<HTMLDivElement>(null);
+
+  const scrollToProductDetail = () => {
+    setActiveTab('Mô tả chi tiết');
+    window.setTimeout(() => {
+      detailSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+  };
 
   const handleBack = () => {
     if (propOnBack) propOnBack();
@@ -228,14 +238,6 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId: propProductId,
 
     const shopId = foundProduct.shopOwnerId || foundProduct.shopId;
 
-    if (shopId) {
-      try {
-        const comboRes = await comboService.getByShop(shopId);
-        if (comboRes.result) {
-          setShopCombos(comboRes.result);
-        }
-      } catch (_) {}
-    }
   } catch (err) {
     console.error('Failed to fetch product detail:', err);
     setError('Không thể tải thông tin sản phẩm. Vui lòng thử lại sau.');
@@ -252,57 +254,17 @@ useEffect(() => {
     if (!product?.id) return;
     try {
       setIsReviewsLoading(true);
-      console.log('[ProductDetail] Fetching reviews for product ID:', product.id);
-
-      // Try to fetch reviews for this specific product
-      try {
-        const res = await reviewService.getByProductId(product.id);
-        console.log('[ProductDetail] Product reviews response:', res);
-        if (res.result) {
-          console.log('[ProductDetail] Product reviews found:', res.result.length, res.result);
-          console.log('[ProductDetail] Setting reviews to state:', res.result);
-          setReviews(res.result);
-          console.log('[ProductDetail] Reviews state should be updated');
-          return;
-        }
-      } catch (productErr) {
-        console.warn('[ProductDetail] getByProductId not available, falling back to shop reviews:', productErr);
-      }
-
-      // Fallback: Get all shop reviews and filter by productId
-      if (product.shopId) {
-        console.log('[ProductDetail] Fetching shop reviews and filtering...');
-        const shopRes = await reviewService.getByShopId(product.shopId);
-        console.log('[ProductDetail] Shop reviews response:', shopRes);
-        if (shopRes.result) {
-          console.log('[ProductDetail] All shop reviews:', shopRes.result);
-          console.log('[ProductDetail] Looking for reviews with productId:', product.id);
-
-          // Log each review to see what fields it has
-          shopRes.result.forEach((r, idx) => {
-            console.log(`[ProductDetail] Review ${idx}:`, {
-              id: r.id,
-              productId: r.productId,
-              orderDetailId: r.orderDetailId,
-              allFields: Object.keys(r)
-            });
-          });
-
-          // Filter reviews that have productId matching current product
-          const productReviews = shopRes.result.filter(r => r.productId === product.id);
-          console.log('[ProductDetail] Filtered product reviews:', productReviews.length, productReviews);
-          setReviews(productReviews);
-        }
-      }
-    } catch (err) {
-      console.error('[ProductDetail] Failed to fetch reviews:', err);
+      const res = await reviewService.getByProductId(product.id);
+      setReviews(res.result ?? []);
+    } catch {
+      setReviews([]);
     } finally {
       setIsReviewsLoading(false);
     }
   };
 
   if (product?.id) fetchReviews();
-}, [product?.id, product?.shopId]);
+}, [product?.id]);
 
 // Fetch shop reviews for shop rating display
 useEffect(() => {
@@ -354,9 +316,9 @@ useEffect(() => {
 
   if (product) {
     const shop = product.shopName || `Cửa hàng #${product.shopId}`;
-    const price = product.salePrice ?? product.sellingPrice ?? 0;
+    const price = product.salePrice ?? product.pricePerKg ?? product.sellingPrice ?? 0;
     const priceStr = price.toLocaleString('vi-VN') + 'đ';
-    const desc = `${priceStr}/${product.unit || 'kg'} tại ${shop} · ${product.description?.slice(0, 80) || 'Nông sản sạch, tươi ngon'}`;
+    const desc = `${priceStr}/kg tại ${shop} · ${product.description?.slice(0, 80) || 'Nông sản sạch, tươi ngon'}`;
 
     document.title = `${product.productName} - ${shop} | Nông Sản Xấu Mã`;
     setMeta('og:title',       `${product.productName} - ${shop}`);
@@ -377,6 +339,20 @@ useEffect(() => {
     setMeta('og:site_name',   'Nông Sản Xấu Mã');
   };
 }, [product]);
+
+const handleReact = async (reviewId: number, reactionType: 'LIKE' | 'DISLIKE') => {
+  if (!isAuthenticated) { navigate('/login'); return; }
+  if (reactingReviewId === reviewId) return;
+  try {
+    setReactingReviewId(reviewId);
+    const res = await reviewService.reactToReview(reviewId, reactionType);
+    if (res.result) {
+      setReviews(prev => prev.map(r => r.id === reviewId ? res.result! : r));
+    }
+  } catch { /* silent */ } finally {
+    setReactingReviewId(null);
+  }
+};
 
 if (viewShopMode && selectedShopId) {
   return <ShopProducts shopId={selectedShopId} onBack={() => setViewShopMode(false)} isAuthenticated={isAuthenticated} onOpenLogin={() => navigate('/login')} />;
@@ -404,7 +380,9 @@ if (error || !product) {
 }
 
 const farmName = product.shopName || (product.shopId ? `Nông trại #${product.shopId}` : 'Nông trại đối tác');
-const isOutOfStock = product.stockQuantity <= 0;
+const stockKg = product.stockKg ?? product.stockQuantity ?? 0;
+const basePricePerKg = product.pricePerKg ?? product.sellingPrice ?? 0;
+const isOutOfStock = stockKg <= 0;
 
 const productUrl = `${window.location.origin}/san-pham/${product.id}`;
 const shopUrl = product.shopId ? `${window.location.origin}/cua-hang/${product.shopId}` : null;
@@ -416,7 +394,7 @@ const handleShare = async (type: 'product' | 'shop') => {
   const title = type === 'shop' ? `Cửa hàng ${farmName} trên Nông Sản Xấu Mã` : `${product.productName} - ${farmName}`;
   const text = type === 'shop'
     ? `Xem cửa hàng ${farmName} trên Nông Sản Xấu Mã - nông sản sạch tươi mới mỗi ngày!`
-    : `${product.productName}${product.salePrice ? ` chỉ còn ${product.salePrice.toLocaleString('vi-VN')}đ` : ` - ${(product.sellingPrice || 0).toLocaleString('vi-VN')}đ`} tại ${farmName} trên Nông Sản Xấu Mã!`;
+    : `${product.productName}${product.salePrice ? ` chỉ còn ${product.salePrice.toLocaleString('vi-VN')}đ/kg` : ` - ${basePricePerKg.toLocaleString('vi-VN')}đ/kg`} tại ${farmName} trên Nông Sản Xấu Mã!`;
   if (isMobileBrowser && navigator.share) {
     try { await navigator.share({ title, text, url }); return; } catch { /* user cancelled */ }
   }
@@ -547,7 +525,14 @@ return (
         <div>
           <div className="flex items-center justify-between mb-2">
             <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Danh mục: Nông sản</span>
-            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">ID: {product.id}</span>
+            <button
+              type="button"
+              onClick={scrollToProductDetail}
+              className="text-[10px] font-black text-primary uppercase tracking-widest hover:underline inline-flex items-center gap-1"
+            >
+              Đọc thêm
+              <ChevronDown className="size-3.5" />
+            </button>
           </div>
           <h1 className="text-3xl font-black font-display text-gray-800 mb-2 leading-tight">{product.productName}</h1>
           <div className="flex items-center gap-4 text-sm mt-3">
@@ -568,22 +553,22 @@ return (
           {hasActiveDiscount ? (
             <div className="flex flex-col gap-1">
               <div className="flex items-center gap-3">
-                <span className="text-red-500 text-lg line-through font-semibold">{(product.sellingPrice || 0).toLocaleString('vi-VN')}đ</span>
+                <span className="text-red-500 text-lg line-through font-semibold">{basePricePerKg.toLocaleString('vi-VN')}đ/kg</span>
                 <span className="bg-primary text-white text-xs font-black px-2.5 py-1 rounded-full">-{product.discountPercent}%</span>
               </div>
               <div className="flex items-center gap-3">
                 <span className="text-primary font-black text-4xl">{(product.salePrice!).toLocaleString('vi-VN')}đ</span>
-                <span className="text-gray-400 font-bold uppercase text-xs mt-2">/ {product.unit || 'KG'}</span>
+                <span className="text-gray-400 font-bold uppercase text-xs mt-2">/ kg</span>
               </div>
               <p className="text-xs text-primary font-bold mt-1">
-                Tiết kiệm {((product.sellingPrice || 0) - product.salePrice!).toLocaleString('vi-VN')}đ
+                Tiết kiệm {(basePricePerKg - product.salePrice!).toLocaleString('vi-VN')}đ/kg
                 {product.discountEndDate && ` · Còn đến ${new Date(product.discountEndDate).toLocaleDateString('vi-VN')}`}
               </p>
             </div>
           ) : (
             <div className="flex items-center gap-3">
-              <span className="text-primary font-black text-4xl">{(product.sellingPrice || 0).toLocaleString('vi-VN')}đ</span>
-              <span className="text-gray-400 font-bold uppercase text-xs mt-2">/ {product.unit || 'KG'}</span>
+              <span className="text-primary font-black text-4xl">{basePricePerKg.toLocaleString('vi-VN')}đ</span>
+              <span className="text-gray-400 font-bold uppercase text-xs mt-2">/ kg</span>
             </div>
           )}
           <p className="text-gray-500 text-sm leading-relaxed mt-6 whitespace-pre-wrap">
@@ -593,16 +578,16 @@ return (
 
         <div className="space-y-3 pt-6">
           <p className="text-[10px] font-black uppercase text-gray-700 tracking-widest flex items-center justify-between">
-            <span>Số lượng</span>
-            <span className={`lowercase font-medium ${isOutOfStock ? 'text-red-500' : 'text-gray-500'}`}>{product.stockQuantity} {product.unit} có sẵn</span>
+            <span>Khối lượng mua</span>
+            <span className={`lowercase font-medium ${isOutOfStock ? 'text-red-500' : 'text-gray-500'}`}>{stockKg.toLocaleString('vi-VN', { maximumFractionDigits: 2 })} kg có sẵn</span>
           </p>
         </div>
 
         <div className="flex items-center gap-4 pt-4">
           <div className="flex items-center border border-gray-200 rounded-xl bg-gray-50 overflow-hidden h-14">
             <button disabled={isOutOfStock} onClick={() => setQuantity(Math.max(1, quantity - 1))} className="w-12 h-full flex items-center justify-center hover:bg-gray-200 transition-colors text-gray-600 disabled:opacity-50"><Minus className="size-4" /></button>
-            <input type="text" value={isOutOfStock ? 0 : quantity} readOnly className="w-12 text-center font-black bg-transparent outline-none text-gray-800" />
-            <button disabled={isOutOfStock || quantity >= product.stockQuantity} onClick={() => setQuantity(quantity + 1)} className="w-12 h-full flex items-center justify-center hover:bg-gray-200 transition-colors text-gray-600 disabled:opacity-50"><Plus className="size-4" /></button>
+            <input type="text" value={isOutOfStock ? '0 kg' : `${quantity} kg`} readOnly className="w-16 text-center font-black bg-transparent outline-none text-gray-800" />
+            <button disabled={isOutOfStock || quantity >= stockKg} onClick={() => setQuantity(quantity + 1)} className="w-12 h-full flex items-center justify-center hover:bg-gray-200 transition-colors text-gray-600 disabled:opacity-50"><Plus className="size-4" /></button>
           </div>
           <button
             disabled={isOutOfStock || isAdding}
@@ -611,9 +596,9 @@ return (
               else {
                 try {
                   setIsAdding(true);
-                  await cartService.addToCart({ productId: Number(productId), quantity });
+                  await cartService.addToCart({ productId: Number(productId), quantity, quantityKg: quantity });
                   window.dispatchEvent(new Event('cart-updated'));
-                  globalShowAlert(`Đã thêm ${quantity} ${product.unit} ${product.productName} vào giỏ hàng`, 'Thành công', 'success');
+                  globalShowAlert(`Đã thêm ${quantity} kg ${product.productName} vào giỏ hàng`, 'Thành công', 'success');
                 } catch (e) {
                   console.error('Failed to add to cart', e);
                   globalShowAlert('Không thể thêm vào giỏ hàng. Vui lòng thử lại.', 'Lỗi', 'error');
@@ -736,7 +721,7 @@ return (
       </div>
     </div>
 
-    <div className="max-w-7xl mx-auto px-4 border-t border-gray-100 pt-16 mb-20">
+    <div ref={detailSectionRef} id="product-detail-section" className="max-w-7xl mx-auto px-4 border-t border-gray-100 pt-16 mb-20 scroll-mt-24">
       <div className="flex justify-center gap-12 -mt-px mb-12">
         {['Mô tả chi tiết', 'Chứng nhận', 'Đánh giá '].map((tab) => (
           <button key={tab} onClick={() => setActiveTab(tab)} className={`pb-4 text-[11px] font-black uppercase tracking-widest border-b-2 transition-all ${activeTab === tab ? 'border-primary text-primary' : 'border-transparent text-gray-400 hover:text-gray-600'}`}>{tab}</button>
@@ -747,15 +732,13 @@ return (
 
         {activeTab.startsWith('Đánh giá') && (
           <div className="space-y-8">
-            {(() => {
-              console.log('[ProductDetail] Rendering reviews tab. isReviewsLoading:', isReviewsLoading, 'reviews.length:', reviews.length, 'reviews:', reviews);
-              return null;
-            })()}
             {isReviewsLoading ? (
               <div className="flex justify-center py-10"><Loader2 className="animate-spin text-primary" /></div>
             ) : reviews.length > 0 ? (
               reviews.map((review) => {
-                console.log('[ProductDetail] Rendering review:', review);
+                const isLiked    = review.currentUserReaction === 'LIKE';
+                const isDisliked = review.currentUserReaction === 'DISLIKE';
+                const isReacting = reactingReviewId === review.id;
                 return (
                   <div key={review.id} className="bg-gray-50 p-8 rounded-[32px] border border-gray-100 animate-in fade-in slide-in-from-bottom-2">
                     <div className="flex justify-between items-start mb-4">
@@ -765,6 +748,9 @@ return (
                         </div>
                         <div>
                           <p className="font-black text-gray-900 text-sm">{review.fullName || `Người dùng #${review.buyerId}`}</p>
+                          <p className="text-[10px] text-gray-400 mt-0.5">
+                            {review.createAt ? new Date(review.createAt).toLocaleDateString('vi-VN') : 'Gần đây'}
+                          </p>
                           <div className="flex text-yellow-400 mt-1">
                             {[...Array(5)].map((_, i) => (
                               <Star key={i} className={`size-3 ${i < review.ratingStar ? 'fill-yellow-400' : ''}`} />
@@ -772,16 +758,42 @@ return (
                           </div>
                         </div>
                       </div>
-                      <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Gần đây</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Hữu ích?</span>
+                        <button
+                          onClick={() => handleReact(review.id, 'LIKE')}
+                          disabled={isReacting}
+                          className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold transition-all border ${
+                            isLiked
+                              ? 'bg-green-500 text-white border-green-500'
+                              : 'bg-white text-gray-500 border-gray-200 hover:border-green-400 hover:text-green-600'
+                          } disabled:opacity-50`}
+                        >
+                          <ThumbsUp className="size-3" />
+                          ({review.likeCount ?? 0})
+                        </button>
+                        <button
+                          onClick={() => handleReact(review.id, 'DISLIKE')}
+                          disabled={isReacting}
+                          className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold transition-all border ${
+                            isDisliked
+                              ? 'bg-red-500 text-white border-red-500'
+                              : 'bg-white text-gray-500 border-gray-200 hover:border-red-400 hover:text-red-500'
+                          } disabled:opacity-50`}
+                        >
+                          <ThumbsDown className="size-3" />
+                          ({review.dislikeCount ?? 0})
+                        </button>
+                      </div>
                     </div>
-                    <p className="text-gray-600 text-sm leading-relaxed mb-6">{review.comment}</p>
+                    <p className="text-gray-600 text-sm leading-relaxed mb-4">{review.comment}</p>
                     {review.evidence && (
-                      <div className="mb-6 rounded-xl overflow-hidden border border-gray-200 w-32 aspect-square">
+                      <div className="mb-4 rounded-xl overflow-hidden border border-gray-200 w-32 aspect-square">
                         <img src={review.evidence} alt="Bằng chứng" className="w-full h-full object-cover" />
                       </div>
                     )}
                     {review.replyFromShop && (
-                      <div className="bg-white p-6 rounded-2xl border border-primary/10 relative">
+                      <div className="bg-white p-6 rounded-2xl border border-primary/10 relative mb-4">
                         <div className="absolute -top-3 left-6 bg-primary text-white text-[8px] font-black px-3 py-1 rounded-full uppercase tracking-widest shadow-lg shadow-primary/20">Phản hồi từ Nhà vườn</div>
                         <p className="text-gray-600 text-sm italic">{review.replyFromShop}</p>
                       </div>
@@ -800,39 +812,6 @@ return (
       </div>
     </div>
 
-    {shopCombos.filter(combo => combo.items?.some(item => item.productId === Number(productId))).length > 0 && (
-      <div className="max-w-7xl mx-auto px-4 mt-32">
-        <h2 className="text-2xl font-black font-display text-gray-900 uppercase mb-12 flex items-center gap-4">
-          Combo nấu ăn từ shop này <span className="h-px bg-gray-200 flex-1"></span>
-        </h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-          {shopCombos
-            .filter(combo => combo.items?.some(item => item.productId === Number(productId)))
-            .map((combo) => (
-              <div key={combo.id} onClick={() => navigate(`/combo/${combo.id}`)} className="group cursor-pointer bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all overflow-hidden">
-                <div className="aspect-[4/3] bg-gradient-to-br from-green-50 to-emerald-100 flex items-center justify-center relative overflow-hidden">
-                  {combo.imageUrl
-                    ? <img src={combo.imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt={combo.comboName} />
-                    : <ChefHat className="size-12 text-green-200" />}
-                  {combo.region && (
-                    <span className="absolute top-2 right-2 text-[9px] font-black px-2 py-0.5 rounded-full bg-white/80 text-gray-600">
-                      {combo.region === 'MIEN_BAC' ? '🌿 Bắc' : combo.region === 'MIEN_TRUNG' ? '🌶 Trung' : '🥥 Nam'}
-                    </span>
-                  )}
-                </div>
-                <div className="p-4">
-                  <h4 className="font-extrabold text-gray-900 text-sm mb-1 line-clamp-1">{combo.comboName}</h4>
-                  <p className="text-xs text-gray-400 mb-2">{combo.items?.length || 0} nguyên liệu</p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-primary font-black text-lg">{(combo.discountPrice || 0).toLocaleString('vi-VN')}đ</span>
-                    <span className="text-[9px] font-black text-primary bg-primary/10 px-2 py-1 rounded-full uppercase">Chọn combo</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-        </div>
-      </div>
-    )}
   </div>
 );
 };

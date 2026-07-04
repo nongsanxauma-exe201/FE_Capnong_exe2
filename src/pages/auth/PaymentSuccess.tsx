@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, Loader2, Package, ArrowRight, RefreshCw } from 'lucide-react';
+import { Award, CheckCircle2, Loader2, Package, ArrowRight, RefreshCw, Sprout } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { paymentService } from '../../services';
+import { orderService, paymentService } from '../../services';
+import type { OrderResponse } from '../../services/order.service';
 import { clearPendingPayOSPayment, clearRestoredPayOSCart } from '../../utils/pendingPayOSPayment';
 
 const PaymentSuccess: React.FC = () => {
@@ -9,10 +10,13 @@ const PaymentSuccess: React.FC = () => {
   const [countdown, setCountdown] = useState(5);
   const [paymentStatus, setPaymentStatus] = useState<'verifying' | 'success' | 'failed' | 'timeout'>('verifying');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [orderSummaries, setOrderSummaries] = useState<OrderResponse[]>([]);
+  const [paidOrderIds, setPaidOrderIds] = useState<number[]>([]);
 
   // Get params from URL
   const urlParams = new URLSearchParams(window.location.search);
   const orderCode = urlParams.get('orderCode'); // This is actually the paymentId from BE
+  const orderIdParam = urlParams.get('orderId');
   const payosStatus = urlParams.get('status');
 
   useEffect(() => {
@@ -25,6 +29,20 @@ const PaymentSuccess: React.FC = () => {
     let timeoutId: NodeJS.Timeout;
     let pollCount = 0;
     const MAX_POLLS = 15; // 15 * 2s = 30 seconds max
+
+    const loadPaidOrders = async (orderIds: number[]) => {
+      setPaidOrderIds(orderIds);
+      if (orderIds.length === 0) return;
+      try {
+        const results = await Promise.all(orderIds.map((id) => orderService.getOrderById(id)));
+        const summaries = results
+          .map((res) => res.result)
+          .filter((v): v is OrderResponse => Boolean(v));
+        setOrderSummaries(summaries);
+      } catch (error) {
+        console.error('Failed to load order rescue summary:', error);
+      }
+    };
 
     const confirmOrder = async () => {
       if (!orderCode) return;
@@ -53,9 +71,15 @@ const PaymentSuccess: React.FC = () => {
       }
 
       try {
-        const res = await paymentService.getById(Number(orderCode));
+        const res = await paymentService.getById(orderCode);
         if (res.result) {
           if (res.result.status === 'SUCCESS') {
+            const ids = res.result.orderIds?.length
+              ? res.result.orderIds
+              : (res.result.orderId ? [res.result.orderId] : []);
+            if (ids.length > 0) {
+              void loadPaidOrders(ids);
+            }
             setPaymentStatus('success');
             clearInterval(pollInterval);
             clearTimeout(timeoutId);
@@ -70,6 +94,18 @@ const PaymentSuccess: React.FC = () => {
         }
       } catch (error) {
         console.error('Failed to check payment status:', error);
+        if (pollCount >= MAX_POLLS - 1) {
+          try {
+            await paymentService.confirmPaymentByOrderCode(orderCode);
+            setPaymentStatus('success');
+            clearInterval(pollInterval);
+            clearTimeout(timeoutId);
+            startCountdown();
+            return;
+          } catch {
+            // keep polling until timeout
+          }
+        }
       }
 
       pollCount++;
@@ -97,6 +133,16 @@ const PaymentSuccess: React.FC = () => {
       return;
     }
 
+    if (orderIdParam) {
+      const orderId = Number(orderIdParam);
+      if (!Number.isNaN(orderId)) {
+        setPaymentStatus('success');
+        void loadPaidOrders([orderId]);
+        startCountdown();
+        return;
+      }
+    }
+
     // Confirm payment via API (backup when webhook chưa gọi kịp)
     confirmOrder();
 
@@ -114,7 +160,7 @@ const PaymentSuccess: React.FC = () => {
       clearInterval(pollInterval);
       clearTimeout(timeoutId);
     };
-  }, [orderCode, navigate, payosStatus]);
+  }, [orderCode, orderIdParam, navigate, payosStatus]);
 
   const handleGoToMyOrders = () => {
     navigate('/my-orders');
@@ -127,6 +173,11 @@ const PaymentSuccess: React.FC = () => {
   const handleRetryCheck = () => {
     window.location.reload();
   };
+
+  const rescuedWeight = orderSummaries.reduce((sum, order) => sum + Number(order.rescuedWeight ?? 0), 0);
+  const rewardPoints = orderSummaries.reduce((sum, order) => sum + Number(order.rewardPoints ?? 0), 0);
+  const rewardApplied = orderSummaries.some((order) => Boolean(order.rewardApplied));
+  const formatKg = (value: number) => value.toLocaleString('vi-VN', { maximumFractionDigits: 2 });
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 flex items-center justify-center p-4 py-20">
@@ -160,14 +211,43 @@ const PaymentSuccess: React.FC = () => {
                 Chúng tôi sẽ xử lý đơn hàng trong thời gian sớm nhất.
               </p>
 
-              {orderCode && (
+              {(paidOrderIds.length > 0 || orderSummary?.id || orderCode) && (
                 <div className="w-full p-6 bg-gray-50 rounded-3xl mb-8">
                   <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2">
-                    Mã đơn hàng
+                    {paidOrderIds.length > 1 ? 'Mã đơn hàng' : 'Mã đơn hàng'}
                   </p>
-                  <p className="text-xl font-black text-primary">
-                    #{orderCode}
+                  {paidOrderIds.length > 1 ? (
+                    <div className="flex flex-wrap gap-2 justify-center">
+                      {paidOrderIds.map((id) => (
+                        <span key={id} className="text-base font-black text-primary">#{id}</span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xl font-black text-primary">#{paidOrderIds[0] ?? orderCode}</p>
+                  )}
+                </div>
+              )}
+
+              {orderSummaries.length > 0 && rescuedWeight > 0 && (
+                <div className="w-full p-6 bg-gradient-to-br from-green-50 to-emerald-50 border border-green-100 rounded-3xl mb-8 text-left">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="size-12 bg-white rounded-2xl flex items-center justify-center shadow-sm">
+                      <Sprout className="size-6 text-primary" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black text-primary uppercase tracking-widest">Giải cứu nông sản</p>
+                      <p className="text-lg font-black text-gray-900">{formatKg(rescuedWeight)} kg</p>
+                    </div>
+                  </div>
+                  <p className="text-sm text-green-800 font-bold leading-relaxed">
+                    Cảm ơn bạn đã mua hàng! Với đơn hàng này, bạn đã góp phần giải cứu {formatKg(rescuedWeight)} kg nông sản, giúp nông dân giảm lãng phí.
                   </p>
+                  <div className="mt-4 flex items-center gap-2 rounded-2xl bg-white/80 px-4 py-3 text-sm font-black text-amber-600">
+                    <Award className="size-5" />
+                    {rewardApplied
+                      ? `+${formatKg(rewardPoints)} điểm tích lũy`
+                      : `${formatKg(rewardPoints)} điểm dự kiến, sẽ cộng khi đơn hoàn tất`}
+                  </div>
                 </div>
               )}
 

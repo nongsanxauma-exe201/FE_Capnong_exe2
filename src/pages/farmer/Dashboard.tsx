@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
-import { ShoppingCart, TrendingUp, Star, Wallet, Package, MoreVertical, Sparkles, Landmark, History, Loader2, AlertCircle } from 'lucide-react';
+import { ShoppingCart, TrendingUp, Star, Package, MoreVertical, Sparkles, Landmark, History, Loader2, AlertCircle } from 'lucide-react';
 import { productService, orderService, walletService, authService, mysteryBoxService, ProductResponse, OrderResponse, WalletResponse, MysteryBox } from '../../services';
 
 const FarmerDashboard: React.FC<{ onNavigate: (id: string) => void }> = ({ onNavigate }) => {
@@ -88,13 +88,12 @@ const FarmerDashboard: React.FC<{ onNavigate: (id: string) => void }> = ({ onNav
       )}
 
       {/* Stats Grid */}
-      <div id="tour-overview-stats" className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div id="tour-overview-stats" className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: 'Tổng đơn hàng', value: totalOrders.toLocaleString('vi-VN'), trend: `${products.length} sản phẩm`, icon: ShoppingCart },
           { label: 'Sản phẩm đang bán', value: products.length.toString(), trend: 'Đang hoạt động', icon: TrendingUp },
           { label: 'Hộp mù (Blind Box)', value: totalBlindBoxes.toString(), trend: 'Giải cứu nông sản', icon: Sparkles },
           { label: 'Chất lượng Shop', value: '98%', trend: 'Top 5%', icon: Star, bar: 98 },
-          { label: 'Số dư khả dụng', value: `${totalBalance.toLocaleString('vi-VN')}đ`, icon: Wallet, isPrimary: true, frozen: `${totalBalance.toLocaleString('vi-VN')}đ` },
         ].map((stat, i) => (
           <div
             key={i}

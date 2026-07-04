@@ -210,19 +210,19 @@ const ProductApproval: React.FC = () => {
                           <span className="bg-primary text-white text-[9px] font-black px-2 py-0.5 rounded-full">-{selectedProduct.discountPercent}%</span>
                         </div>
                         <p className="text-lg font-black text-primary">
-                          {(selectedProduct.salePrice ?? Math.round((selectedProduct.sellingPrice || 0) * (1 - selectedProduct.discountPercent / 100))).toLocaleString('vi-VN')}đ / {selectedProduct.unit}
+                          {(selectedProduct.salePrice ?? Math.round(((selectedProduct.pricePerKg ?? selectedProduct.sellingPrice) || 0) * (1 - selectedProduct.discountPercent / 100))).toLocaleString('vi-VN')}đ / kg
                         </p>
                         {selectedProduct.discountEndDate && (
                           <p className="text-[10px] text-primary font-bold">Còn đến {new Date(selectedProduct.discountEndDate).toLocaleDateString('vi-VN')}</p>
                         )}
                       </div>
                     ) : (
-                      <p className="text-lg font-black text-primary">{(selectedProduct.sellingPrice || 0).toLocaleString('vi-VN')}đ / {selectedProduct.unit}</p>
+                      <p className="text-lg font-black text-primary">{((selectedProduct.pricePerKg ?? selectedProduct.sellingPrice) || 0).toLocaleString('vi-VN')}đ / kg</p>
                     )}
                   </div>
                   <div>
                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 block">Tồn kho</label>
-                    <p className="text-lg font-black text-gray-900">{selectedProduct.stockQuantity}</p>
+                    <p className="text-lg font-black text-gray-900">{(selectedProduct.stockKg ?? selectedProduct.stockQuantity).toLocaleString('vi-VN', { maximumFractionDigits: 2 })} kg</p>
                   </div>
                 </div>
                 {selectedProduct.expiryDate && (
@@ -391,7 +391,7 @@ const ProductApproval: React.FC = () => {
                       ) : (
                         <p className="text-sm font-black text-primary">{(product.sellingPrice || 0).toLocaleString('vi-VN')}đ</p>
                       )}
-                      <p className="text-[10px] text-gray-400">{product.stockQuantity} {product.unit}</p>
+                      <p className="text-[10px] text-gray-400">{(product.stockKg ?? product.stockQuantity).toLocaleString('vi-VN', { maximumFractionDigits: 2 })} kg</p>
                     </td>
                     <td className="px-6 py-5">
                       <span className="text-xs font-bold text-gray-600">{product.expiryDate || '—'}</span>

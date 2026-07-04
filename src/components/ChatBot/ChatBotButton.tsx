@@ -66,7 +66,7 @@ export function ChatBotButton({ unreadCount = 0, className = '' }: ChatBotButton
 
       {/* Screen Reader Text */}
       <span className={styles['chatbot-sr-only']}>
-        {isOpen ? 'Close AI Assistant' : 'Open AI Assistant'}
+        {isOpen ? 'Đóng Chat Box' : 'Mở Chat Box'}
       </span>
     </button>
   );

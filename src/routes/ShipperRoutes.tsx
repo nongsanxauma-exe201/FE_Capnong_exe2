@@ -4,13 +4,14 @@ import { Route, useNavigate } from 'react-router-dom';
 import ProtectedRoute from './ProtectedRoute';
 import ShipperDashboard from '../pages/shipper/Dashboard';
 import { AppRole, KYCStatus } from '../types';
-import { authService } from '../services';
+import { useAuth } from '../contexts/AuthContext';
 
 const ShipperRoutes = () => {
     const navigate = useNavigate();
+    const { logout } = useAuth();
 
     const handleLogout = () => {
-        authService.logout();
+        logout();
         navigate('/');
     };
 

@@ -13,10 +13,14 @@ const PaymentCancel: React.FC = () => {
   // Get params from URL
   const urlParams = new URLSearchParams(window.location.search);
   const orderCode = urlParams.get('orderCode');
+  const isExplicitPayOSCancel =
+    urlParams.get('source') === 'payos-cancel'
+    || urlParams.get('status') === 'CANCELLED'
+    || urlParams.get('cancel') === 'true';
 
   useEffect(() => {
     const cancelPayment = async () => {
-      if (!orderCode) return;
+      if (!orderCode || !isExplicitPayOSCancel) return;
       try {
         setIsCancelling(true);
         setCancelError(null);
@@ -39,7 +43,7 @@ const PaymentCancel: React.FC = () => {
     };
 
     cancelPayment();
-  }, [orderCode]);
+  }, [orderCode, isExplicitPayOSCancel]);
 
   useEffect(() => {
     // Countdown to redirect
@@ -78,13 +82,14 @@ const PaymentCancel: React.FC = () => {
 
           {/* Title */}
           <h1 className="text-3xl font-black text-gray-900 mb-3 font-display">
-            Thanh toán đã hủy
+            {isExplicitPayOSCancel ? 'Thanh toán đã hủy' : 'Đơn hàng đang chờ thanh toán'}
           </h1>
 
           {/* Description */}
           <p className="text-sm text-gray-500 font-medium leading-relaxed mb-8">
-            Bạn đã hủy thanh toán qua PayOS. Đơn hàng của bạn đã được lưu lại với trạng thái "Chờ thanh toán".
-            Bạn có thể thử thanh toán lại trong mục "Đơn hàng của tôi".
+            {isExplicitPayOSCancel
+              ? 'Bạn đã hủy thanh toán qua PayOS. Đơn hàng đã được hủy và giỏ hàng sẽ được khôi phục.'
+              : 'Bạn đã rời trang thanh toán PayOS. Đơn hàng vẫn được giữ ở trạng thái chờ thanh toán, không hủy và không khôi phục giỏ hàng/voucher.'}
           </p>
 
           {/* Order Info */}
@@ -122,21 +127,45 @@ const PaymentCancel: React.FC = () => {
 
           {/* Actions */}
           <div className="w-full space-y-3">
-            <button
-              onClick={handleGoToMyOrders}
-              className="w-full py-4 bg-primary hover:bg-primary/90 text-white font-black rounded-2xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-primary/20"
-            >
-              <Package className="size-5" />
-              Tới đơn hàng của tôi
-            </button>
+            {!isExplicitPayOSCancel && orderCode && (
+              <button
+                onClick={handleGoToMyOrders}
+                className="w-full py-4 bg-primary hover:bg-primary/90 text-white font-black rounded-2xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-primary/20"
+              >
+                <Package className="size-5" />
+                Tiếp tục thanh toán
+              </button>
+            )}
 
-            <button
-              onClick={handleGoHome}
-              className="w-full py-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-2xl flex items-center justify-center gap-2 transition-all"
-            >
-              Quay lại trang chủ
-              <ArrowRight className="size-4" />
-            </button>
+            {isExplicitPayOSCancel && (
+              <button
+                onClick={handleGoToMyOrders}
+                className="w-full py-4 bg-primary hover:bg-primary/90 text-white font-black rounded-2xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-primary/20"
+              >
+                <Package className="size-5" />
+                Tới đơn hàng của tôi
+              </button>
+            )}
+
+            {!isExplicitPayOSCancel && orderCode && (
+              <button
+                onClick={handleGoHome}
+                className="w-full py-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-2xl flex items-center justify-center gap-2 transition-all"
+              >
+                Quay lại trang chủ
+                <ArrowRight className="size-4" />
+              </button>
+            )}
+
+            {isExplicitPayOSCancel && (
+              <button
+                onClick={handleGoHome}
+                className="w-full py-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-2xl flex items-center justify-center gap-2 transition-all"
+              >
+                Quay lại trang chủ
+                <ArrowRight className="size-4" />
+              </button>
+            )}
           </div>
         </div>
       </div>
