@@ -64,7 +64,13 @@ const PendingPayOSRollbackGuard: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { isAuthenticated, loading } = useAuth();
-  const [pendingInfo, setPendingInfo] = React.useState<{ orderId: number; orderCode: string } | null>(null);
+  const [pendingInfo, setPendingInfo] = React.useState<{
+    orderId: number;
+    orderCode: string;
+    batchId?: number | null;
+    orderCount: number;
+    hasPlatformBatchVoucher: boolean;
+  } | null>(null);
   const notifiedRef = React.useRef(false);
   const { openResumePayment, resumeOptions, closeResumePayment } = useResumePayment();
 
@@ -82,7 +88,14 @@ const PendingPayOSRollbackGuard: React.FC = () => {
       notifiedRef.current = true;
       paymentService.notifyPendingPayment(pending.orderCode).catch(() => {});
     }
-    setPendingInfo({ orderId: pending.orderId, orderCode: pending.orderCode ?? '' });
+    const orderCount = pending.orderIds?.length ?? 1;
+    setPendingInfo({
+      orderId: pending.orderId,
+      orderCode: pending.orderCode ?? '',
+      batchId: pending.batchId,
+      orderCount,
+      hasPlatformBatchVoucher: !!pending.hasPlatformBatchVoucher,
+    });
   }, [isAuthenticated, loading, location.pathname]);
 
   React.useEffect(() => {
@@ -103,7 +116,8 @@ const PendingPayOSRollbackGuard: React.FC = () => {
   const handleContinuePayment = async () => {
     if (!pendingInfo) return;
     try {
-      await openResumePayment(pendingInfo.orderId);
+      const payMode = pendingInfo.hasPlatformBatchVoucher ? 'batch-all' as const : undefined;
+      await openResumePayment(pendingInfo.orderId, payMode);
       notifiedRef.current = false;
       setPendingInfo(null);
     } catch {
@@ -131,6 +145,8 @@ const PendingPayOSRollbackGuard: React.FC = () => {
 
   if (!pendingInfo) return null;
 
+  const isBatchCheckout = pendingInfo.orderCount > 1 || pendingInfo.batchId != null;
+
   return (
     <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[200] w-full max-w-md px-4 pointer-events-none">
       <div className="bg-amber-50 border border-amber-200 rounded-2xl shadow-2xl p-4 pointer-events-auto">
@@ -138,9 +154,22 @@ const PendingPayOSRollbackGuard: React.FC = () => {
           <span className="text-xl shrink-0">⏳</span>
           <div className="flex-1">
             <p className="text-sm font-black text-amber-900">Đơn hàng chờ thanh toán</p>
-            <p className="text-xs text-amber-700 mt-0.5">
-              Đơn hàng #{pendingInfo.orderId} đang chờ bạn hoàn tất thanh toán.
-            </p>
+            {isBatchCheckout ? (
+              <>
+                <p className="text-xs text-amber-700 mt-0.5 font-bold">
+                  Checkout #{pendingInfo.batchId ?? '—'} · {pendingInfo.orderCount} shop đang chờ thanh toán.
+                </p>
+                {pendingInfo.hasPlatformBatchVoucher && (
+                  <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                    2 đơn cùng 1 lần checkout. Voucher sàn chỉ áp khi thanh toán đủ cả {pendingInfo.orderCount} shop.
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="text-xs text-amber-700 mt-0.5">
+                Đơn hàng #{pendingInfo.orderId} đang chờ bạn hoàn tất thanh toán.
+              </p>
+            )}
           </div>
           <button
             onClick={handleDismiss}
@@ -166,7 +195,7 @@ const PendingPayOSRollbackGuard: React.FC = () => {
             onClick={handleCancelPending}
             className="py-2 px-3 bg-red-50 border border-red-200 text-red-600 text-xs font-bold rounded-xl hover:bg-red-100 transition-all"
           >
-            Hủy
+            {pendingInfo.hasPlatformBatchVoucher ? 'Hủy phiên & hoàn voucher' : 'Hủy'}
           </button>
         </div>
       </div>

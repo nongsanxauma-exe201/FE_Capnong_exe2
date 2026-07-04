@@ -41,6 +41,7 @@ export interface PayAllOption {
 export interface ResumePaymentOptionsResponse {
     isBatch: boolean;
     batchId?: number;
+    hasPlatformVoucher?: boolean;
     triggerOrderId?: number;
     unpaidOrders?: ResumePaymentOrderOption[];
     payAllOption?: PayAllOption;

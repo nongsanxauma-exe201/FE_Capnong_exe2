@@ -458,7 +458,7 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
                       qrCodeUrl: batchRes.result.qrCodeUrl,
                     } as any,
                     orderId ?? 0,
-                    { batchId: batchRes.result.batchId, orderIds },
+                    { batchId: batchRes.result.batchId, orderIds, hasPlatformBatchVoucher: !!selectedBatchVoucher },
                   );
                   window.location.href = batchRes.result.checkoutUrl;
                   return;
@@ -486,7 +486,7 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
          if (error?.data?.message?.includes('MYSTERY_BOX_OUT_OF_STOCK')) {
             setError('Một số túi mù trong giỏ hàng đã hết hàng và đã được xóa. Vui lòng kiểm tra lại giỏ hàng.');
          } else {
-            setError(error?.data?.message || 'Có lỗi xảy ra. Vui lòng thử lại.');
+            setError(error?.data?.message || error?.message || 'Có lỗi xảy ra. Vui lòng thử lại.');
          }
       } finally {
          setIsProcessing(false);

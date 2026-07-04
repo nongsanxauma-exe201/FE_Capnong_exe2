@@ -12,7 +12,9 @@ import Pagination, { PageInfo } from '../../components/ui/Pagination';
 import { globalShowAlert, globalShowConfirm } from '../../contexts/PopupContext';
 import ReturnRequestModal from '../../components/ReturnRequestModal';
 import ResumePaymentModal from '../../components/payment/ResumePaymentModal';
+import BatchCheckoutGroupCard from '../../components/order/BatchCheckoutGroupCard';
 import { useResumePayment } from '../../hooks/useResumePayment';
+import { groupOrdersForDisplay } from '../../utils/groupOrdersByBatch';
 
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
@@ -492,6 +494,8 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
     ? searchFiltered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
     : orders;
 
+  const displayItems = groupOrdersForDisplay(paginatedOrders);
+
   const pageInfo: PageInfo = isSearching
     ? (() => {
         const totalElements = searchFiltered.length;
@@ -601,7 +605,7 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
             <div className="size-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
             <p className="text-sm font-bold text-gray-400">Đang tải đơn hàng...</p>
           </div>
-        ) : paginatedOrders.length === 0 ? (
+        ) : displayItems.length === 0 ? (
           <div className="bg-white rounded-[40px] border border-gray-100 shadow-sm p-16 text-center">
             <div className="size-24 bg-gray-50 rounded-full flex items-center justify-center text-gray-300 mb-6 mx-auto">
               <Package className="size-12" />
@@ -622,7 +626,21 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
           </div>
         ) : (
           <div className="space-y-6">
-            {paginatedOrders.map((order) => {
+            {displayItems.map((item) => {
+              if (item.kind === 'batch') {
+                return (
+                  <BatchCheckoutGroupCard
+                    key={`batch-${item.batchId}`}
+                    batchId={item.batchId}
+                    orders={item.orders}
+                    formatDate={formatDate}
+                    onResumePayment={(orderId, payMode) => openResumePayment(orderId, payMode)}
+                    resuming={resuming}
+                  />
+                );
+              }
+
+              const order = item.order;
               const statusConfig = getStatusConfig(order.status);
               const StatusIcon = statusConfig.icon;
               const trackable = canTrack(order.status);

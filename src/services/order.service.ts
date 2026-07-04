@@ -171,6 +171,11 @@ export interface OrderResponse {
     qcRefundedAmount?: number | null;
     qcBuyerDecisionDeadline?: string | null;
     qcBuyerAcceptedRemaining?: boolean | null;
+    checkoutBatchId?: number | null;
+    batchUnpaidCount?: number | null;
+    batchShopCount?: number | null;
+    hasPlatformBatchVoucher?: boolean | null;
+    batchPendingTotalAmount?: number | null;
 }
 
 export interface ShopReportOrderDay {

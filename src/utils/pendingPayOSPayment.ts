@@ -12,6 +12,7 @@ export type PendingPayOSPayment = {
   orderId?: number | null;
   batchId?: number | null;
   orderIds?: number[];
+  hasPlatformBatchVoucher?: boolean;
   createdAt?: number;
 };
 
@@ -93,7 +94,7 @@ export function resolvePayOSOrderCode(payment: PaymentResponse): string | null {
 export function savePendingPayOSPayment(
   payment: PaymentResponse,
   orderId: number,
-  extra?: { batchId?: number; orderIds?: number[] },
+  extra?: { batchId?: number; orderIds?: number[]; hasPlatformBatchVoucher?: boolean },
 ) {
   const orderCode = resolvePayOSOrderCode(payment);
   const payload = JSON.stringify({
@@ -101,6 +102,7 @@ export function savePendingPayOSPayment(
     orderId,
     batchId: extra?.batchId ?? null,
     orderIds: extra?.orderIds ?? (orderId ? [orderId] : []),
+    hasPlatformBatchVoucher: extra?.hasPlatformBatchVoucher ?? false,
     createdAt: Date.now(),
   });
 

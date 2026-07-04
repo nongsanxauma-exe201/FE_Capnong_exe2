@@ -8,10 +8,10 @@ export function useResumePayment(onError?: ResumeErrorHandler) {
   const [resumeOptions, setResumeOptions] = useState<ResumePaymentOptionsResponse | null>(null);
   const [resuming, setResuming] = useState(false);
 
-  const openResumePayment = async (orderId: number) => {
+  const openResumePayment = async (orderId: number, payMode?: 'batch-all') => {
     setResuming(true);
     try {
-      await handleResumePaymentClick(orderId, setResumeOptions);
+      await handleResumePaymentClick(orderId, setResumeOptions, payMode);
     } catch (e: any) {
       const message = e?.data?.message ?? e?.message ?? 'Không thể tiếp tục thanh toán.';
       onError?.(message);
