@@ -3,6 +3,28 @@ import { Wallet, TrendingUp, Download, Loader2, AlertCircle, CheckCircle, XCircl
 import { walletService, WithdrawRequestResponse, WalletResponse } from '../../services';
 import { globalShowAlert, globalShowConfirm } from '../../contexts/PopupContext';
 
+function getWithdrawOwnerLabel(req: WithdrawRequestResponse): string {
+  if (req.shipperId) return `SHIPPER-${req.shipperId}`;
+  if (req.buyerId) return `BUYER-${req.buyerId}`;
+  if (req.shopOwnerId) return `SHOP-${req.shopOwnerId}`;
+  if (req.walletType === 'MEMBER') return `BUYER-${req.walletId}`;
+  if (req.walletType === 'SHIPPER') return `SHIPPER-${req.walletId}`;
+  if (req.walletType === 'SHOP') return `SHOP-${req.walletId}`;
+  return `WALLET-${req.walletId}`;
+}
+
+function getWithdrawOwnerKind(req: WithdrawRequestResponse): 'SHIPPER' | 'BUYER' | 'SHOP' {
+  if (req.shipperId || req.walletType === 'SHIPPER') return 'SHIPPER';
+  if (req.buyerId || req.walletType === 'MEMBER' || req.walletType === 'BUYER') return 'BUYER';
+  return 'SHOP';
+}
+
+function getWithdrawKindBadgeClass(kind: 'SHIPPER' | 'BUYER' | 'SHOP'): string {
+  if (kind === 'SHIPPER') return 'bg-blue-50 text-blue-600';
+  if (kind === 'BUYER') return 'bg-emerald-50 text-emerald-700';
+  return 'bg-purple-50 text-purple-600';
+}
+
 const AdminWallet: React.FC = () => {
   const [pendingRequests, setPendingRequests] = useState<WithdrawRequestResponse[]>([]);
   const [history, setHistory] = useState<WithdrawRequestResponse[]>([]);
@@ -317,19 +339,21 @@ const AdminWallet: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                pendingRequests.map((req) => (
+                pendingRequests.map((req) => {
+                  const kind = getWithdrawOwnerKind(req);
+                  return (
                   <tr key={req.id} className="hover:bg-gray-50/50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex flex-col">
                         <span className="text-sm font-bold text-gray-900">
-                          {req.shipperId ? `SHIPPER-${req.shipperId}` : `SHOP-${req.shopOwnerId}`}
+                          {getWithdrawOwnerLabel(req)}
                         </span>
                         <span className="text-xs text-gray-400">Ví ID: {req.walletId}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`px-2 py-1 text-xs font-bold rounded-md ${req.shipperId ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>
-                        {req.shipperId ? 'SHIPPER' : 'SHOP'}
+                      <span className={`px-2 py-1 text-xs font-bold rounded-md ${getWithdrawKindBadgeClass(kind)}`}>
+                        {kind}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
@@ -365,7 +389,8 @@ const AdminWallet: React.FC = () => {
                       </div>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -441,7 +466,7 @@ const AdminWallet: React.FC = () => {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-xs font-medium text-gray-600">
-                      {tx.shipperId ? `SHIPPER-${tx.shipperId}` : `SHOP-${tx.shopOwnerId}`}
+                      {getWithdrawOwnerLabel(tx)}
                     </td>
                     <td className="px-6 py-4 text-right text-xs font-bold text-gray-900">
                       {tx.status === 'SUCCESS' ? '-' : ''}{(tx.amount || 0).toLocaleString('vi-VN')} đ
@@ -547,12 +572,12 @@ const AdminWallet: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-3xl w-full max-w-md p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
             <h3 className="text-2xl font-black text-gray-900 mb-2">Xác Nhận Chuyển Khoản Thành Công</h3>
-            <p className="text-sm text-gray-500 mb-6">Hãy tải lên ảnh chứng minh chuyển khoản (Tùy chọn)</p>
+            <p className="text-sm text-gray-500 mb-6">Hãy tải lên ảnh chứng minh chuyển khoản</p>
 
             {/* File Upload Section - Optional */}
             <div className="mb-6">
               <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-3">
-                Ảnh chứng minh (Tùy chọn)
+                Ảnh chứng minh
               </label>
               <div className="border-2 border-dashed border-gray-200 rounded-2xl p-4 text-center hover:border-gray-300 transition-colors">
                 <input
@@ -622,7 +647,7 @@ const AdminWallet: React.FC = () => {
             {/* File Upload Section - Optional */}
             <div className="mb-6">
               <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-3">
-                Ảnh chứng minh (Tùy chọn)
+                Ảnh chứng minh
               </label>
               <div className="border-2 border-dashed border-gray-200 rounded-2xl p-4 text-center hover:border-gray-300 transition-colors">
                 <input

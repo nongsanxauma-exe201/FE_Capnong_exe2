@@ -9,12 +9,16 @@ import { reviewService } from '../../services/review.service';
 import { returnService } from '../../services/return.service';
 import { Star, Camera, X, Loader2 } from 'lucide-react';
 import Pagination, { PageInfo } from '../../components/ui/Pagination';
+import { ImageLightbox } from '../../components/ui';
+import { getOrderStatusLabel } from '../../constants/orderStatusLabels';
 import { globalShowAlert, globalShowConfirm } from '../../contexts/PopupContext';
 import ReturnRequestModal from '../../components/ReturnRequestModal';
 import ResumePaymentModal from '../../components/payment/ResumePaymentModal';
+import BatchCheckoutGroupCard from '../../components/order/BatchCheckoutGroupCard';
 import { useResumePayment } from '../../hooks/useResumePayment';
+import { groupOrdersForDisplay, requiresBatchWideCancel, getBatchCancelConfirmMessage, shouldHideIndividualCancel, BATCH_HYDRATION_STATUSES } from '../../utils/groupOrdersByBatch';
 
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 
 const PAGE_SIZE = 10;
@@ -60,6 +64,9 @@ const BUYER_FILTERS: Array<{ key: OrderStatusFilter; label: string }> = [
   { key: 'FAILED', label: 'Giao thất bại' },
 ];
 
+const getFilterLabel = (key: OrderStatusFilter) =>
+  BUYER_FILTERS.find((f) => f.key === key)?.label ?? key;
+
 const getQcRefundHint = (paymentMethod?: string) => {
   if (paymentMethod?.toUpperCase() === 'COD') {
     return 'Nếu bạn chọn không nhận, phần còn lại sẽ bị hủy và số tiền COD khi nhận hàng sẽ được giảm tương ứng.';
@@ -74,14 +81,17 @@ const getQcRejectButtonLabel = (paymentMethod?: string) =>
 
 const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
   const { user } = useAuth();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const orderIdFromUrl = searchParams.get('orderId');
   const [orders, setOrders] = useState<OrderResponse[]>([]);
+  const [batchHydrationOrders, setBatchHydrationOrders] = useState<OrderResponse[]>([]);
   const [searchResults, setSearchResults] = useState<OrderResponse[]>([]);
   const [serverPageInfo, setServerPageInfo] = useState<PageInfo>({
     page: 0, size: PAGE_SIZE, totalElements: 0, totalPages: 1, first: true, last: true,
   });
   const [loading, setLoading] = useState(true);
+  const [cancellingBatch, setCancellingBatch] = useState(false);
   const [filter, setFilter] = useState<OrderStatusFilter>('ALL');
   const [searchQuery, setSearchQuery] = useState(orderIdFromUrl || '');
   const [debouncedSearch, setDebouncedSearch] = useState(orderIdFromUrl || '');
@@ -107,6 +117,8 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
     deadline?: string | null;
     paymentMethod?: string;
   } | null>(null);
+  const [waybillOrder, setWaybillOrder] = useState<OrderResponse | null>(null);
+  const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
   const { openResumePayment, resuming, resumeOptions, closeResumePayment } = useResumePayment((message) => {
     globalShowAlert(message, 'Lỗi', 'error');
   });
@@ -153,6 +165,7 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
         const list = response.result ? [response.result] : [];
         setOrders(list);
         setSearchResults([]);
+        setBatchHydrationOrders([]);
         setServerPageInfo({
           page: 0, size: PAGE_SIZE, totalElements: list.length, totalPages: 1, first: true, last: true,
         });
@@ -170,11 +183,15 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
           );
         setSearchResults(filtered);
         setOrders([]);
+        setBatchHydrationOrders(filtered.filter((o) => o.checkoutBatchId != null));
         return;
       }
 
       const statuses = filter === 'ALL' ? undefined : BUYER_STATUS_GROUPS[filter];
-      const response = await orderService.getOrdersByUserIdPaged(uid, page, PAGE_SIZE, statuses);
+      const [response, batchPoolResponse] = await Promise.all([
+        orderService.getOrdersByUserIdPaged(uid, page, PAGE_SIZE, statuses),
+        orderService.getOrdersByUserIdPaged(uid, 0, 100, [...BATCH_HYDRATION_STATUSES]),
+      ]);
       if (response.result) {
         const r = response.result;
         setOrders(r.content);
@@ -188,6 +205,9 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
           last: r.last,
         });
       }
+      setBatchHydrationOrders(
+        (batchPoolResponse.result?.content ?? []).filter((o) => o.checkoutBatchId != null),
+      );
     } catch (error: any) {
       console.error('Failed to fetch orders:', error);
       if (error.status === 401) {
@@ -271,21 +291,59 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
     }
   };
 
-  const handleCancelOrder = async (orderId: number) => {
-    if (!await globalShowConfirm('Bạn có chắc chắn muốn hủy đơn hàng này không?', 'Xác nhận hủy đơn')) return;
+  const handleCancelOrder = async (order: OrderResponse) => {
+    const confirmMsg = requiresBatchWideCancel(order)
+      ? getBatchCancelConfirmMessage(order)
+      : 'Bạn có chắc chắn muốn hủy đơn hàng này không?';
+    if (!await globalShowConfirm(confirmMsg, 'Xác nhận hủy đơn')) return;
 
     try {
       setLoading(true);
-      const res = await orderService.updateOrder(orderId, { status: 'CANCELLED' });
+      const res = await orderService.updateOrder(order.id, { status: 'CANCELLED' });
       if (res.result) {
-        globalShowAlert('Đã hủy đơn hàng thành công!', 'Thành công', 'success');
-        fetchOrders(); // Refresh table
+        const successMsg = requiresBatchWideCancel(order)
+          ? `Đã hủy toàn bộ ${order.batchShopCount ?? ''} đơn trong checkout PayOS.`
+          : 'Đã hủy đơn hàng thành công!';
+        globalShowAlert(successMsg, 'Thành công', 'success');
+        fetchOrders();
       }
     } catch (error: any) {
       console.error('Failed to cancel order:', error);
-      globalShowAlert(error.message || 'Không thể hủy đơn hàng. Vui lòng thử lại sau.', 'Lỗi', 'error');
+      globalShowAlert(error?.data?.message || error.message || 'Không thể hủy đơn hàng. Vui lòng thử lại sau.', 'Lỗi', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCancelBatch = async (batchOrders: OrderResponse[]) => {
+    const trigger = batchOrders[0];
+    if (!trigger) return;
+    const confirmMsg = getBatchCancelConfirmMessage(trigger, batchOrders);
+    if (!await globalShowConfirm(confirmMsg, 'Xác nhận hủy checkout')) return;
+
+    try {
+      setCancellingBatch(true);
+      const hasVoucher = batchOrders.some((o) => o.hasPlatformBatchVoucher === true);
+      if (hasVoucher) {
+        // BE gom hủy cả batch khi có voucher sàn
+        const res = await orderService.updateOrder(trigger.id, { status: 'CANCELLED' });
+        if (res.result) {
+          globalShowAlert(`Đã hủy toàn bộ ${batchOrders.length} đơn trong checkout PayOS.`, 'Thành công', 'success');
+        }
+      } else {
+        // Không voucher → BE chỉ hủy 1 đơn / request — hủy lần lượt
+        for (const o of batchOrders) {
+          await orderService.updateOrder(o.id, { status: 'CANCELLED' });
+        }
+        globalShowAlert(`Đã hủy ${batchOrders.length} đơn trong checkout.`, 'Thành công', 'success');
+      }
+      await fetchOrders();
+    } catch (error: any) {
+      console.error('Failed to cancel batch:', error);
+      globalShowAlert(error?.data?.message || error.message || 'Không thể hủy checkout. Vui lòng thử lại sau.', 'Lỗi', 'error');
+      await fetchOrders();
+    } finally {
+      setCancellingBatch(false);
     }
   };
 
@@ -353,8 +411,9 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
   useEffect(() => {
     if (!user?.id) return;
     fetchOrders();
+    // location.key: vào lại /my-orders từ banner "Xem đơn hàng" phải fetch mới (nút hủy/batch)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, orderIdFromUrl, page, filter, debouncedSearch]);
+  }, [user?.id, orderIdFromUrl, page, filter, debouncedSearch, location.key]);
 
   useEffect(() => {
     loadReviewedIds();
@@ -482,6 +541,16 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
     ].includes(status);
   };
 
+  const openWaybill = async (order: OrderResponse) => {
+    setWaybillOrder(order);
+    try {
+      const res = await orderService.getOrderById(order.id);
+      if (res.result) setWaybillOrder(res.result);
+    } catch {
+      /* giữ data list nếu getById lỗi */
+    }
+  };
+
   const isSearching = debouncedSearch.trim().length > 0 && !orderIdFromUrl;
 
   const searchFiltered = isSearching
@@ -491,6 +560,8 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
   const paginatedOrders = isSearching
     ? searchFiltered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
     : orders;
+
+  const displayItems = groupOrdersForDisplay(paginatedOrders, batchHydrationOrders);
 
   const pageInfo: PageInfo = isSearching
     ? (() => {
@@ -601,7 +672,7 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
             <div className="size-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
             <p className="text-sm font-bold text-gray-400">Đang tải đơn hàng...</p>
           </div>
-        ) : paginatedOrders.length === 0 ? (
+        ) : displayItems.length === 0 ? (
           <div className="bg-white rounded-[40px] border border-gray-100 shadow-sm p-16 text-center">
             <div className="size-24 bg-gray-50 rounded-full flex items-center justify-center text-gray-300 mb-6 mx-auto">
               <Package className="size-12" />
@@ -622,7 +693,25 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
           </div>
         ) : (
           <div className="space-y-6">
-            {paginatedOrders.map((order) => {
+            {displayItems.map((item) => {
+              if (item.kind === 'batch') {
+                return (
+                  <BatchCheckoutGroupCard
+                    key={`batch-${item.batchId}`}
+                    batchId={item.batchId}
+                    orders={item.orders}
+                    formatDate={formatDate}
+                    onResumePayment={(orderId, payMode) => openResumePayment(orderId, payMode)}
+                    onCancelBatch={handleCancelBatch}
+                    onCancelOrder={handleCancelOrder}
+                    resuming={resuming}
+                    cancelling={cancellingBatch || loading}
+                    variant={item.variant}
+                  />
+                );
+              }
+
+              const order = item.order;
               const statusConfig = getStatusConfig(order.status);
               const StatusIcon = statusConfig.icon;
               const trackable = canTrack(order.status);
@@ -795,6 +884,13 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
                             <span className="text-sm font-black uppercase tracking-wider">Đã nhận được hàng</span>
                           </div>
                           <button
+                            onClick={() => openWaybill(order)}
+                            className="px-5 py-3 bg-primary text-white font-black text-xs rounded-2xl shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all flex items-center gap-2 uppercase tracking-wider"
+                          >
+                            <Truck className="size-3.5" />
+                            Xem vận đơn
+                          </button>
+                          <button
                             onClick={() => handleDownloadReceipt(order.id)}
                             disabled={downloadingReceiptId === order.id}
                             className="px-5 py-3 bg-blue-50 text-blue-600 font-black text-xs rounded-2xl border border-blue-100 hover:bg-blue-100 transition-all flex items-center gap-2 uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"
@@ -804,15 +900,20 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
                               : <Download className="size-3.5" />}
                             Tải hóa đơn
                           </button>
-                          {/* {!order.items?.some(i => i.isRequestedReturn) && (
-                            <button
-                              onClick={() => setOrderReturnModal({ orderId: order.id, orderNum: order.id })}
-                              className="px-5 py-3 bg-orange-50 text-orange-600 font-black text-xs rounded-2xl border border-orange-100 hover:bg-orange-100 transition-all flex items-center gap-2 uppercase tracking-wider"
-                            >
-                              <RefreshCw className="size-3.5" />
-                              Trả toàn bộ đơn
-                            </button>
-                          )} */}
+                        </div>
+                      ) : order.status === 'FAILED' ? (
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <div className="flex items-center gap-2 px-6 py-3 bg-red-50 text-red-600 rounded-2xl border border-red-100">
+                            <XCircle className="size-4" />
+                            <span className="text-sm font-black uppercase tracking-wider">Giao thất bại</span>
+                          </div>
+                          <button
+                            onClick={() => openWaybill(order)}
+                            className="px-5 py-3 bg-primary text-white font-black text-xs rounded-2xl shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all flex items-center gap-2 uppercase tracking-wider"
+                          >
+                            <Truck className="size-3.5" />
+                            Xem vận đơn
+                          </button>
                         </div>
                       ) : order.status === 'QC_PENDING_BUYER' ? (
                         <div className="flex items-center gap-3 flex-wrap">
@@ -850,7 +951,7 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
                           Theo dõi đơn hàng
                         </button>
                       ) : order.status === 'AWAITING_PAYMENT' ? (
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 flex-wrap">
                           <button
                             onClick={() => openResumePayment(order.id, 'individual')}
                             disabled={resuming}
@@ -859,15 +960,25 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
                             {resuming ? <ReceiptLoader className="size-4 animate-spin" /> : '💳'}
                             Tiếp tục thanh toán
                           </button>
+                          {!shouldHideIndividualCancel(order, batchHydrationOrders) && (
+                            <button
+                              onClick={() => handleCancelOrder(order)}
+                              className="px-6 py-3 bg-red-50 text-red-600 font-bold rounded-2xl border border-red-100 hover:bg-red-100 hover:text-red-700 transition-all flex items-center gap-2"
+                            >
+                              <XCircle className="size-4" />
+                              Hủy đơn hàng
+                            </button>
+                          )}
                           <div className="flex items-center gap-2 px-6 py-3 bg-amber-50 text-amber-700 rounded-2xl border border-amber-100">
                             <AlertCircle className="size-4" />
                             <span className="text-sm font-bold">Chờ thanh toán</span>
                           </div>
                         </div>
-                      ) : order.status === 'PENDING' || order.status === 'PAID' ? (
+                      ) : (order.status === 'PENDING' || order.status === 'PAID')
+                        && !shouldHideIndividualCancel(order, batchHydrationOrders) ? (
                         <div className="flex items-center gap-3">
                           <button
-                            onClick={() => handleCancelOrder(order.id)}
+                            onClick={() => handleCancelOrder(order)}
                             className="px-6 py-3 bg-red-50 text-red-600 font-bold rounded-2xl border border-red-100 hover:bg-red-100 hover:text-red-700 transition-all flex items-center gap-2"
                           >
                             <XCircle className="size-4" />
@@ -893,6 +1004,109 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
         )}
         {totalPages > 1 && <Pagination pageInfo={pageInfo} onPageChange={setPage} className="mt-6" />}
       </div>
+
+      {/* Modal vận đơn — DELIVERED / FAILED */}
+      {waybillOrder && (
+        <>
+          <div className="fixed inset-0 z-[100] overflow-y-auto px-4 py-8 bg-black/40 backdrop-blur-sm animate-in fade-in duration-300">
+            <div className="mx-auto bg-white w-full max-w-[620px] rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 max-h-[90vh]">
+              <div className="p-8 overflow-y-auto max-h-[90vh]">
+                <div className="flex items-center justify-between mb-6 gap-4">
+                  <div>
+                    <h3 className="text-xl font-black text-gray-900">Theo dõi hành trình</h3>
+                    <p className="text-xs text-gray-400 font-medium mt-0.5">
+                      #{waybillOrder.id} · {getOrderStatusLabel(waybillOrder.status)}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setWaybillOrder(null)}
+                    className="size-9 rounded-2xl border border-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-50"
+                  >
+                    <X className="size-4" />
+                  </button>
+                </div>
+
+                <div className="p-5 bg-gray-50 rounded-3xl border border-gray-100 mb-6">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-1">Trạng thái</p>
+                      <p className="text-sm font-black text-gray-900">{getOrderStatusLabel(waybillOrder.status)}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-1">Người nhận</p>
+                      <p className="text-sm font-black text-gray-900">{waybillOrder.recipientName || '—'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-5">
+                  {(!waybillOrder.trackings || waybillOrder.trackings.length === 0) ? (
+                    <div className="p-6 bg-gray-50 rounded-3xl border border-gray-100 text-center text-sm text-gray-500">
+                      Hiện chưa có thông tin hành trình / bằng chứng.
+                    </div>
+                  ) : (
+                    waybillOrder.trackings
+                      .slice()
+                      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+                      .map((tracking, index) => {
+                        const isDeliveryEvidence =
+                          tracking.status === 'DELIVERED' || tracking.status === 'FAILED';
+                        return (
+                          <div key={tracking.trackingId ?? index} className="rounded-3xl border border-gray-100 p-5 shadow-sm bg-white">
+                            <div>
+                              <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2">
+                                Bước {index + 1}
+                                {isDeliveryEvidence ? ' · Bằng chứng giao hàng' : ''}
+                              </p>
+                              <p className="text-sm font-black text-gray-900">
+                                {getOrderStatusLabel(tracking.status)}
+                              </p>
+                              <p className="text-[11px] text-gray-400 mt-1">
+                                {new Date(tracking.createdAt).toLocaleString('vi-VN')}
+                              </p>
+                            </div>
+                            {tracking.images && tracking.images.length > 0 && (
+                              <div className="mt-4 grid grid-cols-3 gap-3">
+                                {tracking.images.map((image, imageIndex) => (
+                                  <button
+                                    key={imageIndex}
+                                    type="button"
+                                    onClick={() => setLightboxImageUrl(image.imageUrl)}
+                                    className="overflow-hidden rounded-3xl border border-gray-100 bg-gray-50 hover:border-primary transition-all"
+                                  >
+                                    <img
+                                      src={image.imageUrl}
+                                      alt={`Tracking ${index + 1} ảnh ${imageIndex + 1}`}
+                                      className="w-full h-20 object-cover"
+                                    />
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setWaybillOrder(null)}
+                  className="w-full py-4 bg-gray-50 border border-gray-100 rounded-2xl text-sm font-black text-gray-500 hover:bg-gray-100 transition-all mt-6"
+                >
+                  Đóng
+                </button>
+              </div>
+            </div>
+          </div>
+          <ImageLightbox
+            imageUrl={lightboxImageUrl}
+            alt="Ảnh bằng chứng"
+            onClose={() => setLightboxImageUrl(null)}
+          />
+        </>
+      )}
 
       {/* QC Decision Modal */}
       {qcDecisionModal && (

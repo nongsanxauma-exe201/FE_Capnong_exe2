@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import type { ResumePaymentOptionsResponse } from '../services/payment.service';
 import { handleResumePaymentClick, type ResumePayMode } from '../utils/resumePayOSPayment';
 
@@ -8,7 +8,7 @@ export function useResumePayment(onError?: ResumeErrorHandler) {
   const [resumeOptions, setResumeOptions] = useState<ResumePaymentOptionsResponse | null>(null);
   const [resuming, setResuming] = useState(false);
 
-  const openResumePayment = async (orderId: number, payMode?: ResumePayMode) => {
+  const openResumePayment = useCallback(async (orderId: number, payMode?: ResumePayMode) => {
     setResuming(true);
     try {
       await handleResumePaymentClick(orderId, setResumeOptions, payMode);
@@ -18,9 +18,9 @@ export function useResumePayment(onError?: ResumeErrorHandler) {
     } finally {
       setResuming(false);
     }
-  };
+  }, [onError]);
 
-  const closeResumePayment = () => setResumeOptions(null);
+  const closeResumePayment = useCallback(() => setResumeOptions(null), []);
 
   return {
     openResumePayment,

@@ -97,13 +97,11 @@ const FarmerDashboard: React.FC<{ onNavigate: (id: string) => void }> = ({ onNav
         ].map((stat, i) => (
           <div
             key={i}
-            className={`p-5 rounded-3xl border border-gray-100 shadow-sm relative overflow-hidden group min-h-[140px] flex flex-col justify-between ${stat.isPrimary ? 'bg-primary text-white md:col-span-3 lg:col-span-1' : 'bg-white'
-              }`}
+            className="p-5 rounded-3xl border border-gray-100 shadow-sm relative overflow-hidden group min-h-[140px] flex flex-col justify-between bg-white"
           >
             {/* Label phần trên */}
             <div className="relative z-10">
-              <p className={`text-[10px] font-black uppercase tracking-widest leading-tight mb-3 h-[28px] ${stat.isPrimary ? 'text-white/70' : 'text-gray-400'
-                }`}>
+              <p className="text-[10px] font-black uppercase tracking-widest leading-tight mb-3 h-[28px] text-gray-400">
                 {stat.label}
               </p>
 
@@ -114,10 +112,7 @@ const FarmerDashboard: React.FC<{ onNavigate: (id: string) => void }> = ({ onNav
                 </h3>
 
                 {stat.trend && (
-                  <span
-                    className={`text-[11px] font-medium mt-1 ${stat.isPrimary ? 'text-white/80' : 'text-primary'
-                      }`}
-                  >
+                  <span className="text-[11px] font-medium mt-1 text-primary">
                     {stat.trend}
                   </span>
                 )}
@@ -126,19 +121,9 @@ const FarmerDashboard: React.FC<{ onNavigate: (id: string) => void }> = ({ onNav
 
             {/* Phần bổ sung phía dưới (Bar hoặc Wallet info) */}
             <div className="relative z-10 mt-auto">
-              {stat.bar ? (
+              {'bar' in stat && stat.bar ? (
                 <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
                   <div className="h-full bg-primary" style={{ width: `${stat.bar}%` }} />
-                </div>
-              ) : stat.isPrimary ? (
-                <div className="pt-2">
-                  <p className="text-[9px] text-white/70 font-bold mb-2">Đóng băng: {stat.frozen}</p>
-                  <button
-                    onClick={() => onNavigate('wallet')}
-                    className="w-full bg-white text-primary text-[10px] font-black py-2 rounded-xl hover:bg-gray-50 transition-all active:scale-95"
-                  >
-                    RÚT TIỀN
-                  </button>
                 </div>
               ) : (
                 /* Tạo khoảng trống giả để các card không có bar vẫn giữ layout */
@@ -147,8 +132,7 @@ const FarmerDashboard: React.FC<{ onNavigate: (id: string) => void }> = ({ onNav
             </div>
 
             {/* Icon nền - Thu nhỏ lại và cố định góc để không đè chữ */}
-            <stat.icon className={`absolute -right-3 -bottom-3 size-16 opacity-[0.05] transform group-hover:scale-110 transition-transform ${stat.isPrimary ? 'text-white' : 'text-gray-400'
-              }`} />
+            <stat.icon className="absolute -right-3 -bottom-3 size-16 opacity-[0.05] transform group-hover:scale-110 transition-transform text-gray-400" />
           </div>
         ))}
       </div>

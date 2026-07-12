@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ShoppingCart, Trash2, Plus, Minus, Info, ArrowRight, ArrowLeft,
@@ -10,6 +10,9 @@ import { useAuth } from '../../contexts/AuthContext';
 import { globalShowConfirm, globalShowAlert } from '../../contexts/PopupContext';
 import { useResumePayment } from '../../hooks/useResumePayment';
 import ResumePaymentModal from '../../components/payment/ResumePaymentModal';
+import BatchCheckoutGroupCard from '../../components/order/BatchCheckoutGroupCard';
+import { pickLatestPendingDisplayItems, type OrderDisplayItem, getBatchPendingTotal, batchHasPlatformVoucher } from '../../utils/groupOrdersByBatch';
+import type { ResumePayMode } from '../../utils/resumePayOSPayment';
 import {
   clearRestoredPayOSCart, buildGroupedCartItems, saveRestoredPayOSCart,
   PAYOS_RELOAD_CART_ON_ARRIVAL_KEY,
@@ -58,7 +61,7 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping, onNa
       const id = item.productId || (item as any).id;
       if (id) navigate(`/san-pham/${id}`);
     }
-  };
+  }; 
 
   const [cartState,    setCartState]    = useState<CartState>({ cart: null, shopGroups: [] });
   const [pendingOrders, setPendingOrders] = useState<OrderResponse[]>([]);
@@ -102,7 +105,7 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping, onNa
       const [cartResp, orderResp] = await Promise.allSettled([
         cartService.getCart(),
         user?.id
-          ? orderService.getOrdersByUserIdPaged(Number(user.id), 0, 20, ['AWAITING_PAYMENT'])
+          ? orderService.getOrdersByUserIdPaged(Number(user.id), 0, 20, ['AWAITING_PAYMENT', 'PENDING'])
           : Promise.resolve(null),
       ]);
 
@@ -121,7 +124,7 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping, onNa
       // Pending order
       if (orderResp.status === 'fulfilled' && orderResp.value) {
         const content = (orderResp.value as any)?.result?.content ?? [];
-        setPendingOrders(content ?? []);
+        setPendingOrders(content);
       }
     } catch (error) {
       console.error('Failed to load cart', error);
@@ -262,9 +265,60 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping, onNa
     }
   };
 
-  const handleContinuePayment = async (orderId: number, payMode?: 'batch-all' | 'individual') => {
+  const handleContinuePayment = async (orderId: number, payMode?: ResumePayMode) => {
     await openResumePayment(orderId, payMode);
   };
+
+  const handleCancelPendingOrder = async (order: OrderResponse) => {
+    if (!await globalShowConfirm('Bạn có chắc chắn muốn hủy đơn hàng này không?', 'Xác nhận hủy đơn')) return;
+    try {
+      await orderService.updateOrder(order.id, { status: 'CANCELLED' });
+      globalShowAlert('Đã hủy đơn hàng thành công!', 'Thành công', 'success');
+      await fetchCart(true);
+      window.dispatchEvent(new Event('cart-updated'));
+    } catch (error: any) {
+      globalShowAlert(error?.data?.message || error?.message || 'Không thể hủy đơn hàng.', 'Lỗi', 'error');
+    }
+  };
+
+  const handleCancelPendingBatch = async (batchOrders: OrderResponse[]) => {
+    const trigger = batchOrders[0];
+    if (!trigger) return;
+    const hasVoucher = batchOrders.some((o) => o.hasPlatformBatchVoucher === true);
+    const msg = hasVoucher
+      ? `Checkout này dùng voucher sàn. Hủy sẽ áp dụng cho cả ${batchOrders.length} đơn. Tiếp tục?`
+      : `Hủy toàn bộ ${batchOrders.length} đơn chưa thanh toán trong checkout này?`;
+    if (!await globalShowConfirm(msg, 'Xác nhận hủy checkout')) return;
+    try {
+      if (hasVoucher) {
+        await orderService.updateOrder(trigger.id, { status: 'CANCELLED' });
+      } else {
+        for (const o of batchOrders) {
+          await orderService.updateOrder(o.id, { status: 'CANCELLED' });
+        }
+      }
+      globalShowAlert(`Đã hủy ${batchOrders.length} đơn trong checkout.`, 'Thành công', 'success');
+      await fetchCart(true);
+      window.dispatchEvent(new Event('cart-updated'));
+    } catch (error: any) {
+      globalShowAlert(error?.data?.message || error?.message || 'Không thể hủy checkout.', 'Lỗi', 'error');
+      await fetchCart(true);
+    }
+  };
+
+  const pendingDisplayItems = useMemo(
+    () => pickLatestPendingDisplayItems(pendingOrders),
+    [pendingOrders],
+  );
+
+  const formatPendingDate = (dateStr: string) =>
+    new Date(dateStr).toLocaleString('vi-VN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
 
   const handleCheckout = () => {
     if (selectedKeys.size === 0) {
@@ -341,13 +395,15 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping, onNa
 
         {/* ── 3 trạng thái ──────────────────────────────────────────── */}
         {totalItems === 0 ? (
-          pendingOrders.length > 0 ? (
-            /* Giỏ trống + có đơn AWAITING_PAYMENT → nhắc thanh toán */
-            <PendingOrderFullPage
-              orders={pendingOrders}
+          pendingDisplayItems.length > 0 ? (
+            <PendingOrdersFullPage
+              items={pendingDisplayItems}
               onContinuePayment={handleContinuePayment}
+              onCancelBatch={handleCancelPendingBatch}
+              onCancelOrder={handleCancelPendingOrder}
               onBackToShopping={onBackToShopping}
               onNavigateToOrders={onNavigateToOrders}
+              formatDate={formatPendingDate}
               paying={payingOrder}
             />
           ) : (
@@ -370,15 +426,14 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping, onNa
             {/* Danh sách sản phẩm */}
             <div className="lg:col-span-8 flex flex-col gap-8">
 
-              {/* Banners đơn chưa thanh toán — grouped by batch */}
-              {groupPendingOrders(pendingOrders).map(entry => (
-                <PendingOrderBanner
-                  key={`single-${entry.order.id}`}
-                  order={entry.order}
-                  onContinuePayment={() => handleContinuePayment(entry.order.id, 'individual')}
+              {/* Banner nhỏ — đơn chờ TT gần nhất */}
+              {pendingDisplayItems.length > 0 && (
+                <PendingCompactBanner
+                  item={pendingDisplayItems[0]}
+                  onContinuePayment={handleContinuePayment}
                   paying={payingOrder}
                 />
-              ))}
+              )}
 
               {shopGroups.map((group) => {
                 const { shopOwnerId, shopName, items } = group;
@@ -568,262 +623,206 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping, onNa
   );
 };
 
-/* ── Grouping utility ───────────────────────────────────────────────── */
+/* ── Pending full page (giỏ trống + có đơn chờ TT) ─────────────────── */
 
-interface BatchGroup {
-  type: 'batch';
-  batchId: number;
-  orders: OrderResponse[];
-  totalAmount: number;
-}
-interface SingleEntry {
-  type: 'single';
-  order: OrderResponse;
-}
-type PendingEntry = BatchGroup | SingleEntry;
-
-function groupPendingOrders(orders: OrderResponse[]): PendingEntry[] {
-  return orders.map(order => ({ type: 'single' as const, order }));
-}
-
-/* ── Pending full page ──────────────────────────────────────────────── */
-
-interface PendingOrderFullPageProps {
-  orders: OrderResponse[];
-  onContinuePayment: (orderId: number, payMode?: 'batch-all' | 'individual') => void;
+interface PendingOrdersFullPageProps {
+  items: OrderDisplayItem[];
+  onContinuePayment: (orderId: number, payMode?: ResumePayMode) => void;
+  onCancelBatch?: (orders: OrderResponse[]) => void;
+  onCancelOrder?: (order: OrderResponse) => void;
   onBackToShopping: () => void;
   onNavigateToOrders?: () => void;
+  formatDate: (dateStr: string) => string;
   paying: boolean;
 }
 
-const PendingOrderFullPage: React.FC<PendingOrderFullPageProps> = ({
-  orders, onContinuePayment, onBackToShopping, onNavigateToOrders, paying,
-}) => {
-  const entries = groupPendingOrders(orders);
-
-  return (
-    <div className="flex flex-col items-center justify-center py-16 px-4">
-      <div className="relative mb-8">
-        <div className="size-28 bg-primary/5 rounded-full flex items-center justify-center">
-          <ShoppingCart className="size-14 text-primary/40" />
-        </div>
-        <div className="absolute -top-1 -right-1 size-10 bg-amber-400 rounded-full flex items-center justify-center shadow-md">
-          <Clock className="size-5 text-white" />
-        </div>
+const PendingOrdersFullPage: React.FC<PendingOrdersFullPageProps> = ({
+  items, onContinuePayment, onCancelBatch, onCancelOrder, onBackToShopping, onNavigateToOrders, formatDate, paying,
+}) => (
+  <div className="flex flex-col items-center justify-center py-16 px-4">
+    <div className="relative mb-8">
+      <div className="size-28 bg-amber-50 rounded-full flex items-center justify-center">
+        <ShoppingCart className="size-14 text-amber-400/60" />
       </div>
+      <div className="absolute -top-1 -right-1 size-10 bg-amber-400 rounded-full flex items-center justify-center shadow-md">
+        <Clock className="size-5 text-white" />
+      </div>
+    </div>
 
-      <h2 className="text-3xl font-black text-primary text-center leading-tight mb-3">
-        Đơn hàng của bạn<br />vẫn đang chờ!
-      </h2>
-      <p className="text-gray-500 text-center max-w-sm mb-8 leading-relaxed">
-        Hoàn tất thanh toán ngay để không bỡ lỡ sản phẩm ngon với giá tốt nhé!
-      </p>
+    <h2 className="text-3xl font-black text-amber-900 text-center leading-tight mb-3">
+      Đơn hàng của bạn<br />vẫn đang chờ!
+    </h2>
+    <p className="text-amber-800/70 text-center max-w-sm mb-10 leading-relaxed font-medium">
+      Hoàn tất thanh toán ngay để không bỏ lỡ sản phẩm ngon với giá tốt nhé!
+    </p>
 
-      <div className="w-full max-w-md flex flex-col gap-4 mb-8">
-        {entries.map(entry => (
-          <PendingSingleOrderCard
-            key={`single-${entry.order.id}`}
-            order={entry.order}
-            onContinuePayment={(orderId) => onContinuePayment(orderId, 'individual')}
+    <div className="w-full max-w-lg space-y-4 mb-8">
+      {items.map((item) =>
+        item.kind === 'batch' ? (
+          <BatchCheckoutGroupCard
+            key={`batch-${item.batchId}`}
+            batchId={item.batchId}
+            orders={item.orders}
+            formatDate={formatDate}
+            onResumePayment={onContinuePayment}
+            onCancelBatch={onCancelBatch}
+            onCancelOrder={onCancelOrder}
+            resuming={paying}
+          />
+        ) : (
+          <SinglePendingOrderCard
+            key={`single-${item.order.id}`}
+            order={item.order}
+            onContinuePayment={() => onContinuePayment(item.order.id)}
+            onCancelOrder={onCancelOrder ? () => onCancelOrder(item.order) : undefined}
             paying={paying}
           />
-        ))}
-      </div>
-
-      <div className="w-full max-w-md flex flex-col gap-3">
-        <button
-          onClick={onBackToShopping}
-          className="w-full py-4 border border-gray-200 text-gray-600 font-black rounded-2xl hover:bg-gray-50 transition-all"
-        >
-          Tiếp tục mua sắm
-        </button>
-        {onNavigateToOrders && (
-          <button
-            onClick={onNavigateToOrders}
-            className="text-sm font-bold text-gray-400 hover:text-primary text-center transition-colors mt-1"
-          >
-            Xem tất cả đơn hàng →
-          </button>
-        )}
-      </div>
+        ),
+      )}
     </div>
-  );
-};
 
-/* Card cho nhóm batch (nhiều đơn cùng 1 lần checkout) */
-const PendingBatchGroupCard: React.FC<{
-  entry: BatchGroup;
-  onContinuePayment: (orderId: number) => void;
-  paying: boolean;
-}> = ({ entry, onContinuePayment, paying }) => {
-  const triggerOrderId = entry.orders[0].id;
-  const totalItems = entry.orders.reduce((sum, o) => sum + (o.items ?? []).length, 0);
-
-  return (
-    <div className="bg-white rounded-[24px] border border-blue-100 shadow-sm p-5">
-      <div className="flex items-center gap-2 mb-3">
-        <div className="size-2 rounded-full bg-blue-400" />
-        <p className="text-[11px] font-black text-blue-500 uppercase tracking-widest">
-          {entry.orders.length} đơn đặt cùng lúc
-        </p>
-      </div>
-
-      {entry.orders.map(order => {
-        const shopName = order.shopOwner?.shopName ?? order.shopOwner?.fullName;
-        const itemCount = (order.items ?? []).length;
-        return (
-          <div key={order.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
-            <div className="min-w-0">
-              {shopName && <p className="text-xs font-bold text-gray-700 truncate">{shopName}</p>}
-              <p className="text-[11px] text-gray-400">Đơn #{order.id} · {itemCount} sản phẩm</p>
-            </div>
-            <p className="text-xs font-black text-gray-600 shrink-0 ml-3">{fmtVnd(order.totalAmount ?? 0)}</p>
-          </div>
-        );
-      })}
-
-      <div className="flex items-center justify-between mt-3 pt-2">
-        <div>
-          <p className="text-[11px] text-gray-400">{totalItems} sản phẩm · tổng cộng</p>
-          <p className="text-base font-black text-primary">{fmtVnd(entry.totalAmount)}</p>
-        </div>
+    <div className="w-full max-w-md flex flex-col gap-3">
+      <button
+        onClick={onBackToShopping}
+        className="w-full py-4 border border-amber-200 text-amber-900 font-black rounded-2xl hover:bg-amber-50 transition-all"
+      >
+        Tiếp tục mua sắm
+      </button>
+      {onNavigateToOrders && (
         <button
-          onClick={() => onContinuePayment(triggerOrderId)}
-          disabled={paying}
-          className="px-4 py-2 bg-primary text-white text-xs font-black rounded-xl flex items-center gap-1.5 hover:bg-primary-dark transition-colors disabled:opacity-60"
+          onClick={onNavigateToOrders}
+          className="text-sm font-bold text-amber-700/70 hover:text-amber-900 text-center transition-colors mt-1"
         >
-          {paying ? <Loader2 className="size-3 animate-spin" /> : null}
-          Thanh toán
+          Xem tất cả đơn hàng →
         </button>
-      </div>
+      )}
     </div>
-  );
-};
+  </div>
+);
 
-/* Card cho đơn lẻ (không thuộc batch) */
-const PendingSingleOrderCard: React.FC<{
+interface SinglePendingOrderCardProps {
   order: OrderResponse;
-  onContinuePayment: (orderId: number) => void;
+  onContinuePayment: () => void;
+  onCancelOrder?: () => void;
   paying: boolean;
-}> = ({ order, onContinuePayment, paying }) => {
-  const orderItems  = order.items ?? [];
-  const itemCount   = orderItems.length;
-  const previewImgs = orderItems.slice(0, 2).map(it => it.imageUrl).filter(Boolean) as string[];
-  const updatedAt   = (order as any).updatedAt ?? order.createdAt;
-  const shopName    = order.shopOwner?.shopName ?? order.shopOwner?.fullName;
+}
+
+const SinglePendingOrderCard: React.FC<SinglePendingOrderCardProps> = ({
+  order, onContinuePayment, onCancelOrder, paying,
+}) => {
+  const orderItems = order.items ?? [];
+  const itemCount = orderItems.length;
+  const previewImgs = orderItems.slice(0, 2).map((it) => it.imageUrl).filter(Boolean) as string[];
+  const updatedAt = (order as any).updatedAt ?? order.createdAt;
+  const shopName = order.shopOwner?.shopName ?? order.shopOwner?.fullName;
 
   return (
-    <div className="bg-white rounded-[24px] border border-gray-100 shadow-sm p-5">
-      <div className="flex items-start justify-between mb-4">
+    <div className="w-full bg-white rounded-[32px] border-2 border-amber-200 shadow-sm p-6">
+      <div className="flex items-start justify-between mb-5">
         <div>
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Đơn #{order.id}</p>
-          {shopName && <p className="text-sm font-black text-gray-700">{shopName}</p>}
+          <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1">Đơn #{order.id}</p>
+          {shopName && <p className="text-sm font-black text-gray-800">{shopName}</p>}
         </div>
         {updatedAt && (
-          <span className="text-[10px] font-bold text-gray-400 shrink-0 mt-1">{fmtOrderDate(updatedAt)}</span>
+          <span className="text-[10px] font-bold text-gray-400 shrink-0 mt-1">
+            {fmtOrderDate(updatedAt)}
+          </span>
         )}
       </div>
-      <div className="flex items-center justify-between">
+
+      <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-2">
           {previewImgs.length > 0 ? (
             previewImgs.map((uri, i) => (
-              <img key={i} src={uri} alt="" className="size-14 rounded-xl object-cover border border-gray-100" />
+              <img key={i} src={uri} alt="" className="size-16 rounded-2xl object-cover border border-gray-100" />
             ))
           ) : (
-            <div className="size-14 rounded-xl bg-gray-50 flex items-center justify-center">
-              <ShoppingBag className="size-6 text-gray-300" />
+            <div className="size-16 rounded-2xl bg-gray-50 flex items-center justify-center">
+              <ShoppingBag className="size-7 text-gray-300" />
             </div>
           )}
           {itemCount > 2 && (
-            <div className="size-14 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center">
+            <div className="size-16 rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-center">
               <span className="text-xs font-black text-gray-400">+{itemCount - 2}</span>
             </div>
           )}
         </div>
-        <div className="flex items-center gap-3">
-          <div className="text-right">
-            <p className="text-[11px] font-bold text-gray-400">{itemCount} sản phẩm</p>
-            <p className="text-base font-black text-primary">{fmtVnd(order.totalAmount ?? 0)}</p>
-          </div>
-          <button
-            onClick={() => onContinuePayment(order.id)}
-            disabled={paying}
-            className="px-4 py-2 bg-primary text-white text-xs font-black rounded-xl flex items-center gap-1.5 hover:bg-primary-dark transition-colors disabled:opacity-60"
-          >
-            {paying ? <Loader2 className="size-3 animate-spin" /> : null}
-            Thanh toán
-          </button>
+        <div className="text-right">
+          <p className="text-[11px] font-bold text-gray-400 mb-1">{itemCount} sản phẩm</p>
+          <p className="text-xl font-black text-primary">{fmtVnd(order.totalAmount ?? 0)}</p>
         </div>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <button
+          onClick={onContinuePayment}
+          disabled={paying}
+          className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-2xl flex items-center justify-center gap-2 disabled:opacity-70"
+        >
+          {paying ? (
+            <><Loader2 className="size-4 animate-spin" /> Đang xử lý...</>
+          ) : (
+            <>Tiếp tục thanh toán <ArrowRight className="size-4" /></>
+          )}
+        </button>
+        {onCancelOrder && (
+          <button
+            type="button"
+            onClick={onCancelOrder}
+            disabled={paying}
+            className="w-full py-3 bg-red-50 hover:bg-red-100 text-red-600 font-black rounded-2xl border border-red-100 disabled:opacity-70"
+          >
+            Hủy đơn hàng
+          </button>
+        )}
       </div>
     </div>
   );
 };
 
-/* ── Pending banners (khi giỏ có hàng) ───────────────────────────── */
+/* ── Banner compact (giỏ có hàng) ───────────────────────────────── */
 
-/* Banner cho nhóm batch */
-const PendingBatchGroupBanner: React.FC<{
-  entry: BatchGroup;
-  onContinuePayment: () => void;
+interface PendingCompactBannerProps {
+  item: OrderDisplayItem;
+  onContinuePayment: (orderId: number, payMode?: ResumePayMode) => void;
   paying: boolean;
-}> = ({ entry, onContinuePayment, paying }) => (
-  <div className="bg-blue-50 border border-blue-200 rounded-[24px] p-5 flex items-center justify-between gap-4">
-    <div className="flex items-center gap-4 min-w-0">
-      <div className="size-10 bg-blue-100 rounded-2xl flex items-center justify-center shrink-0">
-        <Clock className="size-5 text-blue-600" />
-      </div>
-      <div className="min-w-0">
-        <p className="text-sm font-black text-blue-800 truncate">
-          {entry.orders.length} đơn đặt cùng lúc chưa thanh toán
-        </p>
-        <p className="text-xs font-bold text-blue-600 mt-0.5">
-          Tổng: {fmtVnd(entry.totalAmount)}
-          {' · '}
-          {entry.orders.map(o => `#${o.id}`).join(', ')}
-        </p>
-      </div>
-    </div>
-    <button
-      onClick={onContinuePayment}
-      disabled={paying}
-      className="shrink-0 px-4 py-2 bg-primary text-white text-xs font-black rounded-xl flex items-center gap-2 hover:bg-primary-dark transition-colors disabled:opacity-60"
-    >
-      {paying ? <Loader2 className="size-3 animate-spin" /> : null}
-      Thanh toán →
-    </button>
-  </div>
-);
+}
 
-/* Banner cho đơn lẻ */
-const PendingOrderBanner: React.FC<{
-  order: OrderResponse;
-  onContinuePayment: () => void;
-  paying: boolean;
-}> = ({ order, onContinuePayment, paying }) => {
-  const itemCount = (order.items ?? []).length;
+const PendingCompactBanner: React.FC<PendingCompactBannerProps> = ({ item, onContinuePayment, paying }) => {
+  const isBatch = item.kind === 'batch';
+  const label = isBatch
+    ? `Checkout #${item.batchId} · ${item.orders.length} shop chưa thanh toán · ${fmtVnd(getBatchPendingTotal(item.orders))}`
+    : `Đơn #${item.order.id} chưa thanh toán · ${fmtVnd(item.order.totalAmount ?? 0)}`;
+
+  const handlePay = () => {
+    if (isBatch) {
+      const triggerId = item.orders[0]?.id;
+      if (!triggerId) return;
+      // Có voucher → TT tất cả; không voucher → mở popup chọn (nếu >1 shop)
+      onContinuePayment(
+        triggerId,
+        batchHasPlatformVoucher(item.orders) ? 'batch-all' : undefined,
+      );
+      return;
+    }
+    onContinuePayment(item.order.id);
+  };
+
   return (
-    <div className="bg-amber-50 border border-amber-200 rounded-[24px] p-5 flex items-center justify-between gap-4">
-      <div className="flex items-center gap-4 min-w-0">
-        <div className="size-10 bg-amber-100 rounded-2xl flex items-center justify-center shrink-0">
-          <Clock className="size-5 text-amber-600" />
-        </div>
-        <div className="min-w-0">
-          <p className="text-sm font-black text-amber-800 truncate">Đơn #{order.id} chưa thanh toán</p>
-          <p className="text-xs font-bold text-amber-600 mt-0.5">
-            {fmtVnd(order.totalAmount ?? 0)}
-            {itemCount > 0 ? `  ·  ${itemCount} sản phẩm` : ''}
-          </p>
-        </div>
-      </div>
-      <button
-        onClick={onContinuePayment}
-        disabled={paying}
-        className="shrink-0 px-4 py-2 bg-primary text-white text-xs font-black rounded-xl flex items-center gap-2 hover:bg-primary-dark transition-colors disabled:opacity-60"
-      >
-        {paying ? <Loader2 className="size-3 animate-spin" /> : null}
-        Thanh toán →
-      </button>
-    </div>
+    <button
+      type="button"
+      onClick={handlePay}
+      disabled={paying}
+      className="w-full flex items-center gap-3 rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50/70 px-4 py-3 text-left hover:from-amber-100/80 hover:to-orange-50 transition-colors disabled:opacity-60 shadow-sm"
+    >
+      <Clock className="size-5 text-amber-600 shrink-0" strokeWidth={2.25} />
+      <span className="flex-1 min-w-0 text-sm font-bold text-amber-950 truncate leading-snug">
+        {label}
+      </span>
+      <span className="shrink-0 text-xs font-black text-amber-700 uppercase tracking-wide px-1">
+        {paying ? '...' : 'Thanh toán →'}
+      </span>
+    </button>
   );
 };
 

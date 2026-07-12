@@ -30,12 +30,23 @@ export function cartItemToOrderItem(item: CartItemResponse): OrderItemRequest {
   const qty = item.quantity ?? 1;
   const quantityKg = getQuantityKg(item);
 
-  if (type === 'MYSTERY_BOX') {
+  if (type === 'MYSTERY_BOX' || (item.mysteryBoxId != null && !item.buildComboId && !item.productId)) {
+    if (!item.mysteryBoxId) {
+      throw new Error(`Túi mù "${item.productName ?? ''}" thiếu mã. Vui lòng xóa khỏi giỏ và thêm lại.`);
+    }
     return { mysteryBoxId: item.mysteryBoxId, quantity: qty, quantityKg };
   }
-  if (type === 'BUILD_COMBO' || type === 'COMBO') {
-    const comboId = item.buildComboId ?? (item as any).comboId ?? (item as any).id;
+  if (type === 'BUILD_COMBO' || type === 'COMBO' || item.buildComboId != null) {
+    const comboId = item.buildComboId ?? (item as { comboId?: number }).comboId;
+    if (!comboId) {
+      throw new Error(`Combo "${item.productName ?? ''}" thiếu mã. Vui lòng xóa khỏi giỏ và thêm lại.`);
+    }
     return { buildComboId: comboId, quantity: qty, quantityKg };
+  }
+  if (!item.productId) {
+    throw new Error(
+      `Sản phẩm "${item.productName ?? 'không xác định'}" không hợp lệ. Vui lòng làm mới giỏ hàng.`,
+    );
   }
   return { productId: item.productId, quantity: qty, quantityKg };
 }

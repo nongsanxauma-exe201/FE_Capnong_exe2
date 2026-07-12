@@ -456,20 +456,21 @@ const Products: React.FC<{ onNavigate: (id: string) => void }> = ({ onNavigate }
               className="px-6 py-3 bg-gray-50 border border-gray-100 focus:border-primary/20 rounded-2xl text-xs font-bold text-gray-600 outline-none cursor-pointer"
             >
               <option value="">Tất cả trạng thái</option>
-              {activeTab === 'NONG_SAN' && (
-                <>
-                  <option value="IN_STOCK">Đang bán (Còn hàng)</option>
-                  <option value="OUT_OF_STOCK">Hết hàng</option>
-                  <option value="PENDING">Chờ duyệt</option>
-                  <option value="INACTIVE">Tạm ẩn</option>
-                </>
-              )}
-              {activeTab === 'BLIND_BOX' && (
-                <>
-                  <option value="ACTIVE">Đang Mở</option>
-                  <option value="INACTIVE">Đã Ẩn</option>
-                </>
-              )}
+              <option value="IN_STOCK">Đang bán (Còn hàng)</option>
+              <option value="OUT_OF_STOCK">Hết hàng</option>
+              <option value="PENDING">Chờ duyệt</option>
+              <option value="INACTIVE">Tạm ẩn</option>
+            </select>
+          )}
+          {activeTab === 'BLIND_BOX' && (
+            <select 
+              value={statusFilter} 
+              onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}
+              className="px-6 py-3 bg-gray-50 border border-gray-100 focus:border-primary/20 rounded-2xl text-xs font-bold text-gray-600 outline-none cursor-pointer"
+            >
+              <option value="">Tất cả trạng thái</option>
+              <option value="ACTIVE">Đang Mở</option>
+              <option value="INACTIVE">Đã Ẩn</option>
             </select>
           )}
           <button className="size-11 flex items-center justify-center bg-gray-50 rounded-2xl text-gray-500 hover:bg-gray-100 transition-colors">
