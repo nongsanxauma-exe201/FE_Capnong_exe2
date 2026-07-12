@@ -52,7 +52,9 @@ const formatKg = (value: number) => value.toLocaleString('vi-VN', { maximumFract
 
 const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
    const location = useLocation();
+   const navigate = useNavigate();
    const { selectedKeys } = (location.state as { selectedKeys?: string[] }) || {};
+   const isPlanMode = new URLSearchParams(location.search).get('mode') === 'plan';
 
    const [isProcessing, setIsProcessing] = useState(false);
    const [paymentMethod, setPaymentMethod] = useState<'COD' | 'PAYOS'>('PAYOS');
@@ -90,6 +92,40 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
    const [suggestTimer, setSuggestTimer] = useState<NodeJS.Timeout | null>(null);
    const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
 
+   // Plan mode: intercept browser back button
+   useEffect(() => {
+      if (!isPlanMode) return;
+      window.history.pushState(null, '', window.location.href);
+      let isHandling = false;
+      const handlePopstate = async () => {
+         if (isHandling) return;
+         isHandling = true;
+         window.history.pushState(null, '', window.location.href);
+         const confirmed = await globalShowConfirm(
+            'Nếu rời khỏi trang, các combo trong thực đơn sẽ không được giữ lại. Bạn sẽ cần vào lại trang "Lên kế hoạch" và bấm "Mua tất cả" để thanh toán lại.',
+            'Rời khỏi trang thanh toán?'
+         );
+         if (confirmed) {
+            sessionStorage.removeItem('planCheckoutData');
+            window.removeEventListener('popstate', handlePopstate);
+            navigate('/meal-plan');
+         }
+         isHandling = false;
+      };
+      window.addEventListener('popstate', handlePopstate);
+      return () => window.removeEventListener('popstate', handlePopstate);
+   }, [isPlanMode, navigate]);
+
+   const handlePlanBack = async () => {
+      const confirmed = await globalShowConfirm(
+         'Nếu rời khỏi trang, các combo trong thực đơn sẽ không được giữ lại. Bạn sẽ cần vào lại trang "Lên kế hoạch" và bấm "Mua tất cả" để thanh toán lại.',
+         'Rời khỏi trang thanh toán?'
+      );
+      if (!confirmed) return;
+      sessionStorage.removeItem('planCheckoutData');
+      navigate('/meal-plan');
+   };
+
    const returnToCartAfterPayOSRollback = useCallback(async () => {
       setIsReturningToCart(true);
       hardReloadCartPage();
@@ -101,55 +137,74 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
             setLoading(true);
             setError(null);
 
-            const [userRes, cartRes] = await Promise.all([
-               authService.getMyInfo(),
-               cartService.getCart()
-            ]);
-
-            if (userRes.result) {
-               setRecipientName(userRes.result.fullName || '');
-               setRecipientPhone(userRes.result.phoneNumber || '');
-               setRecipientAddress(userRes.result.address || '');
-            }
-
-            if (cartRes.result) {
-               let items = cartRes.result.items || [];
-
-               // ✅ Lọc các sản phẩm đã được chọn từ Giỏ hàng
-               if (selectedKeys && selectedKeys.length > 0) {
-                  items = items.filter(item => {
-                     const type = item.itemType || '';
-                     let id: any = null;
-                     if (type === 'MYSTERY_BOX') id = item.mysteryBoxId || (item as any).id;
-                     else if (type === 'BUILD_COMBO') id = item.buildComboId || (item as any).id || (item as any).comboId;
-                     else id = item.productId || (item as any).id;
-                     
-                     const key = type === 'MYSTERY_BOX' ? `b-${id}` :
-                                 type === 'BUILD_COMBO' ? `c-${id}` :
-                                 `p-${id}`;
-                     return selectedKeys.includes(key);
-                  });
+            if (isPlanMode) {
+               // Plan checkout: load items from sessionStorage (does NOT touch regular cart)
+               const userRes = await authService.getMyInfo();
+               if (userRes.result) {
+                  setRecipientName(userRes.result.fullName || '');
+                  setRecipientPhone(userRes.result.phoneNumber || '');
+                  setRecipientAddress(userRes.result.address || '');
                }
 
-              const filteredTotalAmount = items.reduce((sum, item) => sum + getItemTotal(item), 0);
-
-               const checkoutCart = {
-                  ...cartRes.result,
-                  items: items,
-                  totalAmount: filteredTotalAmount
-               };
-
-               setCartData(checkoutCart);
-
-               if (items.length > 0) {
-                  saveRestoredPayOSCart(checkoutCart);
+               const stored = sessionStorage.getItem('planCheckoutData');
+               if (!stored) {
+                  setError('Không tìm thấy dữ liệu thực đơn. Vui lòng quay lại trang Lên kế hoạch và bấm "Mua tất cả" lại.');
+                  return;
                }
 
-               if (items.length === 0) {
-                  setError('Không có sản phẩm nào được chọn để thanh toán!');
+               const planData = JSON.parse(stored);
+               const checkoutCart = { items: planData.items || [], totalAmount: planData.totalAmount || 0 };
+               setCartData(checkoutCart as CartResponse);
+
+               if (checkoutCart.items.length === 0) {
+                  setError('Thực đơn không có combo nào để thanh toán.');
                }
             } else {
-               setError('Không thể tải giỏ hàng.');
+               // Normal cart checkout
+               const [userRes, cartRes] = await Promise.all([
+                  authService.getMyInfo(),
+                  cartService.getCart()
+               ]);
+
+               if (userRes.result) {
+                  setRecipientName(userRes.result.fullName || '');
+                  setRecipientPhone(userRes.result.phoneNumber || '');
+                  setRecipientAddress(userRes.result.address || '');
+               }
+
+               if (cartRes.result) {
+                  let items = cartRes.result.items || [];
+
+                  // ✅ Lọc các sản phẩm đã được chọn từ Giỏ hàng
+                  if (selectedKeys && selectedKeys.length > 0) {
+                     items = items.filter(item => {
+                        const type = item.itemType || '';
+                        let id: any = null;
+                        if (type === 'MYSTERY_BOX') id = item.mysteryBoxId || (item as any).id;
+                        else if (type === 'BUILD_COMBO') id = item.buildComboId || (item as any).id || (item as any).comboId;
+                        else id = item.productId || (item as any).id;
+
+                        const key = type === 'MYSTERY_BOX' ? `b-${id}` :
+                                    type === 'BUILD_COMBO' ? `c-${id}` :
+                                    `p-${id}`;
+                        return selectedKeys.includes(key);
+                     });
+                  }
+
+                  const filteredTotalAmount = items.reduce((sum, item) => sum + getItemTotal(item), 0);
+                  const checkoutCart = { ...cartRes.result, items, totalAmount: filteredTotalAmount };
+                  setCartData(checkoutCart);
+
+                  if (items.length > 0) {
+                     saveRestoredPayOSCart(checkoutCart);
+                  }
+
+                  if (items.length === 0) {
+                     setError('Không có sản phẩm nào được chọn để thanh toán!');
+                  }
+               } else {
+                  setError('Không thể tải giỏ hàng.');
+               }
             }
          } catch (error: any) {
             console.error('Failed to fetch checkout data', error);
@@ -490,6 +545,7 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
             }
 
             clearPendingPayOSPayment();
+            if (isPlanMode) sessionStorage.removeItem('planCheckoutData');
             if (orderId) {
                if (orderIds.length > 1) {
                   globalShowAlert(`Đã tạo ${orderIds.length} đơn hàng: ${orderIds.map((id) => `#${id}`).join(', ')}`, 'Đặt hàng thành công', 'success');
@@ -531,10 +587,10 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
                <h3 className="text-xl font-black text-gray-900 mb-2">Không thể thanh toán</h3>
                <p className="text-gray-600 font-medium mb-6">{error}</p>
                <button
-                  onClick={() => void returnToCartAfterPayOSRollback()}
+                  onClick={isPlanMode ? () => { sessionStorage.removeItem('planCheckoutData'); navigate('/meal-plan'); } : () => void returnToCartAfterPayOSRollback()}
                   className="w-full py-3 bg-primary text-white font-black rounded-2xl"
                >
-                  {isReturningToCart ? 'Đang quay lại...' : 'Quay lại giỏ hàng'}
+                  {isPlanMode ? 'Quay lại trang Lên kế hoạch' : isReturningToCart ? 'Đang quay lại...' : 'Quay lại giỏ hàng'}
                </button>
             </div>
          </div>
@@ -552,12 +608,12 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
          <div className="bg-white border-b border-gray-200 shadow-sm">
             <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
                <div className="flex items-center gap-3">
-                  <button onClick={onBack} disabled={isProcessing} className="size-9 bg-gray-100 rounded-xl flex items-center justify-center text-gray-600 hover:bg-gray-200 transition-all disabled:opacity-50">
+                  <button onClick={isPlanMode ? handlePlanBack : onBack} disabled={isProcessing} className="size-9 bg-gray-100 rounded-xl flex items-center justify-center text-gray-600 hover:bg-gray-200 transition-all disabled:opacity-50">
                      <ChevronLeft className="size-5" />
                   </button>
                   <div>
-                     <h1 className="text-lg font-black text-gray-900 uppercase">Thanh Toán</h1>
-                     <p className="text-[10px] text-gray-500 font-bold">Bước cuối cùng để hoàn tất đơn hàng</p>
+                     <h1 className="text-lg font-black text-gray-900 uppercase">Thanh Toán {isPlanMode && <span className="text-xs text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-bold">Thực đơn</span>}</h1>
+                     <p className="text-[10px] text-gray-500 font-bold">{isPlanMode ? 'Thanh toán combo thực đơn — giỏ hàng không bị ảnh hưởng' : 'Bước cuối cùng để hoàn tất đơn hàng'}</p>
                   </div>
                </div>
                <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 text-primary text-[10px] font-black rounded-full">

@@ -64,6 +64,7 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping, onNa
 
   const [cartState,    setCartState]    = useState<CartState>({ cart: null, shopGroups: [] });
   const [pendingOrders, setPendingOrders] = useState<OrderResponse[]>([]);
+  const [pendingOrders, setPendingOrders] = useState<OrderResponse[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [updatingKey,  setUpdatingKey]  = useState<string | null>(null);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
@@ -393,7 +394,7 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping, onNa
                   onContinuePayment={handleContinuePayment}
                   paying={payingOrder}
                 />
-              )}
+              ))}
 
               {shopGroups.map((group) => {
                 const { shopOwnerId, shopName, items } = group;
@@ -490,7 +491,7 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping, onNa
                                   ) : (
                                     <p className="text-lg font-black text-primary">{(item.price || 0).toLocaleString('vi-VN')}đ</p>
                                   )}
-                                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">VNĐ/kg</p>
+                                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{isCombo ? 'VNĐ/combo' : 'VNĐ/kg'}</p>
                                 </div>
                               </div>
                               <div className="flex items-center justify-between mt-4">

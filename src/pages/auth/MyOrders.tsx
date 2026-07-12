@@ -935,7 +935,7 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
                       ) : order.status === 'AWAITING_PAYMENT' ? (
                         <div className="flex items-center gap-3 flex-wrap">
                           <button
-                            onClick={() => openResumePayment(order.id)}
+                            onClick={() => openResumePayment(order.id, 'individual')}
                             disabled={resuming}
                             className="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-2xl flex items-center gap-2 shadow-lg shadow-amber-500/20 transition-all disabled:opacity-60"
                           >

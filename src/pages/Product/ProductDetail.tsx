@@ -10,7 +10,6 @@ import {
   Loader2,
   AlertCircle,
   MessageSquare,
-  ChefHat,
   ChevronLeft,
   X,
   ZoomIn,
@@ -28,7 +27,7 @@ import {
   MapPin,
   Store,
 } from 'lucide-react';
-import { productService, ProductResponse, ProductImageResponse, cartService, reviewService, ReviewResponse, comboService, BuildComboResponse } from '../../services';
+import { productService, ProductResponse, ProductImageResponse, cartService, reviewService, ReviewResponse } from '../../services';
 import { userService } from '../../services';
 import { UserResponse } from '../../services/auth.service';
 import { globalShowAlert } from '../../contexts/PopupContext';
@@ -170,7 +169,6 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId: propProductId,
 
   const [product, setProduct] = useState<ProductResponse | null>(null);
   const [relatedProducts, setRelatedProducts] = useState<ProductResponse[]>([]);
-  const [shopCombos, setShopCombos] = useState<BuildComboResponse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -253,14 +251,6 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId: propProductId,
 
     const shopId = foundProduct.shopOwnerId || foundProduct.shopId;
 
-    if (shopId) {
-      try {
-        const comboRes = await comboService.getByShop(shopId);
-        if (comboRes.result) {
-          setShopCombos(comboRes.result);
-        }
-      } catch (_) {}
-    }
   } catch (err) {
     console.error('Failed to fetch product detail:', err);
     setError('Không thể tải thông tin sản phẩm. Vui lòng thử lại sau.');

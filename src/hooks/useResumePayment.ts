@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { ResumePaymentOptionsResponse } from '../services/payment.service';
-import { handleResumePaymentClick } from '../utils/resumePayOSPayment';
+import { handleResumePaymentClick, type ResumePayMode } from '../utils/resumePayOSPayment';
 
 type ResumeErrorHandler = (message: string) => void;
 

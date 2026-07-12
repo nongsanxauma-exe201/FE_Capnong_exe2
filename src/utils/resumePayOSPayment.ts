@@ -41,6 +41,17 @@ export async function loadResumePaymentOptions(orderId: number): Promise<ResumeP
 export async function resumeSingleOrderPayment(orderId: number, existing?: PaymentResponse | null) {
   let payment = existing;
   if (!payment?.checkoutUrl) {
+    // Try existing PENDING payment first to avoid ORDER_NOT_PAYABLE on retry
+    try {
+      const existingRes = await paymentService.getLatestPendingByOrderId(orderId);
+      if (existingRes?.result?.checkoutUrl) {
+        payment = existingRes.result;
+      }
+    } catch {
+      // No existing pending payment, will create a new one below
+    }
+  }
+  if (!payment?.checkoutUrl) {
     const created = await paymentService.createPaymentPayOS({ orderId, amount: 0 });
     payment = created.result;
   }
@@ -107,12 +118,15 @@ export async function resumeSingleBatchOrderPayment(
   redirectToPayOSCheckout(payment, triggerOrderId);
 }
 
+export type ResumePayMode = 'batch-all' | 'individual';
+
 export async function handleResumePaymentClick(
   orderId: number,
   onShowBatchModal: (options: ResumePaymentOptionsResponse) => void,
   payMode?: 'batch-all',
 ) {
   const options = await loadResumePaymentOptions(orderId);
+
   if (!options.isBatch) {
     await resumeSingleOrderPayment(orderId, options.singleOrderPayment);
     return;

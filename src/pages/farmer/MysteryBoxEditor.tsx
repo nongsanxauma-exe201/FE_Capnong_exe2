@@ -156,6 +156,7 @@ const MysteryBoxEditor: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       } else {
         await mysteryBoxService.createMysteryBox({ boxType, price: priceNum, description, note, totalQuantity: qtyNum, products }, boxImage || undefined);
       }
+      await globalShowAlert(isEditMode ? 'Cập nhật hộp mù thành công!' : 'Tạo hộp mù thành công!', 'Thành công', 'success');
       onBack();
     } catch (err: any) {
       setError(err?.data?.message || 'Có lỗi xảy ra. Vui lòng thử lại.');
