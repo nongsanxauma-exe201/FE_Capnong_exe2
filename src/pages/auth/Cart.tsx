@@ -12,6 +12,7 @@ import { useResumePayment } from '../../hooks/useResumePayment';
 import ResumePaymentModal from '../../components/payment/ResumePaymentModal';
 import BatchCheckoutGroupCard from '../../components/order/BatchCheckoutGroupCard';
 import { pickLatestPendingDisplayItems, type OrderDisplayItem, getBatchPendingTotal, batchHasPlatformVoucher } from '../../utils/groupOrdersByBatch';
+import type { ResumePayMode } from '../../utils/resumePayOSPayment';
 import {
   clearRestoredPayOSCart, buildGroupedCartItems, saveRestoredPayOSCart,
   PAYOS_RELOAD_CART_ON_ARRIVAL_KEY,
@@ -60,10 +61,9 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping, onNa
       const id = item.productId || (item as any).id;
       if (id) navigate(`/san-pham/${id}`);
     }
-  };
+  }; 
 
   const [cartState,    setCartState]    = useState<CartState>({ cart: null, shopGroups: [] });
-  const [pendingOrders, setPendingOrders] = useState<OrderResponse[]>([]);
   const [pendingOrders, setPendingOrders] = useState<OrderResponse[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [updatingKey,  setUpdatingKey]  = useState<string | null>(null);
@@ -265,8 +265,45 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping, onNa
     }
   };
 
-  const handleContinuePayment = async (orderId: number, payMode?: 'batch-all') => {
+  const handleContinuePayment = async (orderId: number, payMode?: ResumePayMode) => {
     await openResumePayment(orderId, payMode);
+  };
+
+  const handleCancelPendingOrder = async (order: OrderResponse) => {
+    if (!await globalShowConfirm('Bạn có chắc chắn muốn hủy đơn hàng này không?', 'Xác nhận hủy đơn')) return;
+    try {
+      await orderService.updateOrder(order.id, { status: 'CANCELLED' });
+      globalShowAlert('Đã hủy đơn hàng thành công!', 'Thành công', 'success');
+      await fetchCart(true);
+      window.dispatchEvent(new Event('cart-updated'));
+    } catch (error: any) {
+      globalShowAlert(error?.data?.message || error?.message || 'Không thể hủy đơn hàng.', 'Lỗi', 'error');
+    }
+  };
+
+  const handleCancelPendingBatch = async (batchOrders: OrderResponse[]) => {
+    const trigger = batchOrders[0];
+    if (!trigger) return;
+    const hasVoucher = batchOrders.some((o) => o.hasPlatformBatchVoucher === true);
+    const msg = hasVoucher
+      ? `Checkout này dùng voucher sàn. Hủy sẽ áp dụng cho cả ${batchOrders.length} đơn. Tiếp tục?`
+      : `Hủy toàn bộ ${batchOrders.length} đơn chưa thanh toán trong checkout này?`;
+    if (!await globalShowConfirm(msg, 'Xác nhận hủy checkout')) return;
+    try {
+      if (hasVoucher) {
+        await orderService.updateOrder(trigger.id, { status: 'CANCELLED' });
+      } else {
+        for (const o of batchOrders) {
+          await orderService.updateOrder(o.id, { status: 'CANCELLED' });
+        }
+      }
+      globalShowAlert(`Đã hủy ${batchOrders.length} đơn trong checkout.`, 'Thành công', 'success');
+      await fetchCart(true);
+      window.dispatchEvent(new Event('cart-updated'));
+    } catch (error: any) {
+      globalShowAlert(error?.data?.message || error?.message || 'Không thể hủy checkout.', 'Lỗi', 'error');
+      await fetchCart(true);
+    }
   };
 
   const pendingDisplayItems = useMemo(
@@ -362,6 +399,8 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping, onNa
             <PendingOrdersFullPage
               items={pendingDisplayItems}
               onContinuePayment={handleContinuePayment}
+              onCancelBatch={handleCancelPendingBatch}
+              onCancelOrder={handleCancelPendingOrder}
               onBackToShopping={onBackToShopping}
               onNavigateToOrders={onNavigateToOrders}
               formatDate={formatPendingDate}
@@ -394,7 +433,7 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping, onNa
                   onContinuePayment={handleContinuePayment}
                   paying={payingOrder}
                 />
-              ))}
+              )}
 
               {shopGroups.map((group) => {
                 const { shopOwnerId, shopName, items } = group;
@@ -588,7 +627,9 @@ const Cart: React.FC<CartProps> = ({ onProceedToCheckout, onBackToShopping, onNa
 
 interface PendingOrdersFullPageProps {
   items: OrderDisplayItem[];
-  onContinuePayment: (orderId: number, payMode?: 'batch-all') => void;
+  onContinuePayment: (orderId: number, payMode?: ResumePayMode) => void;
+  onCancelBatch?: (orders: OrderResponse[]) => void;
+  onCancelOrder?: (order: OrderResponse) => void;
   onBackToShopping: () => void;
   onNavigateToOrders?: () => void;
   formatDate: (dateStr: string) => string;
@@ -596,7 +637,7 @@ interface PendingOrdersFullPageProps {
 }
 
 const PendingOrdersFullPage: React.FC<PendingOrdersFullPageProps> = ({
-  items, onContinuePayment, onBackToShopping, onNavigateToOrders, formatDate, paying,
+  items, onContinuePayment, onCancelBatch, onCancelOrder, onBackToShopping, onNavigateToOrders, formatDate, paying,
 }) => (
   <div className="flex flex-col items-center justify-center py-16 px-4">
     <div className="relative mb-8">
@@ -624,6 +665,8 @@ const PendingOrdersFullPage: React.FC<PendingOrdersFullPageProps> = ({
             orders={item.orders}
             formatDate={formatDate}
             onResumePayment={onContinuePayment}
+            onCancelBatch={onCancelBatch}
+            onCancelOrder={onCancelOrder}
             resuming={paying}
           />
         ) : (
@@ -631,6 +674,7 @@ const PendingOrdersFullPage: React.FC<PendingOrdersFullPageProps> = ({
             key={`single-${item.order.id}`}
             order={item.order}
             onContinuePayment={() => onContinuePayment(item.order.id)}
+            onCancelOrder={onCancelOrder ? () => onCancelOrder(item.order) : undefined}
             paying={paying}
           />
         ),
@@ -659,11 +703,12 @@ const PendingOrdersFullPage: React.FC<PendingOrdersFullPageProps> = ({
 interface SinglePendingOrderCardProps {
   order: OrderResponse;
   onContinuePayment: () => void;
+  onCancelOrder?: () => void;
   paying: boolean;
 }
 
 const SinglePendingOrderCard: React.FC<SinglePendingOrderCardProps> = ({
-  order, onContinuePayment, paying,
+  order, onContinuePayment, onCancelOrder, paying,
 }) => {
   const orderItems = order.items ?? [];
   const itemCount = orderItems.length;
@@ -708,17 +753,29 @@ const SinglePendingOrderCard: React.FC<SinglePendingOrderCardProps> = ({
         </div>
       </div>
 
-      <button
-        onClick={onContinuePayment}
-        disabled={paying}
-        className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-2xl flex items-center justify-center gap-2 disabled:opacity-70"
-      >
-        {paying ? (
-          <><Loader2 className="size-4 animate-spin" /> Đang xử lý...</>
-        ) : (
-          <>Tiếp tục thanh toán <ArrowRight className="size-4" /></>
+      <div className="flex flex-col gap-2">
+        <button
+          onClick={onContinuePayment}
+          disabled={paying}
+          className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-2xl flex items-center justify-center gap-2 disabled:opacity-70"
+        >
+          {paying ? (
+            <><Loader2 className="size-4 animate-spin" /> Đang xử lý...</>
+          ) : (
+            <>Tiếp tục thanh toán <ArrowRight className="size-4" /></>
+          )}
+        </button>
+        {onCancelOrder && (
+          <button
+            type="button"
+            onClick={onCancelOrder}
+            disabled={paying}
+            className="w-full py-3 bg-red-50 hover:bg-red-100 text-red-600 font-black rounded-2xl border border-red-100 disabled:opacity-70"
+          >
+            Hủy đơn hàng
+          </button>
         )}
-      </button>
+      </div>
     </div>
   );
 };
@@ -727,7 +784,7 @@ const SinglePendingOrderCard: React.FC<SinglePendingOrderCardProps> = ({
 
 interface PendingCompactBannerProps {
   item: OrderDisplayItem;
-  onContinuePayment: (orderId: number, payMode?: 'batch-all') => void;
+  onContinuePayment: (orderId: number, payMode?: ResumePayMode) => void;
   paying: boolean;
 }
 
@@ -741,7 +798,11 @@ const PendingCompactBanner: React.FC<PendingCompactBannerProps> = ({ item, onCon
     if (isBatch) {
       const triggerId = item.orders[0]?.id;
       if (!triggerId) return;
-      onContinuePayment(triggerId, batchHasPlatformVoucher(item.orders) ? 'batch-all' : undefined);
+      // Có voucher → TT tất cả; không voucher → mở popup chọn (nếu >1 shop)
+      onContinuePayment(
+        triggerId,
+        batchHasPlatformVoucher(item.orders) ? 'batch-all' : undefined,
+      );
       return;
     }
     onContinuePayment(item.order.id);

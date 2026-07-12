@@ -271,7 +271,7 @@ const TripJoinRequestDetail: React.FC = () => {
       if (isOwner) {
         // ── OWNER: Hiển thị các điểm dừng cũ trên bản đồ ──────────────────────
         sortedStops.forEach(stop => {
-          const color = stop.isPickup ? '#10b981' : '#6366f1';
+          const color = stop.pickup || stop.stopType === 'PICKUP' ? '#10b981' : '#6366f1';
           L.marker([stop.lat, stop.lng], { icon: mkIcon(color, String(stop.sequence)) })
             .addTo(map)
             .bindPopup(`<b>Điểm ${stop.sequence}</b><br/>${stop.farmer?.shopName || stop.farmer?.fullName || ''}`);

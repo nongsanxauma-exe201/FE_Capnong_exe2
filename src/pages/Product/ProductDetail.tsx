@@ -985,41 +985,6 @@ return (
         </div>
       </div>
     )}
-
-    {shopCombos.filter(combo => combo.items?.some(item => item.productId === Number(productId))).length > 0 && (
-      <div className="max-w-7xl mx-auto px-4 mb-12">
-        <h2 className="text-xl font-black text-gray-900 mb-6 flex items-center gap-3">
-          <ChefHat className="size-6 text-primary" />
-          Combo nấu ăn từ shop này
-        </h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-          {shopCombos
-            .filter(combo => combo.items?.some(item => item.productId === Number(productId)))
-            .map((combo) => (
-              <div key={combo.id} onClick={() => navigate(`/combo/${combo.id}`)} className="group cursor-pointer bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all overflow-hidden">
-                <div className="aspect-[4/3] bg-gradient-to-br from-green-50 to-emerald-100 flex items-center justify-center relative overflow-hidden">
-                  {combo.imageUrl
-                    ? <img src={combo.imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt={combo.comboName} />
-                    : <ChefHat className="size-12 text-green-200" />}
-                  {combo.region && (
-                    <span className="absolute top-2 right-2 text-[9px] font-black px-2 py-0.5 rounded-full bg-white/80 text-gray-600">
-                      {combo.region === 'MIEN_BAC' ? '🌿 Bắc' : combo.region === 'MIEN_TRUNG' ? '🌶 Trung' : '🥥 Nam'}
-                    </span>
-                  )}
-                </div>
-                <div className="p-4">
-                  <h4 className="font-extrabold text-gray-900 text-sm mb-1 line-clamp-1">{combo.comboName}</h4>
-                  <p className="text-xs text-gray-400 mb-2">{combo.items?.length || 0} nguyên liệu</p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-primary font-black text-lg">{(combo.discountPrice || 0).toLocaleString('vi-VN')}đ</span>
-                    <span className="text-[9px] font-black text-primary bg-primary/10 px-2 py-1 rounded-full uppercase">Chọn combo</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-        </div>
-      </div>
-    )}
   </div>
 );
 };

@@ -1,5 +1,5 @@
 import { httpClient, ApiResponse } from './http.client';
-import { PageResponse } from './product.service';
+import { PageResponse } from '../types';
 
 export interface ReviewResponse {
     id: number;

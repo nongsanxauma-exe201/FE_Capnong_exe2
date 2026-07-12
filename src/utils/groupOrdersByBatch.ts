@@ -46,8 +46,7 @@ export function batchAllOrdersStillCodVoucherCancellable(batchId: number, pool: 
 }
 
 function shouldGroupPayosPendingBatch(order: OrderResponse, bucket: OrderResponse[]): boolean {
-  // Chỉ gom PayOS pending khi có voucher sàn
-  if (!order.hasPlatformBatchVoucher) return false;
+  // Gom mọi checkout PayOS còn >1 shop chưa TT (có/không voucher) — tránh lúc đầu batch, reload lại tách lẻ
   if (!isBatchPayosPending(order)) return false;
   if (bucket.length > 1) return true;
   const unpaidCount = order.batchUnpaidCount ?? bucket.length;
@@ -279,11 +278,50 @@ export function resolvePendingBatchShopCount(
   return 1;
 }
 
-/** Tổng PayOS / checkout batch — khớp số tiền thanh toán thực tế. */
+/** Tổng PayOS / checkout batch — số tiền buyer thực trả (đã trừ voucher sàn nếu có). */
 export function getBatchCheckoutTotal(orders: OrderResponse[]): number {
+  const grossFromOrders = orders.reduce((sum, o) => sum + Number(o.totalAmount ?? 0), 0);
+  const discOnOrders = orders.reduce((sum, o) => sum + Number(o.batchDiscountAmount ?? 0), 0);
+  const discFromApi = Number(orders[0]?.batchPlatformDiscountAmount ?? 0);
+  const pendingFromApi = Number(orders[0]?.batchPendingTotalAmount ?? 0);
   const fromApi = orders[0]?.batchCheckoutTotalAmount;
-  if (fromApi != null && Number(fromApi) > 0) return Number(fromApi);
-  return orders.reduce((sum, o) => sum + Number(o.totalAmount ?? 0), 0);
+  const apiTotal = fromApi != null && Number(fromApi) > 0 ? Number(fromApi) : null;
+
+  // totalAmount đã net + có phân bổ discount trên đơn
+  if (discOnOrders > 0) {
+    if (pendingFromApi > 0 && Math.abs(pendingFromApi - grossFromOrders) <= 1) {
+      return pendingFromApi;
+    }
+    // API tổng batch lệch (thường sau hủy 1 shop) → tin tổng các đơn đang hiện
+    if (apiTotal != null && Math.abs(apiTotal - grossFromOrders) > 1) {
+      return grossFromOrders;
+    }
+    return apiTotal != null ? apiTotal : grossFromOrders;
+  }
+
+  // Chỉ có discount cấp batch: nếu API/totalAmount còn gross thì trừ
+  if (discFromApi > 0) {
+    if (apiTotal != null && Math.abs(apiTotal - grossFromOrders) <= 1) {
+      return Math.max(0, apiTotal - discFromApi);
+    }
+    if (apiTotal != null && Math.abs(apiTotal - grossFromOrders) > 1) {
+      // Stale batch total — dùng tổng đơn (đã/ chưa net tùy BE)
+      return Math.max(0, grossFromOrders);
+    }
+    if (apiTotal != null) {
+      return apiTotal;
+    }
+    return Math.max(0, grossFromOrders - discFromApi);
+  }
+
+  // Không voucher: ưu tiên pending / tổng đơn khi batchCheckoutTotalAmount còn số cũ
+  if (pendingFromApi > 0) {
+    return pendingFromApi;
+  }
+  if (apiTotal != null && Math.abs(apiTotal - grossFromOrders) <= 1) {
+    return apiTotal;
+  }
+  return grossFromOrders > 0 ? grossFromOrders : (apiTotal ?? 0);
 }
 
 /** Phần tiền từng đơn trong batch — luôn cộng lại bằng tổng PayOS. */
@@ -294,19 +332,17 @@ export function getBatchOrderPayableMap(orders: OrderResponse[]): Map<number, nu
 
   const grossSum = orders.reduce((sum, o) => sum + Number(o.totalAmount ?? 0), 0);
   const batchDiscSum = orders.reduce((sum, o) => sum + Number(o.batchDiscountAmount ?? 0), 0);
-  const apiBatchDisc = Number(orders[0]?.batchPlatformDiscountAmount ?? 0);
 
   if (grossSum <= 0) {
     orders.forEach((o) => map.set(o.id!, 0));
     return map;
   }
 
-  // Ưu tiên: totalAmount đã trừ batchDiscountAmount trên từng đơn
+  // totalAmount đã là net (BE trừ voucher rồi lưu batchDiscountAmount) → không trừ lại
   if (batchDiscSum > 0) {
     let allocated = 0;
     orders.forEach((o, i) => {
-      const disc = Number(o.batchDiscountAmount ?? 0);
-      const payable = Math.max(0, Number(o.totalAmount ?? 0) - disc);
+      const payable = Math.max(0, Number(o.totalAmount ?? 0));
       if (i === orders.length - 1) {
         map.set(o.id!, Math.max(0, checkoutTotal - allocated));
       } else {
@@ -317,24 +353,14 @@ export function getBatchOrderPayableMap(orders: OrderResponse[]): Map<number, nu
     return map;
   }
 
-  // Khớp sẵn — không cần phân bổ
+  // Khớp sẵn — hoặc tổng batch stale sau hủy: luôn hiện đúng totalAmount từng đơn
   if (Math.abs(grossSum - checkoutTotal) <= 1) {
     orders.forEach((o) => map.set(o.id!, Number(o.totalAmount ?? 0)));
     return map;
   }
 
-  // Dữ liệu cũ / sau hủy: phân bổ tổng PayOS theo tỷ lệ tiền hàng từng đơn
-  let allocated = 0;
-  orders.forEach((o, i) => {
-    const weight = Number(o.totalAmount ?? 0);
-    if (i === orders.length - 1) {
-      map.set(o.id!, Math.max(0, checkoutTotal - allocated));
-      return;
-    }
-    const share = Math.floor((checkoutTotal * weight) / grossSum);
-    map.set(o.id!, share);
-    allocated += share;
-  });
+  // Không chia tỷ lệ theo tổng cũ — tránh #377 = 122k trong khi đơn chỉ 80k
+  orders.forEach((o) => map.set(o.id!, Number(o.totalAmount ?? 0)));
   return map;
 }
 
@@ -343,8 +369,23 @@ export function getBatchOrderPayableAmount(order: OrderResponse, orders: OrderRe
   return map.get(order.id!) ?? Number(order.totalAmount ?? 0);
 }
 
+/** Tạm tính trước voucher sàn (để UI: tạm tính − voucher = tổng). */
 export function getBatchGrossSubtotal(orders: OrderResponse[]): number {
-  return orders.reduce((sum, o) => sum + Number(o.totalAmount ?? 0), 0);
+  const netSum = orders.reduce((sum, o) => sum + Number(o.totalAmount ?? 0), 0);
+  const discOnOrders = orders.reduce((sum, o) => sum + Number(o.batchDiscountAmount ?? 0), 0);
+  if (discOnOrders > 0) {
+    return netSum + discOnOrders;
+  }
+  const discFromApi = Number(orders[0]?.batchPlatformDiscountAmount ?? 0);
+  if (discFromApi > 0) {
+    const checkout = getBatchCheckoutTotal(orders);
+    // totalAmount vẫn gross → tạm tính = gross; nếu đã net thì cộng lại discount để hiện
+    if (Math.abs(netSum - checkout) <= 1) {
+      return netSum + discFromApi;
+    }
+    return netSum;
+  }
+  return netSum;
 }
 
 export function getBatchPlatformDiscount(orders: OrderResponse[]): number {
@@ -352,7 +393,7 @@ export function getBatchPlatformDiscount(orders: OrderResponse[]): number {
   if (fromApi > 0) return fromApi;
   const fromOrders = orders.reduce((sum, o) => sum + Number(o.batchDiscountAmount ?? 0), 0);
   if (fromOrders > 0) return fromOrders;
-  const gross = getBatchGrossSubtotal(orders);
+  const gross = orders.reduce((sum, o) => sum + Number(o.totalAmount ?? 0), 0);
   const checkout = getBatchCheckoutTotal(orders);
   return Math.max(0, gross - checkout);
 }
@@ -374,11 +415,14 @@ export function requiresBatchWideCancel(order: OrderResponse): boolean {
 
 export function getBatchCancelConfirmMessage(order: OrderResponse, orders?: OrderResponse[]): string {
   const shopCount = orders?.length ?? order.batchShopCount ?? 1;
-  return `Checkout này dùng voucher sàn cho ${shopCount} shop. Hủy sẽ áp dụng cho TẤT CẢ đơn trong cùng lần thanh toán (hoàn tiền từng đơn đã thanh toán nếu có). Bạn có chắc muốn tiếp tục?`;
+  if (order.hasPlatformBatchVoucher) {
+    return `Checkout này dùng voucher sàn cho ${shopCount} shop. Hủy sẽ áp dụng cho TẤT CẢ đơn trong cùng lần thanh toán (hoàn tiền từng đơn đã thanh toán nếu có). Bạn có chắc muốn tiếp tục?`;
+  }
+  return `Hủy toàn bộ ${shopCount} đơn chưa thanh toán trong checkout này? Mỗi đơn sẽ bị hủy riêng; đơn nào hủy xong sẽ không còn trong checkout.`;
 }
 
 /** Chỉ lấy checkout/đơn chưa TT gần nhất.
- * Có voucher sàn → kèm các shop cùng batch; không voucher → chỉ 1 đơn. */
+ * Nhiều shop cùng batch (hoặc có voucher sàn) → kèm các đơn chưa TT cùng checkout. */
 export function pickLatestPendingCheckout(orders: OrderResponse[]): OrderResponse[] {
   const unpaid = orders.filter(isBatchPayosPending);
   if (!unpaid.length) return [];
@@ -387,8 +431,12 @@ export function pickLatestPendingCheckout(orders: OrderResponse[]): OrderRespons
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   );
   const latest = sorted[0];
-  if (latest.checkoutBatchId != null && latest.hasPlatformBatchVoucher) {
-    return unpaid.filter((o) => o.checkoutBatchId === latest.checkoutBatchId);
+  if (latest.checkoutBatchId != null) {
+    const sameBatch = unpaid.filter((o) => o.checkoutBatchId === latest.checkoutBatchId);
+    const unpaidCount = latest.batchUnpaidCount ?? sameBatch.length;
+    if (sameBatch.length > 1 || unpaidCount > 1 || latest.hasPlatformBatchVoucher) {
+      return sameBatch.length ? sameBatch : [latest];
+    }
   }
   return [latest];
 }

@@ -11,12 +11,16 @@ import {
   getBatchShopCount,
 } from '../../utils/groupOrdersByBatch';
 
+import type { ResumePayMode } from '../../utils/resumePayOSPayment';
+
 interface BatchCheckoutGroupCardProps {
   batchId: number;
   orders: OrderResponse[];
   formatDate: (dateStr: string) => string;
-  onResumePayment: (orderId: number, payMode?: 'batch-all') => void;
+  onResumePayment: (orderId: number, payMode?: ResumePayMode) => void;
   onCancelBatch?: (orders: OrderResponse[]) => void;
+  /** Không voucher sàn — hủy từng đơn trong batch */
+  onCancelOrder?: (order: OrderResponse) => void;
   resuming?: boolean;
   cancelling?: boolean;
   variant?: 'pending' | 'cancelled' | 'paid_cancellable' | 'voucher_cancellable';
@@ -28,6 +32,7 @@ const BatchCheckoutGroupCard: React.FC<BatchCheckoutGroupCardProps> = ({
   formatDate,
   onResumePayment,
   onCancelBatch,
+  onCancelOrder,
   resuming,
   cancelling,
   variant = 'pending',
@@ -118,7 +123,7 @@ const BatchCheckoutGroupCard: React.FC<BatchCheckoutGroupCardProps> = ({
 
         {!isCancelled && !isPaidCancellable && !isVoucherCancellable && hasPlatformVoucher && (
           <p className="text-xs font-bold text-amber-800 bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3">
-            Voucher sàn chỉ áp dụng khi thanh toán đủ cả {shopCount} shop trong cùng lần checkout.
+            Voucher sàn chỉ áp dụng khi thanh toán đủ cả {shopCount} shop. Bạn có thể hủy toàn bộ checkout nếu không muốn tiếp tục.
           </p>
         )}
 
@@ -155,17 +160,29 @@ const BatchCheckoutGroupCard: React.FC<BatchCheckoutGroupCardProps> = ({
                     <p className="text-xs text-gray-500 font-medium">{itemCount} sản phẩm</p>
                   </div>
                 </div>
-                <div className="text-right shrink-0">
+                <div className="text-right shrink-0 space-y-1">
                   <p className="text-sm font-black text-primary">
                     {payable.toLocaleString('vi-VN')}đ
                   </p>
                   <p className="text-[10px] font-bold text-gray-400">{shareLabel}</p>
-                  <Link
-                    to={`/my-orders/${order.id}`}
-                    className="text-[10px] font-black text-gray-400 uppercase tracking-wider hover:text-primary"
-                  >
-                    Chi tiết
-                  </Link>
+                  <div className="flex items-center justify-end gap-2">
+                    <Link
+                      to={`/my-orders/${order.id}`}
+                      className="text-[10px] font-black text-gray-400 uppercase tracking-wider hover:text-primary"
+                    >
+                      Chi tiết
+                    </Link>
+                    {!hasPlatformVoucher && (variant === 'pending' || !variant) && (
+                      <button
+                        type="button"
+                        onClick={() => onCancelOrder?.(order)}
+                        disabled={cancelling || !onCancelOrder}
+                        className="text-[10px] font-black text-red-500 uppercase tracking-wider hover:text-red-700 disabled:opacity-50"
+                      >
+                        Hủy đơn
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             );
@@ -177,27 +194,35 @@ const BatchCheckoutGroupCard: React.FC<BatchCheckoutGroupCardProps> = ({
           <span className="text-gray-900">{payableSum.toLocaleString('vi-VN')}đ</span>
         </div>
 
-        <div className={`flex justify-end pt-4 border-t border-gray-50 gap-3 ${isCancelled ? 'hidden' : ''}`}>
-          {isPaidCancellable || isVoucherCancellable ? (
-            <button
-              onClick={() => onCancelBatch?.(orders)}
-              disabled={cancelling}
-              className="px-6 py-3 bg-red-50 hover:bg-red-100 text-red-600 font-black text-xs rounded-2xl transition-all flex items-center gap-2 uppercase tracking-wider border border-red-100 disabled:opacity-60"
-            >
-              {cancelling ? <Loader2 className="size-4 animate-spin" /> : <XCircle className="size-4" />}
-              Hủy toàn bộ checkout
-            </button>
-          ) : (
-            <button
-              onClick={() => onResumePayment(triggerOrderId, hasPlatformVoucher ? 'batch-all' : undefined)}
-              disabled={resuming}
-              className="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white font-black text-xs rounded-2xl transition-all flex items-center gap-2 uppercase tracking-wider disabled:opacity-60"
-            >
-              {resuming ? <Loader2 className="size-4 animate-spin" /> : <CreditCard className="size-4" />}
-              {hasPlatformVoucher ? 'Thanh toán tất cả' : 'Tiếp tục thanh toán'}
-            </button>
-          )}
-        </div>
+        {!isCancelled && (
+          <div className="flex flex-wrap justify-end gap-3 pt-4 border-t border-gray-50">
+            {(isPaidCancellable || isVoucherCancellable || variant === 'pending' || !variant) && (
+              <button
+                type="button"
+                onClick={() => onCancelBatch?.(orders)}
+                disabled={cancelling || !onCancelBatch}
+                className="px-6 py-3 bg-red-50 hover:bg-red-100 text-red-600 font-black text-xs rounded-2xl transition-all flex items-center justify-center gap-2 uppercase tracking-wider border border-red-100 disabled:opacity-60"
+              >
+                {cancelling ? <Loader2 className="size-4 animate-spin" /> : <XCircle className="size-4" />}
+                Hủy toàn bộ checkout
+              </button>
+            )}
+            {!isPaidCancellable && !isVoucherCancellable && (
+              <button
+                type="button"
+                onClick={() => onResumePayment(
+                  triggerOrderId,
+                  hasPlatformVoucher ? 'batch-all' : undefined,
+                )}
+                disabled={resuming}
+                className="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white font-black text-xs rounded-2xl transition-all flex items-center justify-center gap-2 uppercase tracking-wider disabled:opacity-60"
+              >
+                {resuming ? <Loader2 className="size-4 animate-spin" /> : <CreditCard className="size-4" />}
+                {hasPlatformVoucher ? 'Thanh toán tất cả' : 'Tiếp tục thanh toán'}
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

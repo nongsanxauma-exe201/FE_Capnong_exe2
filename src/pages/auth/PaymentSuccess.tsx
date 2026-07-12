@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Award, CheckCircle2, Loader2, Package, ArrowRight, RefreshCw, Sprout } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { orderService, paymentService } from '../../services';
@@ -13,11 +13,15 @@ const PaymentSuccess: React.FC = () => {
   const [orderSummaries, setOrderSummaries] = useState<OrderResponse[]>([]);
   const [paidOrderIds, setPaidOrderIds] = useState<number[]>([]);
 
-  // Get params from URL
   const urlParams = new URLSearchParams(window.location.search);
-  const orderCode = urlParams.get('orderCode'); // This is actually the paymentId from BE
+  const orderCode = urlParams.get('orderCode');
   const orderIdParam = urlParams.get('orderId');
   const payosStatus = urlParams.get('status');
+  const paymentLinkId = urlParams.get('id'); // PayOS payment link id trên return URL
+  const payosCode = urlParams.get('code');
+
+  const resolvedRef = useRef(false);
+  const confirmingRef = useRef(false);
 
   useEffect(() => {
     clearPendingPayOSPayment();
@@ -25,10 +29,18 @@ const PaymentSuccess: React.FC = () => {
     sessionStorage.removeItem('payOSExternalCheckoutActive');
     sessionStorage.removeItem('payOSBrowserBackReloaded');
 
-    let pollInterval: NodeJS.Timeout;
-    let timeoutId: NodeJS.Timeout;
+    let pollInterval: ReturnType<typeof setInterval> | undefined;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     let pollCount = 0;
-    const MAX_POLLS = 15; // 15 * 2s = 30 seconds max
+    // PayOS verify phía BE có thể 20–60s (IPv4/retry) — chờ đủ lâu
+    const MAX_POLLS = 45; // 45 * 2s = 90s
+    let countdownTimer: ReturnType<typeof setInterval> | undefined;
+
+    const markResolved = () => {
+      resolvedRef.current = true;
+      if (pollInterval) clearInterval(pollInterval);
+      if (timeoutId) clearTimeout(timeoutId);
+    };
 
     const loadPaidOrders = async (orderIds: number[]) => {
       setPaidOrderIds(orderIds);
@@ -44,82 +56,12 @@ const PaymentSuccess: React.FC = () => {
       }
     };
 
-    const confirmOrder = async () => {
-      if (!orderCode) return;
-      try {
-        // Vì BE endpoint mới dùng orderCode string
-        await paymentService.confirmPaymentByOrderCode(orderCode);
-        console.log('Payment confirmed successfully.');
-      } catch (confirmError: any) {
-        console.error('Error confirming payment status:', confirmError);
-
-        if (confirmError?.status === 401) {
-          setPaymentStatus('failed');
-          setErrorMsg('Phiên đã hết hạn, vui lòng đăng nhập lại để tiếp tục.');
-          return;
-        }
-
-        // Nếu lỗi không phải 401, để continue polling và hiển thị trạng thái phù hợp.
-      }
-    };
-
-    const checkStatus = async () => {
-      if (!orderCode) {
-        setPaymentStatus('failed');
-        setErrorMsg('Không tìm thấy thông tin đơn hàng.');
-        return;
-      }
-
-      try {
-        const res = await paymentService.getById(orderCode);
-        if (res.result) {
-          if (res.result.status === 'SUCCESS') {
-            const ids = res.result.orderIds?.length
-              ? res.result.orderIds
-              : (res.result.orderId ? [res.result.orderId] : []);
-            if (ids.length > 0) {
-              void loadPaidOrders(ids);
-            }
-            setPaymentStatus('success');
-            clearInterval(pollInterval);
-            clearTimeout(timeoutId);
-            startCountdown();
-          } else if (res.result.status === 'FAILED') {
-            setPaymentStatus('failed');
-            setErrorMsg('Thanh toán thất bại hoặc đã bị hủy.');
-            clearInterval(pollInterval);
-            clearTimeout(timeoutId);
-          }
-          // If PENDING, keep polling
-        }
-      } catch (error) {
-        console.error('Failed to check payment status:', error);
-        if (pollCount >= MAX_POLLS - 1) {
-          try {
-            await paymentService.confirmPaymentByOrderCode(orderCode);
-            setPaymentStatus('success');
-            clearInterval(pollInterval);
-            clearTimeout(timeoutId);
-            startCountdown();
-            return;
-          } catch {
-            // keep polling until timeout
-          }
-        }
-      }
-
-      pollCount++;
-      if (pollCount >= MAX_POLLS) {
-        setPaymentStatus('timeout');
-        clearInterval(pollInterval);
-      }
-    };
-
     const startCountdown = () => {
-      const timer = setInterval(() => {
+      if (countdownTimer) clearInterval(countdownTimer);
+      countdownTimer = setInterval(() => {
         setCountdown((prev) => {
           if (prev <= 1) {
-            clearInterval(timer);
+            if (countdownTimer) clearInterval(countdownTimer);
             navigate('/');
             return 0;
           }
@@ -128,39 +70,131 @@ const PaymentSuccess: React.FC = () => {
       }, 1000);
     };
 
+    const onSuccess = (ids: number[]) => {
+      if (resolvedRef.current) return;
+      markResolved();
+      if (ids.length > 0) void loadPaidOrders(ids);
+      setPaymentStatus('success');
+      startCountdown();
+    };
+
+    /** BE tự hỏi PayOS API — không tin status=PAID trên URL. */
+    const confirmOrder = async () => {
+      if (!orderCode || confirmingRef.current || resolvedRef.current) return;
+      confirmingRef.current = true;
+      try {
+        await paymentService.confirmPaymentByOrderCode(orderCode, paymentLinkId);
+        // Confirm OK → poll lại ngay để cập nhật UI
+        const res = await paymentService.getById(orderCode);
+        if (res.result?.status === 'SUCCESS') {
+          const ids = res.result.orderIds?.length
+            ? res.result.orderIds
+            : (res.result.orderId ? [res.result.orderId] : []);
+          onSuccess(ids);
+        }
+      } catch (confirmError: any) {
+        console.error('Error confirming payment status:', confirmError);
+        if (confirmError?.status === 401) {
+          markResolved();
+          setPaymentStatus('failed');
+          setErrorMsg('Phiên đã hết hạn, vui lòng đăng nhập lại để tiếp tục.');
+        }
+        // 5014/5015 → tiếp tục poll
+      } finally {
+        confirmingRef.current = false;
+      }
+    };
+
+    const checkStatus = async () => {
+      if (resolvedRef.current || !orderCode) return;
+
+      try {
+        const res = await paymentService.getById(orderCode);
+        if (res.result?.status === 'SUCCESS') {
+          const ids = res.result.orderIds?.length
+            ? res.result.orderIds
+            : (res.result.orderId ? [res.result.orderId] : []);
+          onSuccess(ids);
+          return;
+        }
+        if (res.result?.status === 'FAILED') {
+          markResolved();
+          setPaymentStatus('failed');
+          setErrorMsg('Thanh toán thất bại hoặc đã bị hủy.');
+          return;
+        }
+        // PENDING: định kỳ nhờ BE verify PayOS (không chồng request)
+        if (!confirmingRef.current && (pollCount === 0 || pollCount % 4 === 0)) {
+          void confirmOrder();
+        }
+      } catch (error) {
+        console.error('Failed to check payment status:', error);
+        if (!confirmingRef.current) void confirmOrder();
+      }
+
+      pollCount++;
+      if (pollCount >= MAX_POLLS && !resolvedRef.current && !confirmingRef.current) {
+        markResolved();
+        setPaymentStatus('timeout');
+        setErrorMsg('Chưa nhận được xác nhận từ hệ thống. Nếu đã chuyển khoản, bấm Kiểm tra lại hoặc xem Đơn hàng.');
+      }
+    };
+
     if (payosStatus === 'CANCELLED') {
       navigate('/payment/cancel' + window.location.search);
       return;
     }
 
-    if (orderIdParam) {
+    // Không tin ?orderId= trên URL — chỉ success khi đơn đã PAID trên BE
+    if (!orderCode && orderIdParam) {
       const orderId = Number(orderIdParam);
       if (!Number.isNaN(orderId)) {
-        setPaymentStatus('success');
-        void loadPaidOrders([orderId]);
-        startCountdown();
-        return;
+        void (async () => {
+          try {
+            const res = await orderService.getOrderById(orderId);
+            if (res.result?.status === 'PAID') {
+              onSuccess([orderId]);
+            } else {
+              setPaymentStatus('timeout');
+              setErrorMsg('Chưa xác nhận được thanh toán. Vui lòng kiểm tra lại đơn hàng.');
+            }
+          } catch {
+            setPaymentStatus('failed');
+            setErrorMsg('Không tìm thấy thông tin đơn hàng.');
+          }
+        })();
+      } else {
+        setPaymentStatus('failed');
+        setErrorMsg('Không tìm thấy thông tin đơn hàng.');
       }
+      return;
     }
 
-    // Confirm payment via API (backup when webhook chưa gọi kịp)
-    confirmOrder();
+    if (!orderCode) {
+      setPaymentStatus('failed');
+      setErrorMsg('Không tìm thấy mã thanh toán (orderCode).');
+      return;
+    }
 
-    // Start polling
-    checkStatus();
+    // Bắt đầu verify ngay + poll
+    void confirmOrder();
+    void checkStatus();
     pollInterval = setInterval(checkStatus, 2000);
 
-    // Safety timeout
     timeoutId = setTimeout(() => {
-      setPaymentStatus('timeout');
-      clearInterval(pollInterval);
-    }, MAX_POLLS * 2000 + 1000);
+      if (!resolvedRef.current && !confirmingRef.current) {
+        markResolved();
+        setPaymentStatus('timeout');
+        setErrorMsg('Chưa nhận được xác nhận từ hệ thống. Nếu đã chuyển khoản, bấm Kiểm tra lại hoặc xem Đơn hàng.');
+      }
+    }, MAX_POLLS * 2000 + 15_000); // thêm buffer khi confirm đang chạy lâu
 
     return () => {
-      clearInterval(pollInterval);
-      clearTimeout(timeoutId);
+      if (pollInterval) clearInterval(pollInterval);
+      if (timeoutId) clearTimeout(timeoutId);
+      if (countdownTimer) clearInterval(countdownTimer);
     };
-  }, [orderCode, orderIdParam, navigate, payosStatus]);
+  }, [orderCode, orderIdParam, navigate, payosStatus, paymentLinkId]);
 
   const handleGoToMyOrders = () => {
     navigate('/my-orders');
@@ -178,6 +212,10 @@ const PaymentSuccess: React.FC = () => {
   const rewardPoints = orderSummaries.reduce((sum, order) => sum + Number(order.rewardPoints ?? 0), 0);
   const rewardApplied = orderSummaries.some((order) => Boolean(order.rewardApplied));
   const formatKg = (value: number) => value.toLocaleString('vi-VN', { maximumFractionDigits: 2 });
+  const hintFromPayOS =
+    payosCode === '00' || payosStatus === 'PAID'
+      ? 'PayOS đã báo thanh toán thành công. Hệ thống đang xác nhận đơn hàng — vui lòng đợi thêm.'
+      : 'Chúng tôi đang kiểm tra trạng thái thanh toán từ PayOS. Vui lòng không đóng trình duyệt.';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 flex items-center justify-center p-4 py-20">
@@ -189,9 +227,8 @@ const PaymentSuccess: React.FC = () => {
                 <Loader2 className="size-12 text-blue-500 animate-spin" />
               </div>
               <h1 className="text-2xl font-black text-gray-900 mb-3">Đang xác thực...</h1>
-              <p className="text-sm text-gray-500 font-medium mb-8">
-                Chúng tôi đang kiểm tra trạng thái thanh toán từ PayOS.
-                Vui lòng không đóng trình duyệt.
+              <p className="text-sm text-gray-500 font-medium mb-8 leading-relaxed">
+                {hintFromPayOS}
               </p>
             </>
           )}
@@ -214,7 +251,7 @@ const PaymentSuccess: React.FC = () => {
               {(paidOrderIds.length > 0 || orderCode) && (
                 <div className="w-full p-6 bg-gray-50 rounded-3xl mb-8">
                   <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2">
-                    {paidOrderIds.length > 1 ? 'Mã đơn hàng' : 'Mã đơn hàng'}
+                    Mã đơn hàng
                   </p>
                   {paidOrderIds.length > 1 ? (
                     <div className="flex flex-wrap gap-2 justify-center">
@@ -282,7 +319,6 @@ const PaymentSuccess: React.FC = () => {
             </>
           )}
 
-          {/* Actions */}
           <div className="w-full space-y-3">
             {paymentStatus !== 'verifying' && (
               <button

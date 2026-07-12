@@ -65,8 +65,19 @@ class PaymentService {
         return httpClient.post<string>(`/payments/${id}/confirm`, {});
     }
 
-    async confirmPaymentByOrderCode(orderCode: string): Promise<ApiResponse<string>> {
-        return httpClient.post<string>(`/payments/${encodeURIComponent(orderCode)}/confirm`, {});
+    async confirmPaymentByOrderCode(
+        orderCode: string,
+        paymentLinkId?: string | null,
+    ): Promise<ApiResponse<string>> {
+        // PayOS verify phía BE có thể mất 20–40s
+        const params = paymentLinkId
+            ? { paymentLinkId }
+            : undefined;
+        return httpClient.post<string>(
+            `/payments/${encodeURIComponent(orderCode)}/confirm`,
+            {},
+            { timeout: 90_000, params },
+        );
     }
 
     async cancelPaymentByOrderCode(orderCode: string): Promise<ApiResponse<string>> {

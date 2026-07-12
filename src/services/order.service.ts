@@ -225,6 +225,8 @@ export interface StaffOrderReportResponse {
     pendingFarmerApprovals?: number | null;
     /** Số đơn hàng đã kiểm duyệt thành công hôm nay */
     approvedTodayOrders?: number | null;
+    /** Đơn bị từ chối chất lượng (legacy / optional) */
+    quantityCheckedReject?: number | null;
 }
 
 class OrderService {

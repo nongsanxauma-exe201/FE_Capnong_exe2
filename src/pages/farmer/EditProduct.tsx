@@ -265,7 +265,7 @@ const EditProduct: React.FC<{ productId: number; onBack: () => void }> = ({ prod
                     <p className="text-[10px] font-bold text-blue-600 mt-1.5">
                       Với giá hiện tại {price.toLocaleString('vi-VN')}đ →
                       phí sàn ~{Math.round(price * 0.1).toLocaleString('vi-VN')}đ →
-                      thực nhận ~{Math.round(price * 0.9).toLocaleString('vi-VN')}đ/{unit}
+                      thực nhận ~{Math.round(price * 0.9).toLocaleString('vi-VN')}đ/kg
                     </p>
                   )}
                 </div>

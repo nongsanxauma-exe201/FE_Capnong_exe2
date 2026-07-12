@@ -18,7 +18,7 @@ import BatchCheckoutGroupCard from '../../components/order/BatchCheckoutGroupCar
 import { useResumePayment } from '../../hooks/useResumePayment';
 import { groupOrdersForDisplay, requiresBatchWideCancel, getBatchCancelConfirmMessage, shouldHideIndividualCancel, BATCH_HYDRATION_STATUSES } from '../../utils/groupOrdersByBatch';
 
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 
 const PAGE_SIZE = 10;
@@ -64,6 +64,9 @@ const BUYER_FILTERS: Array<{ key: OrderStatusFilter; label: string }> = [
   { key: 'FAILED', label: 'Giao thất bại' },
 ];
 
+const getFilterLabel = (key: OrderStatusFilter) =>
+  BUYER_FILTERS.find((f) => f.key === key)?.label ?? key;
+
 const getQcRefundHint = (paymentMethod?: string) => {
   if (paymentMethod?.toUpperCase() === 'COD') {
     return 'Nếu bạn chọn không nhận, phần còn lại sẽ bị hủy và số tiền COD khi nhận hàng sẽ được giảm tương ứng.';
@@ -78,6 +81,7 @@ const getQcRejectButtonLabel = (paymentMethod?: string) =>
 
 const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
   const { user } = useAuth();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const orderIdFromUrl = searchParams.get('orderId');
   const [orders, setOrders] = useState<OrderResponse[]>([]);
@@ -87,6 +91,7 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
     page: 0, size: PAGE_SIZE, totalElements: 0, totalPages: 1, first: true, last: true,
   });
   const [loading, setLoading] = useState(true);
+  const [cancellingBatch, setCancellingBatch] = useState(false);
   const [filter, setFilter] = useState<OrderStatusFilter>('ALL');
   const [searchQuery, setSearchQuery] = useState(orderIdFromUrl || '');
   const [debouncedSearch, setDebouncedSearch] = useState(orderIdFromUrl || '');
@@ -317,17 +322,28 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
     if (!await globalShowConfirm(confirmMsg, 'Xác nhận hủy checkout')) return;
 
     try {
-      setLoading(true);
-      const res = await orderService.updateOrder(trigger.id, { status: 'CANCELLED' });
-      if (res.result) {
-        globalShowAlert(`Đã hủy toàn bộ ${batchOrders.length} đơn trong checkout PayOS.`, 'Thành công', 'success');
-        fetchOrders();
+      setCancellingBatch(true);
+      const hasVoucher = batchOrders.some((o) => o.hasPlatformBatchVoucher === true);
+      if (hasVoucher) {
+        // BE gom hủy cả batch khi có voucher sàn
+        const res = await orderService.updateOrder(trigger.id, { status: 'CANCELLED' });
+        if (res.result) {
+          globalShowAlert(`Đã hủy toàn bộ ${batchOrders.length} đơn trong checkout PayOS.`, 'Thành công', 'success');
+        }
+      } else {
+        // Không voucher → BE chỉ hủy 1 đơn / request — hủy lần lượt
+        for (const o of batchOrders) {
+          await orderService.updateOrder(o.id, { status: 'CANCELLED' });
+        }
+        globalShowAlert(`Đã hủy ${batchOrders.length} đơn trong checkout.`, 'Thành công', 'success');
       }
+      await fetchOrders();
     } catch (error: any) {
       console.error('Failed to cancel batch:', error);
       globalShowAlert(error?.data?.message || error.message || 'Không thể hủy checkout. Vui lòng thử lại sau.', 'Lỗi', 'error');
+      await fetchOrders();
     } finally {
-      setLoading(false);
+      setCancellingBatch(false);
     }
   };
 
@@ -395,8 +411,9 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
   useEffect(() => {
     if (!user?.id) return;
     fetchOrders();
+    // location.key: vào lại /my-orders từ banner "Xem đơn hàng" phải fetch mới (nút hủy/batch)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, orderIdFromUrl, page, filter, debouncedSearch]);
+  }, [user?.id, orderIdFromUrl, page, filter, debouncedSearch, location.key]);
 
   useEffect(() => {
     loadReviewedIds();
@@ -686,8 +703,9 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
                     formatDate={formatDate}
                     onResumePayment={(orderId, payMode) => openResumePayment(orderId, payMode)}
                     onCancelBatch={handleCancelBatch}
+                    onCancelOrder={handleCancelOrder}
                     resuming={resuming}
-                    cancelling={loading}
+                    cancelling={cancellingBatch || loading}
                     variant={item.variant}
                   />
                 );

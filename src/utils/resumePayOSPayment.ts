@@ -69,24 +69,8 @@ export async function resumePayAllBatchPayment(
   }
 
   const triggerOrderId = options.triggerOrderId ?? options.unpaidOrders?.[0]?.orderId ?? 0;
-  const payAll = options.payAllOption;
 
-  if (payAll.canReuseExistingLink && payAll.checkoutUrl) {
-    redirectToPayOSCheckout({
-      checkoutUrl: payAll.checkoutUrl,
-      payosOrderCode: payAll.payosOrderCode,
-      amount: payAll.amount,
-      batchId: options.batchId,
-      orderIds: options.unpaidOrders?.map((o) => o.orderId),
-      paymentScope: 'BATCH',
-      id: 0,
-      orderId: triggerOrderId,
-      paymentGateway: 'PAYOS',
-      status: 'PENDING',
-    }, triggerOrderId);
-    return;
-  }
-
+  // Luôn tạo link PayOS mới theo số tiền hiện tại (tránh reuse QR cũ còn tổng trước voucher)
   const res = await paymentService.createBatchPayOS(options.batchId);
   if (!res.result?.checkoutUrl) {
     throw new Error('Không thể tạo link thanh toán batch.');
@@ -123,7 +107,7 @@ export type ResumePayMode = 'batch-all' | 'individual';
 export async function handleResumePaymentClick(
   orderId: number,
   onShowBatchModal: (options: ResumePaymentOptionsResponse) => void,
-  payMode?: 'batch-all',
+  payMode?: ResumePayMode,
 ) {
   const options = await loadResumePaymentOptions(orderId);
 
@@ -131,19 +115,40 @@ export async function handleResumePaymentClick(
     await resumeSingleOrderPayment(orderId, options.singleOrderPayment);
     return;
   }
-  if (payMode === 'batch-all') {
-    await resumePayAllBatchPayment(options);
-    return;
-  }
 
+  // Voucher sàn → bắt buộc PayOS batch (BE chặn TT lẻ)
   if (options.hasPlatformVoucher) {
     await resumePayAllBatchPayment(options);
     return;
   }
 
-  // Không voucher sàn → thanh toán riêng đơn đang chọn, không mở modal gom batch
-  const unpaid = options.unpaidOrders?.find((o) => o.orderId === orderId)
-    ?? options.unpaidOrders?.[0];
+  if (payMode === 'batch-all') {
+    await resumePayAllBatchPayment(options);
+    return;
+  }
+
+  if (payMode === 'individual') {
+    const unpaid = options.unpaidOrders?.find((o) => o.orderId === orderId)
+      ?? options.unpaidOrders?.[0];
+    if (unpaid) {
+      await resumeSingleBatchOrderPayment(
+        unpaid.orderId,
+        Number(unpaid.amount ?? 0),
+        options.triggerOrderId ?? unpaid.orderId,
+      );
+      return;
+    }
+    await resumeSingleOrderPayment(orderId, options.singleOrderPayment);
+    return;
+  }
+
+  // Không voucher + nhiều đơn chưa TT → popup chọn TT tất cả / từng shop
+  if ((options.unpaidOrders?.length ?? 0) > 1) {
+    onShowBatchModal(options);
+    return;
+  }
+
+  const unpaid = options.unpaidOrders?.[0];
   if (unpaid) {
     await resumeSingleBatchOrderPayment(
       unpaid.orderId,

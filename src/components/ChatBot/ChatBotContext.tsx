@@ -84,6 +84,7 @@ const ChatBotContext = createContext<ChatBotContextType | undefined>(undefined);
 interface ChatBotProviderProps {
   children: React.ReactNode;
   userId?: number;
+  userRole?: 'BUYER' | 'SHOP_OWNER' | 'SHIPPER';
 }
 
 function getOrCreateChatSessionId(): string {
@@ -133,7 +134,7 @@ function clearUserMessages(userId?: number) {
   clearChatStorage();
 }
 
-export function ChatBotProvider({ children, userId }: ChatBotProviderProps) {
+export function ChatBotProvider({ children, userId, userRole: _userRole }: ChatBotProviderProps) {
   const [state, dispatch] = useReducer(reducer, initialState);
 
   const generateId = () =>

@@ -36,7 +36,7 @@ export type { ResetPasswordRequest, ResetPasswordResponse } from './password.ser
 export type { ShipperRegisterRequest, ShipperRegisterResponse } from './shipper.service';
 export type { NotificationItem, AdminSendNotificationRequest } from './notification.service';
 export type { MysteryBox, MysteryBoxResponse, ProductMysteryResponse, MysteryBoxCreationRequest, MysteryBoxUpdateRequest, ProductMysteryRequest } from './mysteryBox.service';
-export type { ProductResponse, ProductCreationRequest } from './product.service';
+export type { ProductResponse, ProductImageResponse, ProductCreationRequest } from './product.service';
 export type { OrderResponse, OrderItemResponse, OrderCreationRequest, TrackingResponse, TrackingImageResponse, StaffOrderReportResponse } from './order.service';
 export type { WalletResponse, WithdrawRequestResponse } from './wallet.service';
 export type { BlogResponse, BlogCreationRequest } from './blog.service';
@@ -60,10 +60,12 @@ export type { ApiResponse, RequestConfig } from './http.client';
 export type { UserUpdateRequest, AdminUserReport, AdminUserReportItem, AdminUserReportType } from './user.service';
 export type {
     BuildPlanResponse,
-    BuildPlanItemResponse,
-    BuildPlanCreateRequest,
-    BuildPlanItemCreateRequest
+    BuildPlanRequest,
+    BuildPlanDetailRequest,
 } from '../types';
+export type BuildPlanCreateRequest = import('../types').BuildPlanRequest;
+export type BuildPlanItemResponse = import('../types').BuildPlanResponse;
+export type BuildPlanItemCreateRequest = import('../types').BuildPlanDetailRequest;
 export type {
   AiChatRequest,
   AiChatResponse,

@@ -84,7 +84,7 @@ const FarmerDisputes: React.FC = () => {
                    <div className="flex justify-between mb-2">
                       <span className="text-[10px] font-black text-primary uppercase">#{req.id}</span>
                       <span className={`text-[10px] font-black uppercase ${req.status === 'PENDING' ? 'text-orange-500' : req.status === 'SHOP_APPROVED' ? 'text-blue-500' : 'text-gray-400'}`}>
-                        {req.status === 'SHOP_APPROVED' ? 'CHỜ ADMIN' : req.status === 'PENDING' ? 'MỚI' : req.status === 'REJECTED' ? 'ĐÃ TỪ CHỐI' : req.status === 'COMPLETED' ? 'ĐÃ XONG' : req.status === 'REFUNDING' ? 'ĐANG HOÀN TIỀN' : 'MỚI'}
+                        {req.status === 'SHOP_APPROVED' ? 'CHỜ ADMIN' : req.status === 'PENDING' ? 'MỚI' : req.status === 'REJECTED' ? 'ĐÃ TỪ CHỐI' : req.status === 'COMPLETED' ? 'ĐÃ XONG' : req.status === 'REFUND_PENDING' ? 'ĐANG HOÀN TIỀN' : 'MỚI'}
                       </span>
                    </div>
                    <h5 className="font-black text-gray-900 text-sm line-clamp-1">{req.productName || 'Sản phẩm lỗi'}</h5>
