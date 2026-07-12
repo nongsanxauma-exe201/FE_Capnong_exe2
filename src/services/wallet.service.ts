@@ -4,6 +4,7 @@ export interface WalletResponse {
     id: number;
     shopOwnerId: number;
     shipperId?: number;
+    buyerId?: number;
     status: string;
     totalBalance: number;
     frozenBalance: number;
@@ -31,8 +32,10 @@ export interface WithdrawRequestResponse {
     adminNote?: string;
     processedAt?: string;
     walletId: number;
-    shopOwnerId: number;
+    shopOwnerId?: number;
     shipperId?: number;
+    buyerId?: number;
+    walletType?: string;
     bankName?: string;
     bankAccountNumber?: string;
     bankAccountHolder?: string;
