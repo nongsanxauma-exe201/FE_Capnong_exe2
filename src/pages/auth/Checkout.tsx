@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { MapPin, CreditCard, ChevronRight, Lock, Loader2, ShieldCheck, Wallet, ChevronLeft, AlertCircle, Package, X, Gift, Truck } from 'lucide-react';
 import { orderService, paymentService, authService, cartService, CartResponse, CartItemResponse, voucherService, VoucherUserResponse } from '../../services';
@@ -38,6 +38,16 @@ interface CheckoutProps {
 const getQuantityKg = (item: CartItemResponse) => Number(item.quantityKg ?? item.quantity ?? 0);
 const getPricePerKg = (item: CartItemResponse) => Number(item.salePrice ?? item.pricePerKg ?? item.price ?? 0);
 const getItemTotal = (item: CartItemResponse) => Number(item.itemTotal ?? getPricePerKg(item) * getQuantityKg(item));
+
+const dedupeVoucherItems = (items: VoucherUserResponse[]) => {
+   const seen = new Set<string>();
+   return items.filter((item) => {
+      const key = item.voucherUserId || item.voucherResponse?.voucherCode || '';
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+   });
+};
 const formatKg = (value: number) => value.toLocaleString('vi-VN', { maximumFractionDigits: 2 });
 
 const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
@@ -59,9 +69,11 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
    const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
    const [isReturningToCart, setIsReturningToCart] = useState(false);
 
-   // ✅ Phí ship động
-   const [shippingFeesByShop, setShippingFeesByShop] = useState<Record<number, number>>({});
+   // ✅ Phí ship động — 1 lần gọi API / batch (kho → buyer), áp chung cho mọi shop
+   const SHIPPING_FALLBACK = 15000;
+   const [unitShippingFee, setUnitShippingFee] = useState(SHIPPING_FALLBACK);
    const [loadingFee, setLoadingFee] = useState(false);
+   const shippingFeeRequestId = useRef(0);
    const [selectedVoucherByShop, setSelectedVoucherByShop] = useState<Record<number, VoucherUserResponse | null>>({});
    const [vouchersByShop, setVouchersByShop] = useState<Record<number, VoucherUserResponse[]>>({});
    const [loadingVouchersByShop, setLoadingVouchersByShop] = useState<Record<number, boolean>>({});
@@ -149,52 +161,42 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
       fetchData();
    }, [selectedKeys]);
 
-   // ✅ Tính phí ship khi địa chỉ thay đổi (debounce 800ms)
-   const fetchShippingFee = useCallback(async (address: string, sId: number, placeId: string | null = null) => {
-      if (!address.trim() || address.trim().length < 10) return 15000;
-      try {
-         let url = `/orders/shipping-fee?shippingAddress=${encodeURIComponent(address)}&shopId=${sId}`;
-         if (placeId) url += `&placeId=${encodeURIComponent(placeId)}`;
-         const res = await httpClient.get<number>(url);
-         return res.result != null ? res.result : 15000;
-      } catch (e) {
-         console.warn('[Checkout] Không tính được phí ship shop', sId);
-         return 15000;
-      }
-   }, []);
-
-   const fetchAllShippingFees = useCallback(async (address: string, placeId: string | null = null) => {
+   const fetchBatchShippingFee = useCallback(async (address: string, placeId: string | null = null) => {
       const groups = groupCartItemsByShop(cartData?.items ?? []);
       if (!groups.length || !address.trim() || address.trim().length < 10) return;
+
+      const requestId = ++shippingFeeRequestId.current;
+      const shopId = groups[0].shopOwnerId;
+
       try {
          setLoadingFee(true);
-         const fees: Record<number, number> = {};
-         await Promise.all(groups.map(async (g) => {
-            fees[g.shopOwnerId] = await fetchShippingFee(address, g.shopOwnerId, placeId);
-         }));
-         setShippingFeesByShop(fees);
+         let url = `/orders/shipping-fee?shippingAddress=${encodeURIComponent(address)}&shopId=${shopId}`;
+         if (placeId) url += `&placeId=${encodeURIComponent(placeId)}`;
+         const res = await httpClient.get<number>(url);
+         if (requestId !== shippingFeeRequestId.current) return;
+         setUnitShippingFee(res.result != null ? res.result : SHIPPING_FALLBACK);
+      } catch (e) {
+         if (requestId !== shippingFeeRequestId.current) return;
+         console.warn('[Checkout] Không tính được phí ship batch');
+         setUnitShippingFee(SHIPPING_FALLBACK);
       } finally {
-         setLoadingFee(false);
+         if (requestId === shippingFeeRequestId.current) {
+            setLoadingFee(false);
+         }
       }
-   }, [cartData?.items, fetchShippingFee]);
+   }, [cartData?.items]);
 
    useEffect(() => {
-      if (!cartData?.items?.length || !recipientAddress) return;
+      if (!cartData?.items?.length || !recipientAddress || recipientAddress.trim().length < 10) return;
 
       if (addressTimer) clearTimeout(addressTimer);
       const timer = setTimeout(() => {
-         void fetchAllShippingFees(recipientAddress);
+         void fetchBatchShippingFee(recipientAddress, selectedPlaceId);
       }, 800);
       setAddressTimer(timer);
 
       return () => clearTimeout(timer);
-   }, [recipientAddress, cartData?.items]);
-
-   useEffect(() => {
-      if (cartData?.items?.length && recipientAddress && recipientAddress.length >= 10) {
-         void fetchAllShippingFees(recipientAddress);
-      }
-   }, [cartData?.items]);
+   }, [recipientAddress, selectedPlaceId, cartData?.items, fetchBatchShippingFee]);
 
    const isWelcomeVoucher = (voucherItem: VoucherUserResponse | null) =>
       voucherItem?.voucherResponse?.voucherType === 'WELCOME';
@@ -260,7 +262,7 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
 
    const shopSummaries = useMemo(() => shopGroups.map((group) => {
       const subtotal = getShopSubtotal(group.items);
-      const shopShipping = shippingFeesByShop[group.shopOwnerId] ?? 15000;
+      const shopShipping = unitShippingFee;
       const selectedVoucher = selectedVoucherByShop[group.shopOwnerId] ?? null;
       const productDiscount = selectedVoucher
          ? calculateVoucherDiscount(selectedVoucher, subtotal, 0)
@@ -275,7 +277,7 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
          shippingDiscount: 0,
          total: afterProduct + shopShipping,
       };
-   }), [shopGroups, shippingFeesByShop, selectedVoucherByShop]);
+   }), [shopGroups, unitShippingFee, selectedVoucherByShop]);
 
    const batchProductSubtotal = shopSummaries.reduce(
       (s, g) => s + Math.max(0, g.subtotal - g.productDiscount), 0,
@@ -333,7 +335,9 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
             const response = await voucherService.getVouchersForBatch(
                batchProductSubtotal, batchShippingTotal, 0, 20,
             );
-            const list = (response.result?.content || []).filter((item) => item.voucherResponse);
+            const list = dedupeVoucherItems(
+               (response.result?.content || []).filter((item) => item.voucherResponse),
+            );
             setBatchVouchers(list);
          } catch {
             setBatchVouchers([]);
@@ -385,7 +389,7 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
       setSelectedPlaceId(s.placeId);
       setSuggestions([]);
       setShowSuggestions(false);
-      void fetchAllShippingFees(s.description, s.placeId);
+      void fetchBatchShippingFee(s.description, s.placeId);
    };
 
    const validateForm = (): boolean => {
@@ -435,6 +439,7 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
                recipientName,
                recipientPhone,
                shippingAddress: recipientAddress,
+               placeId: selectedPlaceId,
                note,
                paymentMethod,
             }, selectedVoucherByShop, selectedBatchVoucher),
@@ -443,6 +448,18 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
          if (batchRes.result) {
             const orderIds = batchRes.result.orderIds ?? batchRes.result.orders?.map((o) => o.id) ?? [];
             const orderId = orderIds[0];
+            const serverTotal = Number(batchRes.result.totalAmount ?? 0);
+            if (serverTotal > 0 && Math.abs(serverTotal - totalAmount) > 500) {
+               console.warn('[Checkout] UI total differs from server', { ui: totalAmount, server: serverTotal });
+               const proceed = await globalShowConfirm(
+                  `Tổng thanh toán thực tế là ${serverTotal.toLocaleString('vi-VN')}đ (khác với ước tính ${totalAmount.toLocaleString('vi-VN')}đ, thường do phí ship). Bạn có muốn tiếp tục?`,
+                  'Xác nhận số tiền',
+               );
+               if (!proceed) {
+                  setIsProcessing(false);
+                  return;
+               }
+            }
             window.dispatchEvent(new Event('cart-updated'));
 
             if (paymentMethod === 'PAYOS') {
@@ -722,7 +739,7 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
                                              const offer = getVoucherOfferLines(vItem);
                                              const disc = calculateVoucherDiscount(
                                                 vItem, shop.subtotal,
-                                                shippingFeesByShop[shop.shopOwnerId] ?? 15000,
+                                                unitShippingFee,
                                              );
                                              const isSelected = isSameVoucherItem(shop.selectedVoucher, vItem);
                                              return (

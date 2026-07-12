@@ -127,5 +127,17 @@ export async function handleResumePaymentClick(
     return;
   }
 
-  onShowBatchModal(options);
+  // Không voucher sàn → thanh toán riêng đơn đang chọn, không mở modal gom batch
+  const unpaid = options.unpaidOrders?.find((o) => o.orderId === orderId)
+    ?? options.unpaidOrders?.[0];
+  if (unpaid) {
+    await resumeSingleBatchOrderPayment(
+      unpaid.orderId,
+      Number(unpaid.amount ?? 0),
+      options.triggerOrderId ?? unpaid.orderId,
+    );
+    return;
+  }
+
+  await resumeSingleOrderPayment(orderId, options.singleOrderPayment);
 }

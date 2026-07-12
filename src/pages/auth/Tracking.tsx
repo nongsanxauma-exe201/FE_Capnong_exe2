@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   MapPin, Truck, Box, CheckCircle2, Clock,
   Phone, MessageSquare, ArrowLeft, Navigation, Wifi, WifiOff,
-  AlertCircle, RefreshCw, Package
+  AlertCircle, RefreshCw, Package, FileText, X
 } from 'lucide-react';
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
@@ -12,6 +12,8 @@ import { orderService, OrderResponse } from '../../services/order.service';
 import { authService } from '../../services/auth.service';
 import { API_BASE_URL, TOKEN_KEY } from '../../services/api.config';
 import { createBaseTileLayer, loadLeafletCss } from '../../utils/vietmapLeaflet';
+import { ImageLightbox } from '../../components/ui';
+import { getOrderStatusLabel } from '../../constants/orderStatusLabels';
 
 interface TrackingProps {
   onBack: () => void;
@@ -82,12 +84,25 @@ const Tracking: React.FC<TrackingProps> = ({ onBack, orderId: orderIdProp, order
   // ---- DATA FROM API ----
   const [orderData,    setOrderData]    = useState<OrderResponse | null>(null);
   const [loadingOrder, setLoadingOrder] = useState(true);
+  const [showWaybill,  setShowWaybill]  = useState(false);
+  const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!orderId) return;
     (async () => {
       setLoadingOrder(true);
       try {
+        // Ưu tiên chi tiết đơn (có trackings + ảnh bằng chứng)
+        try {
+          const byId = await orderService.getOrderById(orderId);
+          if (byId.result) {
+            setOrderData(byId.result);
+            return;
+          }
+        } catch {
+          /* fallback list */
+        }
+
         let found: OrderResponse | undefined;
         if (viewerRole === 'SHOP_OWNER') {
           const ordersRes = await orderService.getAllOrders();
@@ -572,12 +587,20 @@ const Tracking: React.FC<TrackingProps> = ({ onBack, orderId: orderIdProp, order
           <button onClick={onBack} className="size-12 bg-white border border-gray-100 rounded-2xl flex items-center justify-center text-gray-400 hover:text-gray-900 transition-all shadow-sm">
             <ArrowLeft className="size-5" />
           </button>
-          <div>
+          <div className="flex-1 min-w-0">
             <h1 className="text-3xl font-black text-gray-900">Chi tiết hành trình</h1>
             <p className="text-gray-400 font-bold uppercase text-[10px] tracking-widest mt-1">
               Đơn hàng: {displayCode}{orderData?.recipientName ? ` • ${orderData.recipientName}` : ''}
             </p>
           </div>
+          <button
+            type="button"
+            onClick={() => setShowWaybill(true)}
+            className="shrink-0 px-5 py-3 bg-primary text-white font-black rounded-2xl flex items-center gap-2 shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all text-xs uppercase tracking-wider"
+          >
+            <FileText className="size-4" />
+            Xem vận đơn
+          </button>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
@@ -610,6 +633,14 @@ const Tracking: React.FC<TrackingProps> = ({ onBack, orderId: orderIdProp, order
                   </div>
                 ))}
               </div>
+              <button
+                type="button"
+                onClick={() => setShowWaybill(true)}
+                className="w-full mt-8 py-3 bg-primary/10 text-primary font-black rounded-2xl flex items-center justify-center gap-2 hover:bg-primary hover:text-white transition-all text-xs uppercase tracking-wider"
+              >
+                <FileText className="size-4" />
+                Xem vận đơn &amp; bằng chứng
+              </button>
             </div>
 
             {/* Chú thích */}
@@ -832,6 +863,111 @@ const Tracking: React.FC<TrackingProps> = ({ onBack, orderId: orderIdProp, order
         </div>
       </div>
       </div>
+
+      {/* Modal vận đơn — trạng thái + ảnh bằng chứng (giống farmer) */}
+      {showWaybill && (
+        <>
+          <div className="fixed inset-0 z-[100] overflow-y-auto px-4 py-8 bg-black/40 backdrop-blur-sm animate-in fade-in duration-300">
+            <div className="mx-auto bg-white w-full max-w-[620px] rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 max-h-[90vh]">
+              <div className="p-8 overflow-y-auto max-h-[90vh]">
+                <div className="flex items-center justify-between mb-6 gap-4">
+                  <div>
+                    <h3 className="text-xl font-black text-gray-900">Theo dõi hành trình</h3>
+                    <p className="text-xs text-gray-400 font-medium mt-0.5">
+                      #{orderId} · {getOrderStatusLabel(orderData?.status)}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowWaybill(false)}
+                    className="size-9 rounded-2xl border border-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-50"
+                  >
+                    <X className="size-4" />
+                  </button>
+                </div>
+
+                <div className="p-5 bg-gray-50 rounded-3xl border border-gray-100 mb-6">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-1">Trạng thái</p>
+                      <p className="text-sm font-black text-gray-900">{getOrderStatusLabel(orderData?.status)}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-1">Người nhận</p>
+                      <p className="text-sm font-black text-gray-900">{orderData?.recipientName || '—'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-5">
+                  {(!orderData?.trackings || orderData.trackings.length === 0) ? (
+                    <div className="p-6 bg-gray-50 rounded-3xl border border-gray-100 text-center text-sm text-gray-500">
+                      Hiện chưa có thông tin hành trình / bằng chứng.
+                    </div>
+                  ) : (
+                    orderData.trackings
+                      .slice()
+                      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+                      .map((tracking, index) => {
+                        const isDeliveryEvidence =
+                          tracking.status === 'DELIVERED' || tracking.status === 'FAILED';
+                        return (
+                          <div key={tracking.trackingId ?? index} className="rounded-3xl border border-gray-100 p-5 shadow-sm bg-white">
+                            <div className="flex items-start justify-between gap-4">
+                              <div>
+                                <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2">
+                                  Bước {index + 1}
+                                  {isDeliveryEvidence ? ' · Bằng chứng giao hàng' : ''}
+                                </p>
+                                <p className="text-sm font-black text-gray-900">
+                                  {getOrderStatusLabel(tracking.status)}
+                                </p>
+                                <p className="text-[11px] text-gray-400 mt-1">
+                                  {new Date(tracking.createdAt).toLocaleString('vi-VN')}
+                                </p>
+                              </div>
+                            </div>
+                            {tracking.images && tracking.images.length > 0 && (
+                              <div className="mt-4 grid grid-cols-3 gap-3">
+                                {tracking.images.map((image, imageIndex) => (
+                                  <button
+                                    key={imageIndex}
+                                    type="button"
+                                    onClick={() => setLightboxImageUrl(image.imageUrl)}
+                                    className="overflow-hidden rounded-3xl border border-gray-100 bg-gray-50 hover:border-primary transition-all"
+                                  >
+                                    <img
+                                      src={image.imageUrl}
+                                      alt={`Tracking ${index + 1} ảnh ${imageIndex + 1}`}
+                                      className="w-full h-20 object-cover"
+                                    />
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowWaybill(false)}
+                  className="w-full py-4 bg-gray-50 border border-gray-100 rounded-2xl text-sm font-black text-gray-500 hover:bg-gray-100 transition-all mt-6"
+                >
+                  Đóng
+                </button>
+              </div>
+            </div>
+          </div>
+          <ImageLightbox
+            imageUrl={lightboxImageUrl}
+            alt="Ảnh bằng chứng"
+            onClose={() => setLightboxImageUrl(null)}
+          />
+        </>
+      )}
     </div>
   );
 };

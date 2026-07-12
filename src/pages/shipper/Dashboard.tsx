@@ -13,7 +13,7 @@ import { API_BASE_URL, TOKEN_KEY } from '../../services/api.config';
 import {
   Bell, MapPin, Wallet, Navigation, Zap, Clock, Bike, Package,
   ArrowRight, User, LogOut, Truck, CheckCircle2, X, Info,
-  RefreshCw, Loader2, Radio, StopCircle, WifiOff, Store, MessageSquare
+  RefreshCw, Loader2, Radio, StopCircle, WifiOff, Store, MessageSquare, Camera, ImagePlus
 } from 'lucide-react';
 import FakeGPS from './Fakegps';
 import { authService } from '../../services/auth.service';
@@ -49,6 +49,15 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
   const [acceptingOrderId, setAcceptingOrderId] = useState<number | null>(null);
   const [acceptSuccess, setAcceptSuccess] = useState<number | null>(null);
   const [codAcceptOrder, setCodAcceptOrder] = useState<AvailableOrderResponse | null>(null);
+  const [completeModal, setCompleteModal] = useState<{
+    orderId: number;
+    status: 'DELIVERED' | 'FAILED';
+    recipientName?: string;
+  } | null>(null);
+  const [completeNote, setCompleteNote] = useState('');
+  const [completeFiles, setCompleteFiles] = useState<File[]>([]);
+  const [completePreviews, setCompletePreviews] = useState<string[]>([]);
+  const [completingOrder, setCompletingOrder] = useState(false);
   const [trackingStatus, setTrackingStatus] = useState<TrackingStatus>('off');
   const [trackingOrderId, setTrackingOrderId] = useState<number | null>(null);
   // ✅ Fake GPS: orderId đang mở panel fake GPS
@@ -246,15 +255,59 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
 
   useEffect(() => () => stopTracking(), []);
 
-  const handleCompleteOrder = async (orderId: number, status: 'DELIVERED' | 'FAILED') => {
+  const openCompleteModal = (orderId: number, status: 'DELIVERED' | 'FAILED', recipientName?: string) => {
+    setCompleteModal({ orderId, status, recipientName });
+    setCompleteNote('');
+    setCompleteFiles([]);
+    setCompletePreviews((prev) => {
+      prev.forEach((url) => URL.revokeObjectURL(url));
+      return [];
+    });
+  };
+
+  const closeCompleteModal = () => {
+    setCompleteModal(null);
+    setCompleteNote('');
+    setCompleteFiles([]);
+    setCompletePreviews((prev) => {
+      prev.forEach((url) => URL.revokeObjectURL(url));
+      return [];
+    });
+  };
+
+  const handlePickEvidenceFiles = (fileList: FileList | null) => {
+    if (!fileList?.length) return;
+    const next = Array.from(fileList).slice(0, 5);
+    setCompleteFiles(next);
+    setCompletePreviews((prev) => {
+      prev.forEach((url) => URL.revokeObjectURL(url));
+      return next.map((f) => URL.createObjectURL(f));
+    });
+  };
+
+  const handleCompleteOrder = async () => {
+    if (!completeModal) return;
+    const { orderId, status } = completeModal;
     try {
-    const respone =   await shipperService.updateOrderStatus(orderId, { status });
-  console.log(" Loi shipment", respone)
+      setCompletingOrder(true);
+      await shipperService.updateOrderStatus(
+        orderId,
+        { status, note: completeNote.trim() || undefined },
+        completeFiles.length > 0 ? completeFiles : undefined,
+      );
       if (trackingOrderId === orderId) stopTracking();
+      closeCompleteModal();
       fetchMyOrders();
-      globalShowAlert(status === 'DELIVERED' ? '✅ Giao hàng thành công!' : '❌ Đã đánh dấu thất bại', 'Cập nhật', status === 'DELIVERED' ? 'success' : 'warning');
-    } catch(errors) {
-      globalShowAlert(errors?.data?.message, 'Lỗi', 'error'); }
+      globalShowAlert(
+        status === 'DELIVERED' ? 'Giao hàng thành công!' : 'Đã đánh dấu thất bại',
+        'Cập nhật',
+        status === 'DELIVERED' ? 'success' : 'warning',
+      );
+    } catch (errors: any) {
+      globalShowAlert(errors?.data?.message || 'Không thể cập nhật trạng thái', 'Lỗi', 'error');
+    } finally {
+      setCompletingOrder(false);
+    }
   };
 
   // ===================== HELPERS =====================
@@ -377,12 +430,12 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
                     <StopCircle className="size-4 shrink-0" /> Dừng GPS
                   </button>
                 )}
-                <button onClick={() => handleCompleteOrder(order.orderId, 'DELIVERED')}
+                <button onClick={() => openCompleteModal(order.orderId, 'DELIVERED', order.recipientName)}
                   title={codOrder ? 'Xác nhận đã thu đúng tiền COD từ khách' : undefined}
                   className="flex-1 min-w-0 h-12 px-3 bg-primary text-white text-xs font-black rounded-2xl flex items-center justify-center gap-2 hover:bg-primary-dark transition-all shadow-lg shadow-primary/20 whitespace-nowrap">
                   <CheckCircle2 className="size-4 shrink-0" /> Đã giao
                 </button>
-                <button onClick={() => handleCompleteOrder(order.orderId, 'FAILED')}
+                <button onClick={() => openCompleteModal(order.orderId, 'FAILED', order.recipientName)}
                   className="h-12 w-12 shrink-0 bg-red-50 text-red-500 font-black rounded-2xl hover:bg-red-500 hover:text-white transition-all border border-red-100 flex items-center justify-center">
                   <X className="size-4" />
                 </button>
@@ -698,6 +751,87 @@ const ShipperDashboard: React.FC<ShipperDashboardProps> = ({ onLogout }) => {
                   <div><h4 className="font-black text-gray-900">{n.title}</h4><p className="text-sm text-gray-500 mt-1">{n.message}</p></div>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+      {completeModal && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={closeCompleteModal} />
+          <div className="bg-white w-full max-w-lg rounded-[36px] shadow-2xl relative z-10 p-8">
+            <h3 className="text-2xl font-black text-gray-900 uppercase">
+              {completeModal.status === 'DELIVERED' ? 'Xác nhận giao thành công' : 'Báo giao thất bại'}
+            </h3>
+            <p className="text-sm text-gray-500 font-semibold mt-2">
+              Đơn #{completeModal.orderId}
+              {completeModal.recipientName ? ` · ${completeModal.recipientName}` : ''}
+            </p>
+
+            {completeModal.status === 'FAILED' && (
+              <div className="mt-5">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Lý do (tuỳ chọn)</label>
+                <textarea
+                  value={completeNote}
+                  onChange={(e) => setCompleteNote(e.target.value)}
+                  placeholder="VD: Không liên lạc được, sai địa chỉ..."
+                  className="mt-2 w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-800 outline-none focus:border-primary min-h-[88px] resize-none"
+                />
+              </div>
+            )}
+
+            <div className="mt-5">
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                Ảnh bằng chứng (tuỳ chọn)
+              </label>
+              <label className="mt-2 flex flex-col items-center justify-center gap-2 rounded-3xl border-2 border-dashed border-gray-200 bg-gray-50 px-4 py-6 cursor-pointer hover:border-primary/40 hover:bg-primary/5 transition-all">
+                <ImagePlus className="size-6 text-gray-400" />
+                <span className="text-xs font-black text-gray-500 uppercase">Chọn ảnh từ máy</span>
+                <span className="text-[10px] text-gray-400 font-semibold">Tối đa 5 ảnh · Không bắt buộc</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  capture="environment"
+                  className="hidden"
+                  onChange={(e) => handlePickEvidenceFiles(e.target.files)}
+                />
+              </label>
+              {completePreviews.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {completePreviews.map((url, idx) => (
+                    <div key={url} className="relative size-20 rounded-2xl overflow-hidden border border-gray-100">
+                      <img src={url} alt={`evidence-${idx}`} className="size-full object-cover" />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-8 flex gap-3">
+              <button
+                type="button"
+                onClick={closeCompleteModal}
+                disabled={completingOrder}
+                className="flex-1 h-12 rounded-2xl border border-gray-200 text-xs font-black text-gray-600 uppercase hover:bg-gray-50 disabled:opacity-50"
+              >
+                Huỷ
+              </button>
+              <button
+                type="button"
+                onClick={handleCompleteOrder}
+                disabled={completingOrder}
+                className={`flex-1 h-12 rounded-2xl text-xs font-black text-white uppercase flex items-center justify-center gap-2 disabled:opacity-60 ${
+                  completeModal.status === 'FAILED' ? 'bg-red-500 hover:bg-red-600' : 'bg-primary hover:bg-primary-dark'
+                }`}
+              >
+                {completingOrder ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : completeModal.status === 'DELIVERED' ? (
+                  <><Camera className="size-4" /> Xác nhận giao</>
+                ) : (
+                  'Báo thất bại'
+                )}
+              </button>
             </div>
           </div>
         </div>

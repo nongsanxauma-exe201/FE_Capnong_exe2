@@ -45,6 +45,7 @@ export interface CheckoutBatchRequest {
     recipientName: string;
     recipientPhone: string;
     shippingAddress: string;
+    placeId?: string | null;
     note?: string;
     paymentMethod: string;
     shopOrders: ShopOrderRequest[];
@@ -148,6 +149,7 @@ export interface OrderResponse {
     note: string;
     shippingFee: number;
   shippingDiscountAmount?: number;
+    batchDiscountAmount?: number | null;
     totalAmount: number;
     totalKg?: number;
     rescuedKg?: number;
@@ -172,10 +174,13 @@ export interface OrderResponse {
     qcBuyerDecisionDeadline?: string | null;
     qcBuyerAcceptedRemaining?: boolean | null;
     checkoutBatchId?: number | null;
+    checkoutBatchStatus?: string | null;
     batchUnpaidCount?: number | null;
     batchShopCount?: number | null;
     hasPlatformBatchVoucher?: boolean | null;
     batchPendingTotalAmount?: number | null;
+    batchCheckoutTotalAmount?: number | null;
+    batchPlatformDiscountAmount?: number | null;
 }
 
 export interface ShopReportOrderDay {

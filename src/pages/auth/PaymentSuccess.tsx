@@ -211,7 +211,7 @@ const PaymentSuccess: React.FC = () => {
                 Chúng tôi sẽ xử lý đơn hàng trong thời gian sớm nhất.
               </p>
 
-              {(paidOrderIds.length > 0 || orderSummary?.id || orderCode) && (
+              {(paidOrderIds.length > 0 || orderCode) && (
                 <div className="w-full p-6 bg-gray-50 rounded-3xl mb-8">
                   <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2">
                     {paidOrderIds.length > 1 ? 'Mã đơn hàng' : 'Mã đơn hàng'}
