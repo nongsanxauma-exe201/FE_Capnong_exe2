@@ -185,27 +185,56 @@ const KYCApproval: React.FC = () => {
                     </td>
                     <td className="px-6 py-6 text-center">
                       <div className="flex flex-col items-center gap-2">
-                        {u.achievement ? (
-                          <a
-                            href={getImageUrl(u.achievement)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-2 px-3 py-1.5 bg-primary/5 text-primary text-[10px] font-black rounded-lg hover:bg-primary/10 transition-all uppercase"
-                          >
-                            <FileText className="size-3" /> Xem chứng chỉ
-                          </a>
+                        {u.role?.name === 'SHIPPER' ? (
+                          <>
+                            {u.licenseImageUrl ? (
+                              <a
+                                href={getImageUrl(u.licenseImageUrl)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-2 px-3 py-1.5 bg-primary/5 text-primary text-[10px] font-black rounded-lg hover:bg-primary/10 transition-all uppercase"
+                              >
+                                <FileText className="size-3" /> Xem bằng lái
+                              </a>
+                            ) : (
+                              <span className="text-[10px] text-gray-300 font-bold italic">Chưa tải bằng lái</span>
+                            )}
+                            {u.logoUrl && (
+                              <a
+                                href={getImageUrl(u.logoUrl)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[9px] text-gray-400 hover:text-primary underline font-bold"
+                              >
+                                Xem ảnh chân dung
+                              </a>
+                            )}
+                          </>
                         ) : (
-                          <span className="text-[10px] text-gray-300 font-bold italic">Chưa tải lên</span>
-                        )}
-                        {u.logoUrl && (
-                          <a
-                            href={getImageUrl(u.logoUrl)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-[9px] text-gray-400 hover:text-primary underline font-bold"
-                          >
-                            Xem ảnh đại diện gốc
-                          </a>
+                          <>
+                            {u.achievement ? (
+                              <a
+                                href={getImageUrl(u.achievement)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-2 px-3 py-1.5 bg-primary/5 text-primary text-[10px] font-black rounded-lg hover:bg-primary/10 transition-all uppercase"
+                              >
+                                <FileText className="size-3" /> Xem chứng chỉ
+                              </a>
+                            ) : (
+                              <span className="text-[10px] text-gray-300 font-bold italic">Chưa tải lên</span>
+                            )}
+                            {u.logoUrl && (
+                              <a
+                                href={getImageUrl(u.logoUrl)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[9px] text-gray-400 hover:text-primary underline font-bold"
+                              >
+                                Xem ảnh đại diện gốc
+                              </a>
+                            )}
+                          </>
                         )}
                       </div>
                     </td>
@@ -377,7 +406,7 @@ const KYCApproval: React.FC = () => {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                       <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">NGÂN HÀNG</p>
-                      <p className="font-bold text-gray-900 mt-1">{(viewingUser as any).bankName || 'N/A'}</p>
+                      <p className="font-bold text-gray-900 mt-1">{viewingUser.bankName || 'N/A'}</p>
                     </div>
                     <div>
                       <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">SỐ TÀI KHOẢN</p>
@@ -385,7 +414,7 @@ const KYCApproval: React.FC = () => {
                     </div>
                     <div>
                       <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">CHỦ TÀI KHOẢN</p>
-                      <p className="font-bold text-gray-900 mt-1">{(viewingUser as any).bankAccountHolder || 'N/A'}</p>
+                      <p className="font-bold text-gray-900 mt-1">{viewingUser.bankAccountHolder || 'N/A'}</p>
                     </div>
                   </div>
                 </div>
@@ -396,7 +425,39 @@ const KYCApproval: React.FC = () => {
                 <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
                   <span className="material-symbols-outlined text-[16px]">folder_open</span> Tài liệu đính kèm
                 </h4>
-                {viewingUser.achievement ? (
+                {viewingUser.role?.name === 'SHIPPER' ? (
+                  (() => {
+                    const docs = [
+                      { url: viewingUser.licenseImageUrl, label: 'Bằng lái xe / CCCD' },
+                      { url: viewingUser.logoUrl, label: 'Ảnh chân dung' },
+                      { url: viewingUser.vehicleDocImageUrl, label: 'Giấy tờ xe' },
+                    ].filter((d) => d.url);
+                    if (docs.length === 0) {
+                      return (
+                        <div className="bg-gray-50 border border-gray-100 border-dashed rounded-2xl p-6 text-center">
+                          <p className="text-gray-400 font-bold text-sm">Chưa tải lên chứng chỉ/hoặc giấy phép</p>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {docs.map((doc) => (
+                          <a key={doc.label} href={getImageUrl(doc.url)} target="_blank" rel="noopener noreferrer" className="block w-full">
+                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">{doc.label}</p>
+                            <div className="h-40 w-full bg-gray-100 rounded-2xl border border-gray-200 overflow-hidden relative group">
+                              <img src={getImageUrl(doc.url)} className="w-full h-full object-contain bg-white group-hover:scale-105 transition-transform duration-500" alt={doc.label} />
+                              <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                <span className="text-white font-bold bg-black/50 px-4 py-2 rounded-full backdrop-blur-md flex items-center gap-2 text-xs">
+                                  <span className="material-symbols-outlined text-sm">open_in_new</span> Xem đầy đủ
+                                </span>
+                              </div>
+                            </div>
+                          </a>
+                        ))}
+                      </div>
+                    );
+                  })()
+                ) : viewingUser.achievement ? (
                   <a href={getImageUrl(viewingUser.achievement)} target="_blank" rel="noopener noreferrer" className="block w-full">
                     <div className="h-48 w-full bg-gray-100 rounded-2xl border border-gray-200 overflow-hidden relative group">
                       <img src={getImageUrl(viewingUser.achievement)} className="w-full h-full object-contain bg-white group-hover:scale-105 transition-transform duration-500" alt="Chứng chỉ" />

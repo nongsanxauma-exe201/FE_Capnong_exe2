@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bike, User, Phone, Mail, Lock, MapPin, CreditCard, FileText, Camera, ArrowRight, ArrowLeft, CheckCircle2, Shield, X } from 'lucide-react';
-import { shipperService, otpService, authService } from '../../services';
+import { Bike, User, Phone, Mail, Lock, MapPin, CreditCard, FileText, Camera, ArrowRight, ArrowLeft, CheckCircle2, Shield } from 'lucide-react';
+// OTP tạm tắt: X
+import { shipperService, authService } from '../../services';
+// OTP tạm tắt
+// import { otpService } from '../../services';
 import { useAuth } from '../../contexts/AuthContext';
 import { AppRole, KYCStatus } from '../../types';
 
@@ -37,17 +40,19 @@ const ShipperRegister: React.FC<ShipperRegisterProps> = ({ onBack }) => {
   });
 
   const [uploadedFiles, setUploadedFiles] = useState({
-    driverLicense: null as File | null, portrait: null as File | null,
+    driverLicense: null as File | null,
+    portrait: null as File | null,
+    vehicleDoc: null as File | null,
   });
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // OTP State
-  const [showOtpModal, setShowOtpModal] = useState(false);
-  const [otpCode, setOtpCode] = useState('');
-  const [otpError, setOtpError] = useState<string | null>(null);
-  const [isVerifying, setIsVerifying] = useState(false);
+  // OTP tạm tắt
+  // const [showOtpModal, setShowOtpModal] = useState(false);
+  // const [otpCode, setOtpCode] = useState('');
+  // const [otpError, setOtpError] = useState<string | null>(null);
+  // const [isVerifying, setIsVerifying] = useState(false);
 
   const handleFileUpload = (field: keyof typeof uploadedFiles, file: File) => {
     setUploadedFiles({ ...uploadedFiles, [field]: file });
@@ -93,6 +98,13 @@ const ShipperRegister: React.FC<ShipperRegisterProps> = ({ onBack }) => {
     return true;
   };
 
+  // OTP tạm tắt — đăng ký trực tiếp
+  const handleCompleteRegister = async () => {
+    if (!validateStep(4)) return;
+    await performRegistration();
+  };
+
+  /* OTP tạm tắt
   const handleSendOtp = async () => {
     if (!validateStep(4)) return;
     setIsLoading(true);
@@ -118,7 +130,6 @@ const ShipperRegister: React.FC<ShipperRegisterProps> = ({ onBack }) => {
     setOtpError(null);
     try {
       await otpService.verifyOtp(formData.email, otpCode);
-      // Nếu thành công thì tiến hành đăng ký
       await performRegistration();
     } catch (err: any) {
       console.error('Verify OTP failed:', err);
@@ -127,13 +138,12 @@ const ShipperRegister: React.FC<ShipperRegisterProps> = ({ onBack }) => {
       setIsVerifying(false);
     }
   };
+  */
 
   const performRegistration = async () => {
     setIsLoading(true);
     try {
-      const description = `Loại xe: ${formData.vehicleType === 'motorbike' ? 'Xe máy' : 'Ô tô'}. ` +
-        `Thành phố: ${formData.city}. ` +
-        `Ngân hàng: ${formData.bankName} - ${formData.bankAccount} - ${formData.bankAccountName}`;
+      const description = `Loại xe: ${formData.vehicleType === 'motorbike' ? 'Xe máy' : 'Ô tô'}. Thành phố: ${formData.city}.`;
 
       const registerData = {
         fullName: formData.fullName,
@@ -143,13 +153,16 @@ const ShipperRegister: React.FC<ShipperRegisterProps> = ({ onBack }) => {
         address: formData.address,
         license: formData.driverLicense,
         vehicleNumber: formData.licensePlate,
+        bankName: formData.bankName,
+        bankAccount: formData.bankAccount,
+        bankAccountHolder: formData.bankAccountName,
         description: description,
       };
 
       const response = await shipperService.register(registerData, uploadedFiles);
 
       if (response.result) {
-        setShowOtpModal(false);
+        // setShowOtpModal(false); // OTP tạm tắt
         // Sau khi đăng ký thành công, tự động đăng nhập để lấy token
         let loginResponse;
         try {
@@ -184,7 +197,7 @@ const ShipperRegister: React.FC<ShipperRegisterProps> = ({ onBack }) => {
       }
     } catch (err: any) {
       console.error('Shipper registration failed:', err);
-      setShowOtpModal(false);
+      // setShowOtpModal(false); // OTP tạm tắt
       setError(err?.data?.message || 'Đăng ký thất bại. Vui lòng thử lại.');
     } finally {
       setIsLoading(false);
@@ -391,19 +404,20 @@ const ShipperRegister: React.FC<ShipperRegisterProps> = ({ onBack }) => {
                   </div>
                 )}
 
-                {(['driverLicense', 'portrait'] as const).map((field) => {
-                  const labels = { driverLicense: 'Bằng lái xe / CCCD', portrait: 'Ảnh chân dung' };
-                  return (
+                {([
+                  { field: 'driverLicense' as const, label: 'Bằng lái xe / CCCD *' },
+                  { field: 'portrait' as const, label: 'Ảnh chân dung *' },
+                  { field: 'vehicleDoc' as const, label: 'Giấy tờ xe (tùy chọn)' },
+                ]).map(({ field, label }) => (
                     <div key={field}>
                       <input type="file" id={field} accept="image/*" onChange={(e) => e.target.files && handleFileUpload(field, e.target.files[0])} className="hidden" disabled={isLoading} />
                       <label htmlFor={field} className={`block p-3.5 rounded-2xl border-2 border-dashed cursor-pointer flex items-center gap-3 transition-all ${uploadedFiles[field] ? 'border-primary bg-primary/5' : 'border-gray-200 hover:border-primary/50 hover:bg-gray-50'} ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
                         {uploadedFiles[field] ? <CheckCircle2 className="size-5 text-primary" /> : <Camera className="size-5 text-gray-300" />}
-                        <span className="text-sm font-bold text-gray-700">{labels[field]}</span>
+                        <span className="text-sm font-bold text-gray-700">{label}</span>
                         {uploadedFiles[field] && <span className="text-sm text-primary ml-auto font-bold">✓ Đã tải</span>}
                       </label>
                     </div>
-                  );
-                })}
+                ))}
                 <div className="p-3.5 bg-blue-50 rounded-2xl border border-blue-100 flex gap-3 mt-3">
                   <Shield className="size-5 text-blue-600 shrink-0 mt-0.5" />
                   <p className="text-xs text-blue-800 leading-relaxed">Thông tin được mã hóa và bảo mật, chỉ dùng để xác thực danh tính.</p>
@@ -429,11 +443,20 @@ const ShipperRegister: React.FC<ShipperRegisterProps> = ({ onBack }) => {
                   className="w-full px-4 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none text-base cursor-pointer"
                   required disabled={isLoading}>
                   <option value="">Chọn ngân hàng</option>
-                  <option value="vcb">Vietcombank</option>
-                  <option value="tcb">Techcombank</option>
-                  <option value="mb">MB Bank</option>
-                  <option value="acb">ACB</option>
-                  <option value="bidv">BIDV</option>
+                  <option value="Vietcombank">Vietcombank</option>
+                  <option value="BIDV">BIDV</option>
+                  <option value="VietinBank">VietinBank</option>
+                  <option value="Agribank">Agribank</option>
+                  <option value="Techcombank">Techcombank</option>
+                  <option value="ACB">ACB</option>
+                  <option value="Sacombank">Sacombank</option>
+                  <option value="MB Bank">MB Bank</option>
+                  <option value="VPBank">VPBank</option>
+                  <option value="TPBank">TPBank</option>
+                  <option value="SHB">SHB</option>
+                  <option value="HDBank">HDBank</option>
+                  <option value="VIB">VIB</option>
+                  <option value="OCB">OCB</option>
                 </select>
                 <div className="relative">
                   <CreditCard className="absolute left-4 top-1/2 -translate-y-1/2 size-5 text-gray-300" />
@@ -465,7 +488,7 @@ const ShipperRegister: React.FC<ShipperRegisterProps> = ({ onBack }) => {
                   Quay lại
                 </button>
               )}
-              <button onClick={() => step < 4 ? handleNext() : handleSendOtp()} type="button"
+              <button onClick={() => step < 4 ? handleNext() : handleCompleteRegister()} type="button"
                 disabled={isLoading}
                 className="flex-1 py-3.5 bg-primary text-white rounded-2xl font-bold text-base flex items-center justify-center gap-2 hover:bg-primary-dark shadow-lg shadow-primary/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
                 {isLoading ? (
@@ -484,7 +507,7 @@ const ShipperRegister: React.FC<ShipperRegisterProps> = ({ onBack }) => {
         </div>
       </div>
 
-      {/* OTP Verification Modal */}
+      {/* OTP Verification Modal — tạm tắt. Bỏ comment + import Shield,X + state OTP + đổi nút về handleSendOtp để bật lại
       {showOtpModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-[32px] w-full max-w-md p-8 shadow-2xl relative translate-y-0 animate-in slide-in-from-bottom-4 duration-300">
@@ -552,6 +575,7 @@ const ShipperRegister: React.FC<ShipperRegisterProps> = ({ onBack }) => {
           </div>
         </div>
       )}
+      */}
     </div>
   );
 };
