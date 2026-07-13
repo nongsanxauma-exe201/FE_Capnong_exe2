@@ -54,7 +54,9 @@ const OAuthRegister: React.FC<OAuthRegisterProps> = ({ onGoToLogin }) => {
     const [shopName, setShopName] = useState('');
     const [address, setAddress] = useState('');
     const [description, setDescription] = useState('');
+    const [bankName, setBankName] = useState('');
     const [bankAccount, setBankAccount] = useState('');
+    const [bankAccountHolder, setBankAccountHolder] = useState('');
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [achievementFile, setAchievementFile] = useState<File | null>(null);
 
@@ -68,6 +70,7 @@ const OAuthRegister: React.FC<OAuthRegisterProps> = ({ onGoToLogin }) => {
     const [shipperBankAccountName, setShipperBankAccountName] = useState('');
     const [driverLicenseFile, setDriverLicenseFile] = useState<File | null>(null);
     const [portraitFile, setPortraitFile] = useState<File | null>(null);
+    const [vehicleDocFile, setVehicleDocFile] = useState<File | null>(null);
 
     // Extract query params on mount
     useEffect(() => {
@@ -179,13 +182,15 @@ const OAuthRegister: React.FC<OAuthRegisterProps> = ({ onGoToLogin }) => {
         };
 
         if (selectedRole === AppRole.FARMER) {
-            if (!shopName || !address || !bankAccount) {
+            if (!shopName || !address || !bankName || !bankAccount || !bankAccountHolder) {
                 setError('Vui lòng điền đầy đủ thông tin cửa hàng'); return;
             }
             registrationData.shopName = shopName;
             registrationData.address = address;
             registrationData.description = description;
+            registrationData.bankName = bankName;
             registrationData.bankAccount = bankAccount;
+            registrationData.bankAccountHolder = bankAccountHolder;
         } else if (selectedRole === AppRole.SHIPPER) {
             if (!licensePlate || !driverLicense || !address || !city || !shipperBankName || !shipperBankAccount || !shipperBankAccountName) {
                 setError('Vui lòng điền đầy đủ thông tin giao hàng'); return;
@@ -196,10 +201,11 @@ const OAuthRegister: React.FC<OAuthRegisterProps> = ({ onGoToLogin }) => {
             registrationData.license = driverLicense;
             registrationData.vehicleNumber = licensePlate;
             registrationData.address = address;
+            registrationData.bankName = shipperBankName;
+            registrationData.bankAccount = shipperBankAccount;
+            registrationData.bankAccountHolder = shipperBankAccountName;
             registrationData.description =
-                `Loại xe: ${vehicleType === 'motorbike' ? 'Xe máy' : 'Ô tô'}. ` +
-                `Thành phố: ${city}. ` +
-                `Ngân hàng: ${shipperBankName} - ${shipperBankAccount} - ${shipperBankAccountName}`;
+                `Loại xe: ${vehicleType === 'motorbike' ? 'Xe máy' : 'Ô tô'}. Thành phố: ${city}.`;
         }
 
         submittingRef.current = true;
@@ -207,10 +213,22 @@ const OAuthRegister: React.FC<OAuthRegisterProps> = ({ onGoToLogin }) => {
         try {
             // ── [FIX #3] Đăng ký trực tiếp, KHÔNG cần OTP ──
             // Google đã xác thực email rồi nên bỏ bước gửi OTP
-            const logoOrPortrait   = (selectedRole === AppRole.FARMER ? logoFile      : portraitFile)   ?? undefined;
-            const achieveOrLicense = (selectedRole === AppRole.FARMER ? achievementFile : driverLicenseFile) ?? undefined;
-
-            await authService.register(registrationData, logoOrPortrait, achieveOrLicense);
+            if (selectedRole === AppRole.SHIPPER) {
+                // BE shipper: logoUrl = chân dung, licenseImage = bằng lái (không dùng achievement)
+                await authService.register(
+                    registrationData,
+                    portraitFile ?? undefined,
+                    undefined,
+                    driverLicenseFile ?? undefined,
+                    vehicleDocFile ?? undefined,
+                );
+            } else {
+                await authService.register(
+                    registrationData,
+                    logoFile ?? undefined,
+                    achievementFile ?? undefined,
+                );
+            }
             handleAfterRegister(randomPassword);
 
         } catch (err: any) {
@@ -351,7 +369,33 @@ const OAuthRegister: React.FC<OAuthRegisterProps> = ({ onGoToLogin }) => {
                                 <div className="space-y-3">
                                     <InputField icon="store" placeholder="Tên cửa hàng/nông trại *" value={shopName} onChange={setShopName} required disabled={isLoading} />
                                     <InputField icon="location_on" placeholder="Địa chỉ chi tiết *" value={address} onChange={setAddress} required disabled={isLoading} />
-                                    <InputField icon="account_balance_wallet" placeholder="Số Tải khoản ngân hàng *" value={bankAccount} onChange={setBankAccount} required disabled={isLoading} />
+                                    <select
+                                        value={bankName}
+                                        onChange={(e) => setBankName(e.target.value)}
+                                        required
+                                        disabled={isLoading}
+                                        className="w-full px-4 py-3.5 bg-white border-2 border-cream rounded-2xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none font-semibold text-slate-700 cursor-pointer"
+                                    >
+                                        <option value="">Chọn ngân hàng *</option>
+                                        <option value="Vietcombank">Vietcombank</option>
+                                        <option value="BIDV">BIDV</option>
+                                        <option value="VietinBank">VietinBank</option>
+                                        <option value="Agribank">Agribank</option>
+                                        <option value="Techcombank">Techcombank</option>
+                                        <option value="ACB">ACB</option>
+                                        <option value="Sacombank">Sacombank</option>
+                                        <option value="MB Bank">MB Bank</option>
+                                        <option value="VPBank">VPBank</option>
+                                        <option value="TPBank">TPBank</option>
+                                        <option value="SHB">SHB</option>
+                                        <option value="HDBank">HDBank</option>
+                                        <option value="VIB">VIB</option>
+                                        <option value="OCB">OCB</option>
+                                    </select>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <InputField icon="account_balance_wallet" placeholder="Số tài khoản *" value={bankAccount} onChange={setBankAccount} required disabled={isLoading} />
+                                        <InputField icon="badge" placeholder="Chủ tài khoản *" value={bankAccountHolder} onChange={setBankAccountHolder} required disabled={isLoading} />
+                                    </div>
                                     <div className="relative group">
                                         <span className="material-symbols-outlined absolute left-4 top-4 text-slate-350 z-10">description</span>
                                         <textarea placeholder="Mô tả ngắn" value={description} onChange={e => setDescription(e.target.value)} disabled={isLoading} className="w-full pl-12 pr-4 py-3.5 rounded-2xl border-2 border-cream bg-white focus:ring-0 focus:border-primary transition-all outline-none font-semibold text-slate-700 resize-none h-24 text-[15px]" />
@@ -427,7 +471,7 @@ const OAuthRegister: React.FC<OAuthRegisterProps> = ({ onGoToLogin }) => {
                                             }} className="hidden" disabled={isLoading} />
                                             <label htmlFor="driverLicenseUpload" className={`block p-2 rounded-2xl border-2 border-dashed cursor-pointer flex flex-col items-center justify-center gap-1 transition-all h-full min-h-[72px] ${driverLicenseFile ? 'border-primary bg-primary/5' : 'border-cream hover:border-primary/50 hover:bg-slate-50'} ${isLoading ? 'opacity-50' : ''}`}>
                                                 <span className={`material-symbols-outlined text-xl ${driverLicenseFile ? 'text-primary' : 'text-slate-400'}`}>{driverLicenseFile ? 'check_circle' : 'camera_alt'}</span>
-                                                <span className="text-[11px] font-bold text-slate-500 text-center leading-tight">{driverLicenseFile ? 'Đã tải bằng lái' : 'Chụp Bằng lái xe'}</span>
+                                                <span className="text-[11px] font-bold text-slate-500 text-center leading-tight">{driverLicenseFile ? 'Đã tải bằng lái' : 'Chụp Bằng lái xe *'}</span>
                                             </label>
                                         </div>
                                         <div>
@@ -436,19 +480,37 @@ const OAuthRegister: React.FC<OAuthRegisterProps> = ({ onGoToLogin }) => {
                                             }} className="hidden" disabled={isLoading} />
                                             <label htmlFor="portraitUpload" className={`block p-2 rounded-2xl border-2 border-dashed cursor-pointer flex flex-col items-center justify-center gap-1 transition-all h-full min-h-[72px] ${portraitFile ? 'border-primary bg-primary/5' : 'border-cream hover:border-primary/50 hover:bg-slate-50'} ${isLoading ? 'opacity-50' : ''}`}>
                                                 <span className={`material-symbols-outlined text-xl ${portraitFile ? 'text-primary' : 'text-slate-400'}`}>{portraitFile ? 'check_circle' : 'face'}</span>
-                                                <span className="text-[11px] font-bold text-slate-500 text-center leading-tight px-1">{portraitFile ? 'Đã tải chân dung' : 'Ảnh chân dung'}</span>
+                                                <span className="text-[11px] font-bold text-slate-500 text-center leading-tight px-1">{portraitFile ? 'Đã tải chân dung' : 'Ảnh chân dung *'}</span>
                                             </label>
                                         </div>
+                                    </div>
+                                    <div>
+                                        <input type="file" id="vehicleDocUpload" accept="image/*" onChange={(e) => {
+                                            if (e.target.files && e.target.files[0]) setVehicleDocFile(e.target.files[0]);
+                                        }} className="hidden" disabled={isLoading} />
+                                        <label htmlFor="vehicleDocUpload" className={`block p-2 rounded-2xl border-2 border-dashed cursor-pointer flex flex-col items-center justify-center gap-1 transition-all min-h-[72px] ${vehicleDocFile ? 'border-primary bg-primary/5' : 'border-cream hover:border-primary/50 hover:bg-slate-50'} ${isLoading ? 'opacity-50' : ''}`}>
+                                            <span className={`material-symbols-outlined text-xl ${vehicleDocFile ? 'text-primary' : 'text-slate-400'}`}>{vehicleDocFile ? 'check_circle' : 'directions_car'}</span>
+                                            <span className="text-[11px] font-bold text-slate-500 text-center leading-tight px-1">{vehicleDocFile ? 'Đã tải giấy tờ xe' : 'Giấy tờ xe (tùy chọn)'}</span>
+                                        </label>
                                     </div>
 
                                     <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest pl-1 mt-6">Thông tin Thanh toán</h3>
                                     <select value={shipperBankName} onChange={(e) => setShipperBankName(e.target.value)} required disabled={isLoading} className="w-full px-4 py-3.5 bg-white border-2 border-cream rounded-2xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none font-semibold text-slate-700 cursor-pointer">
                                         <option value="">Chọn ngân hàng *</option>
-                                        <option value="vcb">Vietcombank</option>
-                                        <option value="tcb">Techcombank</option>
-                                        <option value="mb">MB Bank</option>
-                                        <option value="acb">ACB</option>
-                                        <option value="bidv">BIDV</option>
+                                        <option value="Vietcombank">Vietcombank</option>
+                                        <option value="BIDV">BIDV</option>
+                                        <option value="VietinBank">VietinBank</option>
+                                        <option value="Agribank">Agribank</option>
+                                        <option value="Techcombank">Techcombank</option>
+                                        <option value="ACB">ACB</option>
+                                        <option value="Sacombank">Sacombank</option>
+                                        <option value="MB Bank">MB Bank</option>
+                                        <option value="VPBank">VPBank</option>
+                                        <option value="TPBank">TPBank</option>
+                                        <option value="SHB">SHB</option>
+                                        <option value="HDBank">HDBank</option>
+                                        <option value="VIB">VIB</option>
+                                        <option value="OCB">OCB</option>
                                     </select>
                                     <InputField icon="credit_card" placeholder="Số tài khoản *" value={shipperBankAccount} onChange={setShipperBankAccount} required disabled={isLoading} />
                                     <InputField icon="person" placeholder="Tên chủ tài khoản *" value={shipperBankAccountName} onChange={setShipperBankAccountName} required disabled={isLoading} />
