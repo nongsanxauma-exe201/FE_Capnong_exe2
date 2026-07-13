@@ -138,7 +138,18 @@ class ShipperService {
     return httpClient.post<ShipperOrderResponse>(`/shipper/orders/${orderId}/accept`, codPaymentOption ? { codPaymentOption } : {});
   }
 
-  async updateOrderStatus(orderId: number, request: UpdateOrderStatusRequest): Promise<ApiResponse<ShipperOrderResponse>> {
+  async updateOrderStatus(
+    orderId: number,
+    request: UpdateOrderStatusRequest,
+    files?: File[]
+  ): Promise<ApiResponse<ShipperOrderResponse>> {
+    if (files && files.length > 0) {
+      const formData = new FormData();
+      formData.append('status', request.status);
+      if (request.note) formData.append('note', request.note);
+      files.forEach((file) => formData.append('files', file));
+      return httpClient.post<ShipperOrderResponse>(`/shipper/orders/${orderId}/status`, formData);
+    }
     return httpClient.post<ShipperOrderResponse>(`/shipper/orders/${orderId}/status`, request);
   }
 

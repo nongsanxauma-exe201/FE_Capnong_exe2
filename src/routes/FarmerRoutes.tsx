@@ -69,8 +69,7 @@ const VehiclesWrapper = () => {
 };
 
 const OrdersWrapper = () => {
-    const navigate = useNavigate();
-    return <Orders onPrepareOrder={(id) => navigate(`/farmer/order-prep/${id}`)} />;
+    return <Orders />;
 };
 
 const OrderPreparationWrapper = () => {

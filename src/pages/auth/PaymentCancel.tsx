@@ -62,7 +62,7 @@ const PaymentCancel: React.FC = () => {
   }, []);
 
   const handleGoToMyOrders = () => {
-    navigate('/my-orders');
+    window.location.assign('/my-orders');
   };
 
   const handleGoHome = () => {

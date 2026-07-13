@@ -206,6 +206,7 @@ const Register: React.FC<RegisterProps> = ({ onGoToLogin, onGoToShipperRegister 
       [AppRole.FARMER]: 'SHOP_OWNER',
       [AppRole.SHIPPER]: 'SHIPPER',
       [AppRole.ADMIN]: 'ADMIN',
+      [AppRole.STAFF]: 'STAFF',
     };
 
     const registrationData: any = {

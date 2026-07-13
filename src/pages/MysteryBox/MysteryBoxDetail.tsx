@@ -17,7 +17,8 @@ import {
   ThumbsUp,
   ThumbsDown,
 } from 'lucide-react';
-import { mysteryBoxService, MysteryBox, cartService, reviewService, ReviewResponse } from '../../services';
+import { mysteryBoxService, MysteryBox, cartService, reviewService, ReviewResponse, productService, userService } from '../../services';
+import { UserResponse } from '../../services/auth.service';
 import { globalShowAlert } from '../../contexts/PopupContext';
 import { useAuth } from '../../contexts/AuthContext';
 import ShopProducts from '../Product/ShopProducts';
@@ -42,6 +43,9 @@ const MysteryBoxDetail: React.FC<MysteryBoxDetailProps> = ({
   const [quantity, setQuantity] = useState(1);
   const [isAdding, setIsAdding] = useState(false);
   const [reviews, setReviews] = useState<ReviewResponse[]>([]);
+  const [shopReviews, setShopReviews] = useState<ReviewResponse[]>([]);
+  const [shopOwner, setShopOwner] = useState<UserResponse | null>(null);
+  const [resolvedShopName, setResolvedShopName] = useState<string | null>(null);
   const [viewShopMode, setViewShopMode] = useState(false);
   const [reactingReviewId, setReactingReviewId] = useState<number | null>(null);
 
@@ -58,6 +62,18 @@ const MysteryBoxDetail: React.FC<MysteryBoxDetailProps> = ({
         const res = await mysteryBoxService.getById(Number(boxId));
         if (res.result) {
           setBox(res.result);
+          const ownerId = res.result.shopOwnerId;
+          if (ownerId) {
+            try {
+              const productsRes = await productService.getForBuyer();
+              const match = productsRes.result?.find(
+                (p) => p.shopOwnerId === ownerId || p.shopId === ownerId,
+              );
+              if (match?.shopName) setResolvedShopName(match.shopName);
+            } catch {
+              /* fallback via shop owner fetch */
+            }
+          }
         } else {
           setError('Không tìm thấy túi mù.');
         }
@@ -84,6 +100,35 @@ const MysteryBoxDetail: React.FC<MysteryBoxDetailProps> = ({
     };
     fetchReviews();
   }, [box?.id, box?.shopOwnerId]);
+
+  useEffect(() => {
+    const fetchShopReviews = async () => {
+      if (!box?.shopOwnerId) return;
+      try {
+        const res = await reviewService.getByShopId(box.shopOwnerId);
+        if (res.result) setShopReviews(res.result);
+      } catch (err) {
+        console.error('Failed to fetch shop reviews:', err);
+      }
+    };
+    if (box?.shopOwnerId) fetchShopReviews();
+  }, [box?.shopOwnerId]);
+
+  useEffect(() => {
+    const fetchShopOwner = async () => {
+      if (!box?.shopOwnerId || !isAuthenticated) return;
+      try {
+        const res = await userService.getUserById(box.shopOwnerId);
+        if (res.result) {
+          setShopOwner(res.result);
+          if (res.result.shopName) setResolvedShopName(res.result.shopName);
+        }
+      } catch (err) {
+        console.error('Failed to fetch shop owner info:', err);
+      }
+    };
+    if (box) fetchShopOwner();
+  }, [box?.shopOwnerId, isAuthenticated]);
 
   const handleReact = async (reviewId: number, reactionType: 'LIKE' | 'DISLIKE') => {
     if (!isAuthenticated) { navigate('/login'); return; }
@@ -149,6 +194,10 @@ const MysteryBoxDetail: React.FC<MysteryBoxDetailProps> = ({
       </div>
     );
   }
+
+  const farmName = shopOwner?.shopName
+    ?? resolvedShopName
+    ?? (box.shopOwnerId ? `Nông trại #${box.shopOwnerId}` : 'Nông trại đối tác');
 
   return (
     <div className="flex-1 bg-white pb-20">
@@ -245,10 +294,10 @@ const MysteryBoxDetail: React.FC<MysteryBoxDetailProps> = ({
           )}
 
           {/* Farm info */}
-          <div className="flex items-center gap-2 text-gray-400 text-sm font-bold">
-            <MapPin className="size-4" />
-            <span>Nông trại đối tác #{box.shopOwnerId}</span>
-          </div>          {/* Quantity + Add to cart */}
+          <div className="flex items-center gap-2 text-gray-500 text-sm font-semibold">
+            <MapPin className="size-4 text-primary shrink-0" />
+            <span>{farmName}</span>
+          </div>
           <div className="space-y-3 pt-2">
             <p className="text-[10px] font-black uppercase text-gray-700 tracking-widest">
               Số lượng
@@ -311,15 +360,19 @@ const MysteryBoxDetail: React.FC<MysteryBoxDetailProps> = ({
       </div>
       {/* Shop Info Section */}
       <div className="max-w-7xl mx-auto px-4 mb-20">
-        <div className="bg-gradient-to-br from-green-50 to-white rounded-[32px] border border-green-100 shadow-sm p-10 relative overflow-hidden">
+        <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 lg:p-8">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 relative z-10">
             <div className="flex items-start gap-5">
               <div className="size-24 rounded-2xl overflow-hidden bg-white shadow-sm flex-shrink-0 border-4 border-white">
-                <img src={`https://picsum.photos/seed/shop${box.shopOwnerId}/100/100`} alt="Shop" className="w-full h-full object-cover" />
+                <img
+                  src={shopOwner?.logoUrl || `https://picsum.photos/seed/shop${box.shopOwnerId}/100/100`}
+                  alt={farmName}
+                  className="w-full h-full object-cover"
+                />
               </div>
               <div className="flex-1 pt-1">
-                <h4 className="font-black text-gray-900 text-lg mb-1">Nông trại đối tác #{box.shopOwnerId}</h4>
-                <div className="flex gap-3 mt-4">
+                <h4 className="font-black text-gray-900 text-lg mb-1">{farmName}</h4>
+                <div className="flex flex-wrap gap-3 mt-4">
                   <button
                     onClick={() => { if (box.shopOwnerId) { setViewShopMode(true); } }}
                     className="px-5 py-2.5 bg-white text-primary font-black text-[10px] uppercase tracking-widest rounded-xl border border-primary/20 hover:bg-primary hover:text-white transition-all shadow-sm"
@@ -330,7 +383,7 @@ const MysteryBoxDetail: React.FC<MysteryBoxDetailProps> = ({
                     onClick={() => {
                       if (!isAuthenticated) { navigate('/login'); return; }
                       window.dispatchEvent(new CustomEvent('open-chat-with-user', {
-                        detail: { userId: box.shopOwnerId, userName: 'Chủ shop' }
+                        detail: { userId: box.shopOwnerId, userName: farmName }
                       }));
                     }}
                     className="flex items-center gap-1.5 px-5 py-2.5 bg-blue-50 text-blue-600 font-black text-[10px] uppercase tracking-widest rounded-xl border border-blue-100 hover:bg-blue-500 hover:text-white transition-all shadow-sm"
@@ -341,19 +394,34 @@ const MysteryBoxDetail: React.FC<MysteryBoxDetailProps> = ({
               </div>
             </div>
             <div className="lg:col-span-2 flex items-center">
-              <div className="grid grid-cols-3 gap-8 w-full bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+              <div className="grid grid-cols-3 gap-8 w-full bg-gray-50/80 p-6 rounded-2xl border border-gray-100">
                 <div className="text-center">
                   <p className="text-2xl font-black text-primary mb-1">
-                    {reviews.length > 0 ? (reviews.reduce((acc, r) => acc + r.ratingStar, 0) / reviews.length).toFixed(1) : '—'}
+                    {shopReviews.length > 0
+                      ? (shopReviews.reduce((acc, r) => acc + r.ratingStar, 0) / shopReviews.length).toFixed(1)
+                      : '5.0'}
                   </p>
-                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Đánh Giá ({reviews.length})</p>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+                    Đánh Giá ({shopReviews.length})
+                  </p>
                 </div>
                 <div className="text-center border-l border-r border-gray-100 px-4">
-                  <p className="text-2xl font-black text-gray-900 mb-1">98%</p>
+                  <p className="text-2xl font-black text-gray-900 mb-1">
+                    {shopReviews.length > 0
+                      ? `${Math.round((shopReviews.filter(r => r.replyFromShop).length / shopReviews.length) * 100)}%`
+                      : 'N/A'}
+                  </p>
                   <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Tỉ Lệ Phản Hồi</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-2xl font-black text-gray-900 mb-1">3 Năm</p>
+                  <p className="text-2xl font-black text-gray-900 mb-1">
+                    {(() => {
+                      const joinDate = shopOwner?.createAt || shopOwner?.createdAt;
+                      if (!joinDate) return 'N/A';
+                      const years = Math.floor((Date.now() - new Date(joinDate).getTime()) / (1000 * 60 * 60 * 24 * 365));
+                      return years > 0 ? `${years} Năm` : 'Mới tham gia';
+                    })()}
+                  </p>
                   <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Tham Gia</p>
                 </div>
               </div>

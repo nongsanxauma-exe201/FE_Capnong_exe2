@@ -161,6 +161,14 @@ const IncomingOrders: React.FC = () => {
   const [showShippers, setShowShippers] = useState(false);
   const [selectedShipper, setSelectedShipper] = useState<string | null>(null);
   const [assignedShippers, setAssignedShippers] = useState<Record<string, string>>({});
+  // Placeholder UI: shipper list chưa nối API — tránh crash sau merge
+  const nearbyShippers: Array<{
+    id: string;
+    name: string;
+    avatar: string;
+    distance: string;
+    rating: number;
+  }> = [];
   const [orders, setOrders] = useState<OrderResponse[]>([]);
   const [qualityReviewItem, setQualityReviewItem] = useState<OrderItemResponse | null>(null);
   const [qualityImageUrl, setQualityImageUrl] = useState<string | null>(null);
@@ -344,9 +352,8 @@ const IncomingOrders: React.FC = () => {
   const currentQualityOrders = useMemo(() => {
     if (activeTab === 'qualityChecking') return qualityCheckingOrders;
     if (activeTab === 'qualityChecked') return qualityCheckedOrders;
-    if (activeTab === 'qualityApproved') return qualityApprovedOrders;
     return qualityOrders;
-  }, [activeTab, qualityCheckingOrders, qualityCheckedOrders, qualityApprovedOrders, qualityOrders]);
+  }, [activeTab, qualityCheckingOrders, qualityCheckedOrders, qualityOrders]);
 
   const tabs = tabDefinitions.map((tab) => ({
     ...tab,
@@ -358,8 +365,8 @@ const IncomingOrders: React.FC = () => {
 
   const showIncoming = activeTab === 'all' || activeTab === 'shipping';
   const showArrived = activeTab === 'all' || activeTab === 'arrived';
-  const showConfirmed = activeTab === 'all' || ['qualityChecking', 'qualityChecked', 'qualityApproved'].includes(activeTab);
-  const showIssues = activeTab === 'all' || activeTab === 'qualityRejected';
+  const showConfirmed = activeTab === 'all' || activeTab === 'qualityChecking' || activeTab === 'qualityChecked';
+  const showIssues = activeTab === 'all' && qualityRejectedOrders.length > 0;
 
   if (isLoading && orders.length === 0) {
     return (
