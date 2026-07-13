@@ -12,7 +12,9 @@ export interface ShipperRegisterRequest {
   address: string;
   license: string;
   vehicleNumber: string;
+  bankName?: string;
   bankAccount?: string;
+  bankAccountHolder?: string;
   description?: string;
 }
 
@@ -114,12 +116,15 @@ class ShipperService {
 
   async register(
     shipperData: ShipperRegisterRequest,
-    documents?: { driverLicense?: File; portrait?: File }
+    documents?: { driverLicense?: File; portrait?: File; vehicleDoc?: File }
   ): Promise<ApiResponse<ShipperRegisterResponse>> {
     const formData = new FormData();
     formData.append('data', JSON.stringify({ ...shipperData, roleName: 'SHIPPER' }));
+    // BE: logoUrl = ảnh chân dung; licenseImage = bằng lái; vehicleDocImage = giấy tờ xe
+    // (không dùng achievement — BE chỉ lưu achievement cho SHOP_OWNER)
     if (documents?.portrait) formData.append('logoUrl', documents.portrait);
-    if (documents?.driverLicense) formData.append('achievement', documents.driverLicense);
+    if (documents?.driverLicense) formData.append('licenseImage', documents.driverLicense);
+    if (documents?.vehicleDoc) formData.append('vehicleDocImage', documents.vehicleDoc);
     const response = await fetch(`${API_BASE_URL}/users/register`, { method: 'POST', body: formData });
     const data = await response.json();
     if (!response.ok) throw { status: response.status, data };

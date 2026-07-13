@@ -479,17 +479,17 @@ const ShipperManagement: React.FC = () => {
 
                     <div className="bg-blue-50/50 border border-blue-100 rounded-2xl p-4 mb-4 text-xs text-blue-800 leading-relaxed font-medium">
                       <AlertCircle className="size-4 inline mr-1.5 -mt-0.5" />
-                      Lưu ý: Hệ thống hiện tại lưu trữ <strong>Ảnh chân dung</strong> và <strong>Bằng lái xe</strong> (Ảnh đăng ký xe không hiển thị do giới hạn lưu trữ máy chủ).
+                      Lưu ý: Kiểm tra khớp thông tin giữa ảnh bằng lái, ảnh chân dung và dữ liệu đăng ký.
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Driver License - achievement */}
+                      {/* Driver License - licenseImageUrl */}
                       <div className="space-y-2">
                         <p className="text-[10px] font-black text-gray-500 uppercase tracking-wider text-center">BẰNG LÁI XE / CCCD</p>
-                        {selectedShipper.achievement ? (
-                          <a href={selectedShipper.achievement} target="_blank" rel="noopener noreferrer" className="block">
+                        {selectedShipper.licenseImageUrl ? (
+                          <a href={selectedShipper.licenseImageUrl} target="_blank" rel="noopener noreferrer" className="block">
                             <div className="h-40 w-full bg-gray-100 rounded-2xl border border-gray-200 overflow-hidden relative group">
-                              <img src={selectedShipper.achievement} className="w-full h-full object-cover bg-white group-hover:scale-105 transition-transform duration-500" alt="Bằng lái xe" />
+                              <img src={selectedShipper.licenseImageUrl} className="w-full h-full object-cover bg-white group-hover:scale-105 transition-transform duration-500" alt="Bằng lái xe" />
                               <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                 <span className="text-white font-bold bg-black/50 px-3 py-1.5 rounded-full backdrop-blur-md flex items-center gap-1.5 text-xs">
                                   <span className="material-symbols-outlined text-sm">open_in_new</span> Phóng to
@@ -524,6 +524,17 @@ const ShipperManagement: React.FC = () => {
                           </div>
                         )}
                       </div>
+
+                      {selectedShipper.vehicleDocImageUrl && (
+                        <div className="space-y-2 md:col-span-2">
+                          <p className="text-[10px] font-black text-gray-500 uppercase tracking-wider text-center">GIẤY TỜ XE</p>
+                          <a href={selectedShipper.vehicleDocImageUrl} target="_blank" rel="noopener noreferrer" className="block">
+                            <div className="h-40 w-full bg-gray-100 rounded-2xl border border-gray-200 overflow-hidden relative group">
+                              <img src={selectedShipper.vehicleDocImageUrl} className="w-full h-full object-contain bg-white group-hover:scale-105 transition-transform duration-500" alt="Giấy tờ xe" />
+                            </div>
+                          </a>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

@@ -3,8 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { AppRole, KYCStatus } from '../../types/index';
 import { useAuth } from '../../contexts/AuthContext';
 import { ArrowLeft } from 'lucide-react';
-import { authService, otpService } from '../../services';
-import OTPVerification from '../../components/auth/OTPVerification';
+import { authService } from '../../services';
+// OTP tạm tắt
+// import { otpService } from '../../services';
+// import OTPVerification from '../../components/auth/OTPVerification';
 
 interface RegisterProps {
   onGoToLogin: () => void;
@@ -64,8 +66,9 @@ const Register: React.FC<RegisterProps> = ({ onGoToLogin, onGoToShipperRegister 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [showOtpVerification, setShowOtpVerification] = useState(false);
-  const [pendingRegistration, setPendingRegistration] = useState<any>(null);
+  // OTP tạm tắt
+  // const [showOtpVerification, setShowOtpVerification] = useState(false);
+  // const [pendingRegistration, setPendingRegistration] = useState<any>(null);
   const [farmerStep, setFarmerStep] = useState<1 | 2>(1);
   const BE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api/v1';
   const handleGoogleLogin = () => {
@@ -88,10 +91,13 @@ const Register: React.FC<RegisterProps> = ({ onGoToLogin, onGoToShipperRegister 
   const [shopName, setShopName] = useState('');
   const [address, setAddress] = useState('');
   const [description, setDescription] = useState('');
+  const [bankName, setBankName] = useState('');
   const [bankAccount, setBankAccount] = useState('');
+  const [bankAccountHolder, setBankAccountHolder] = useState('');
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [achievementFile, setAchievementFile] = useState<File | null>(null);
 
+  /* OTP tạm tắt — bỏ comment khối này (+ state showOtpVerification/pendingRegistration) để bật lại
   if (showOtpVerification) {
     return (
       <OTPVerification
@@ -106,7 +112,6 @@ const Register: React.FC<RegisterProps> = ({ onGoToLogin, onGoToShipperRegister 
                 pendingRegistration.achievementFile
               );
               if (response.result) {
-                // Sau khi đăng ký thành công, tự động đăng nhập để lấy token
                 let loginResponse;
                 try {
                   loginResponse = await authService.login({
@@ -125,12 +130,11 @@ const Register: React.FC<RegisterProps> = ({ onGoToLogin, onGoToShipperRegister 
                     else navigate('/');
                   }, 1500);
                 } else {
-                  // If login fails (e.g. pending approval), but registration was successful
                   if (selectedRole === AppRole.FARMER || selectedRole === AppRole.SHIPPER) {
                     setSuccess('Đăng ký thành công! Hồ sơ của bạn đang được chờ duyệt.');
                     setTimeout(() => {
-                      navigate('/kyc', { 
-                        state: { 
+                      navigate('/kyc', {
+                        state: {
                           pendingUser: {
                             name: fullName,
                             email: email,
@@ -143,7 +147,7 @@ const Register: React.FC<RegisterProps> = ({ onGoToLogin, onGoToShipperRegister 
                             avatar: logoFile ? URL.createObjectURL(logoFile) : null,
                             achievement: achievementFile ? achievementFile.name : null
                           }
-                        } 
+                        }
                       });
                     }, 1500);
                   } else {
@@ -164,6 +168,67 @@ const Register: React.FC<RegisterProps> = ({ onGoToLogin, onGoToShipperRegister 
       />
     );
   }
+  */
+
+  const completeRegistration = async (registrationData: any) => {
+    setIsLoading(true);
+    try {
+      const response = await authService.register(
+        registrationData,
+        logoFile || undefined,
+        achievementFile || undefined
+      );
+      if (response.result) {
+        let loginResponse;
+        try {
+          loginResponse = await authService.login({
+            email: email,
+            password: password
+          });
+        } catch (loginErr) {
+          console.error("Auto-login failed:", loginErr);
+        }
+
+        if (loginResponse?.result?.token) {
+          setSuccess('Đăng ký thành công! Đang chuyển hướng...');
+          login(selectedRole);
+          setTimeout(() => {
+            if (selectedRole === AppRole.FARMER || selectedRole === AppRole.SHIPPER) navigate('/kyc');
+            else navigate('/');
+          }, 1500);
+        } else {
+          if (selectedRole === AppRole.FARMER || selectedRole === AppRole.SHIPPER) {
+            setSuccess('Đăng ký thành công! Hồ sơ của bạn đang được chờ duyệt.');
+            setTimeout(() => {
+              navigate('/kyc', {
+                state: {
+                  pendingUser: {
+                    name: fullName,
+                    email: email,
+                    role: selectedRole,
+                    phone: phone,
+                    shopName: shopName,
+                    address: address,
+                    bankAccount: bankAccount,
+                    description: description,
+                    avatar: logoFile ? URL.createObjectURL(logoFile) : null,
+                    achievement: achievementFile ? achievementFile.name : null
+                  }
+                }
+              });
+            }, 1500);
+          } else {
+            setError('Đăng ký thành công nhưng không thể đăng nhập tự động. Vui lòng đăng nhập thủ công.');
+            setTimeout(() => onGoToLogin(), 2000);
+          }
+        }
+      }
+    } catch (err: any) {
+      setError(err?.data?.message || 'Đăng ký thất bại. Vui lòng thử lại.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -187,7 +252,7 @@ const Register: React.FC<RegisterProps> = ({ onGoToLogin, onGoToShipperRegister 
         return; // Advance to step 2 instead of submitting
       } else {
         // Validation for step 2
-        if (!shopName || !address || !bankAccount) {
+        if (!shopName || !address || !bankName || !bankAccount || !bankAccountHolder) {
           setError('Vui lòng điền đầy đủ trường bắt buộc của cửa hàng'); return;
         }
         if (!agreed) {
@@ -216,24 +281,16 @@ const Register: React.FC<RegisterProps> = ({ onGoToLogin, onGoToShipperRegister 
       registrationData.shopName = shopName;
       registrationData.address = address;
       registrationData.description = description;
+      registrationData.bankName = bankName;
       registrationData.bankAccount = bankAccount;
+      registrationData.bankAccountHolder = bankAccountHolder;
     }
 
-    setPendingRegistration({
-      data: registrationData,
-      logoFile,
-      achievementFile
-    });
-
-    setIsLoading(true);
-    try {
-      await otpService.sendOtp(email);
-      setShowOtpVerification(true);
-    } catch (err: any) {
-      setError(err?.data?.message || 'Không thể gửi OTP. Vui lòng thử lại.');
-    } finally {
-      setIsLoading(false);
-    }
+    // OTP tạm tắt — để bật lại: comment completeRegistration bên dưới, bỏ comment 3 dòng này
+    // setPendingRegistration({ data: registrationData, logoFile, achievementFile });
+    // await otpService.sendOtp(email);
+    // setShowOtpVerification(true);
+    await completeRegistration(registrationData);
   };
 
   const isFarmer = selectedRole === AppRole.FARMER;
@@ -432,7 +489,34 @@ const Register: React.FC<RegisterProps> = ({ onGoToLogin, onGoToShipperRegister 
 
                       <div className="grid grid-cols-2 gap-2.5">
                         <InputField icon="storefront" placeholder="Tên shop *" value={shopName} onChange={setShopName} required={isFarmer && farmerStep === 2} disabled={isLoading} />
+                        <select
+                          value={bankName}
+                          onChange={(e) => setBankName(e.target.value)}
+                          required={isFarmer && farmerStep === 2}
+                          disabled={isLoading}
+                          className="w-full px-3 py-3 rounded-xl border-2 border-cream bg-white focus:ring-0 focus:border-primary outline-none font-semibold text-slate-700 text-sm cursor-pointer"
+                        >
+                          <option value="">Ngân hàng *</option>
+                          <option value="Vietcombank">Vietcombank</option>
+                          <option value="BIDV">BIDV</option>
+                          <option value="VietinBank">VietinBank</option>
+                          <option value="Agribank">Agribank</option>
+                          <option value="Techcombank">Techcombank</option>
+                          <option value="ACB">ACB</option>
+                          <option value="Sacombank">Sacombank</option>
+                          <option value="MB Bank">MB Bank</option>
+                          <option value="VPBank">VPBank</option>
+                          <option value="TPBank">TPBank</option>
+                          <option value="SHB">SHB</option>
+                          <option value="HDBank">HDBank</option>
+                          <option value="VIB">VIB</option>
+                          <option value="OCB">OCB</option>
+                        </select>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2.5">
                         <InputField icon="account_balance_wallet" placeholder="Số TK NH *" value={bankAccount} onChange={setBankAccount} required={isFarmer && farmerStep === 2} disabled={isLoading} />
+                        <InputField icon="badge" placeholder="Chủ tài khoản *" value={bankAccountHolder} onChange={setBankAccountHolder} required={isFarmer && farmerStep === 2} disabled={isLoading} />
                       </div>
 
                       <div className="relative group">

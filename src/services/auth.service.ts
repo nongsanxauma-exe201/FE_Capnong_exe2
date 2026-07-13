@@ -26,11 +26,16 @@ export interface RegisterRequest {
   fullName: string;
   phoneNumber: string;
   roleName: 'BUYER' | 'SHOP_OWNER' | 'SHIPPER' | 'ADMIN';
-  // Shop Owner specific
+  // Shop Owner / common
   address?: string;
   shopName?: string;
   description?: string;
+  bankName?: string;
   bankAccount?: string;
+  bankAccountHolder?: string;
+  // Shipper specific
+  license?: string;
+  vehicleNumber?: string;
 }
 
 export interface UserResponse {
@@ -47,7 +52,9 @@ export interface UserResponse {
   };
   // Shop Owner specific
   shopName?: string;
+  bankName?: string;
   bankAccount?: string;
+  bankAccountHolder?: string;
   ratingAverage?: number;
   description?: string;
   logoUrl?: string;
@@ -59,6 +66,8 @@ export interface UserResponse {
   // Shipper specific
   license?: string;
   vehicleNumber?: string;
+  licenseImageUrl?: string;
+  vehicleDocImageUrl?: string;
   // Computed field for frontend
   roleName?: string;
   // Additional optional fields
@@ -115,13 +124,21 @@ class AuthService {
    * Đăng ký tài khoản mới
    * BE endpoint dùng multipart/form-data với @RequestPart("data")
    */
-  async register(userData: RegisterRequest, logoUrl?: File, achievement?: File): Promise<ApiResponse<UserResponse>> {
+  async register(
+    userData: RegisterRequest,
+    logoUrl?: File,
+    achievement?: File,
+    licenseImage?: File,
+    vehicleDocImage?: File,
+  ): Promise<ApiResponse<UserResponse>> {
     try {
       const formData = new FormData();
       // BE expects "data" part as a JSON string
       formData.append('data', JSON.stringify(userData));
       if (logoUrl) formData.append('logoUrl', logoUrl);
       if (achievement) formData.append('achievement', achievement);
+      if (licenseImage) formData.append('licenseImage', licenseImage);
+      if (vehicleDocImage) formData.append('vehicleDocImage', vehicleDocImage);
 
       const response = await fetch(`${API_BASE_URL}/users/register`, {
         method: 'POST',
