@@ -29,6 +29,7 @@ const MysteryBoxEditor: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [totalQuantity, setTotalQuantity] = useState('');
   const [boxImage, setBoxImage] = useState<File | null>(null);
   const [boxImagePreview, setBoxImagePreview] = useState<string>('');
+  const [boxImageAspectRatio, setBoxImageAspectRatio] = useState<number | null>(null);
   const [isActive, setIsActive] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -59,6 +60,7 @@ const MysteryBoxEditor: React.FC<{ onBack: () => void }> = ({ onBack }) => {
               setPrice(box.price.toString());
               setTotalQuantity(box.totalQuantity?.toString() || '');
               setBoxImagePreview(box.imageUrl || '');
+              if (box.imageUrl) loadImageAspectRatio(box.imageUrl);
               setIsActive(box.isActive !== false && box.isActive !== 0);
               if (box.products && box.products.length > 0) {
                 // deduplicate by productId (sum quantities if duplicate)
@@ -118,12 +120,26 @@ const MysteryBoxEditor: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     setSelectedProducts(prev => prev.map(p => p.productId === productId ? { ...p, quantity } : p));
   };
 
+  const loadImageAspectRatio = (src: string) => {
+    const img = new Image();
+    img.onload = () => {
+      if (img.naturalWidth && img.naturalHeight) {
+        setBoxImageAspectRatio(img.naturalWidth / img.naturalHeight);
+      }
+    };
+    img.src = src;
+  };
+
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       setBoxImage(file);
       const reader = new FileReader();
-      reader.onloadend = () => setBoxImagePreview(reader.result as string);
+      reader.onloadend = () => {
+        const dataUrl = reader.result as string;
+        setBoxImagePreview(dataUrl);
+        loadImageAspectRatio(dataUrl);
+      };
       reader.readAsDataURL(file);
     }
   };
@@ -260,10 +276,20 @@ const MysteryBoxEditor: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
                 <div>
                   <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-3">Ảnh hộp mù</label>
-                  <label className="relative flex flex-col items-center justify-center w-full h-48 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200 hover:border-primary/40 hover:bg-primary/5 cursor-pointer transition-all group overflow-hidden">
+                  <label
+                    className="relative flex flex-col items-center justify-center mx-auto bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200 hover:border-primary/40 hover:bg-primary/5 cursor-pointer transition-all group overflow-hidden"
+                    style={boxImagePreview && boxImageAspectRatio
+                      ? {
+                          aspectRatio: boxImageAspectRatio,
+                          maxHeight: 384,
+                          minHeight: 160,
+                          width: `min(100%, ${384 * boxImageAspectRatio}px)`,
+                        }
+                      : { width: '100%', height: 192 }}
+                  >
                     <input type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
                     {boxImagePreview ? (
-                      <img src={boxImagePreview} className="w-full h-full object-cover" alt="Ảnh hộp mù" />
+                      <img src={boxImagePreview} className="w-full h-full object-contain" alt="Ảnh hộp mù" />
                     ) : (
                       <div className="flex flex-col items-center gap-2 text-gray-400 group-hover:text-primary transition-colors">
                         <ImagePlus className="size-8" />

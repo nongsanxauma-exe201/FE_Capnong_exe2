@@ -14,7 +14,7 @@ const ORDER_TABS = [
   { label: 'Tất cả', statuses: ['PENDING', 'PAID', 'CONFIRMED', 'READY_FOR_PICKUP', 'READY', 'SHIPPING_TO_WAREHOUSE', 'ARRIVED_AT_WAREHOUSE', 'QUALITY_CHECKING', 'QUALITY_CHECKED', 'SHIPPING', 'DELIVERED', 'CANCELLED', 'FAILED'] },
   { label: 'Chờ xác nhận',      statuses: ['PENDING', 'PAID'] },        // AWAITING_PAYMENT chỉ dành cho buyer
   { label: 'Đang chuẩn bị',     statuses: ['CONFIRMED', 'READY_FOR_PICKUP'] },
-  { label: 'Chờ shipper lấy',   statuses: ['READY'] },
+  { label: 'Chờ lấy hàng',      statuses: ['READY'] },
   { label: 'Giao tới kho',      statuses: ['SHIPPING_TO_WAREHOUSE'] },
   { label: 'Đã tới kho',        statuses: ['ARRIVED_AT_WAREHOUSE'] },
   { label: 'Đang kiểm định',    statuses: ['QUALITY_CHECKING'] },
@@ -277,6 +277,7 @@ const Orders: React.FC = () => {
             const isQualityChecked = order.status === 'QUALITY_CHECKED';
             const isReadyForPickup = order.status === 'READY_FOR_PICKUP';
             const isReady = order.status === 'READY';
+            const isPickupAtWarehouse = order.deliveryType === 'PICKUP_AT_WAREHOUSE';
             const needsFarmerConfirm = isPending || isPaid;
 
             return (
@@ -290,7 +291,11 @@ const Orders: React.FC = () => {
                     {isPaid && <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[10px] font-black uppercase rounded-md">✅ Đã thanh toán QR</span>}
                     {isConfirmed &&<span className="px-2 py-0.5 bg-purple-50 text-purple-700 text-[10px] font-black uppercase rounded-md">🔄 Đang chuẩn bị</span>}
                     {isReadyForPickup && <span className="px-2 py-0.5 bg-amber-50 text-amber-700 text-[10px] font-black uppercase rounded-md">🚛 Chờ xe lên kho lấy</span>}
-                    {isReady && <span className="px-2 py-0.5 bg-teal-50 text-teal-700 text-[10px] font-black uppercase rounded-md">📦 Chờ shipper lấy hàng</span>}
+                    {isReady && (
+                      <span className="px-2 py-0.5 bg-teal-50 text-teal-700 text-[10px] font-black uppercase rounded-md">
+                        {isPickupAtWarehouse ? '🏬 Chờ khách đến kho lấy' : '📦 Chờ shipper lấy hàng'}
+                      </span>
+                    )}
                     {isShipping && <span className="px-2 py-0.5 bg-blue-50 text-blue-500 text-[10px] font-black uppercase rounded-md">🚚 Đang giao</span>}
                     {isDelivered && <span className="px-2 py-0.5 bg-green-50 text-emerald-600 text-[10px] font-black uppercase rounded-md">✅ Đã giao</span>}
                     {isCancelled && <span className="px-2 py-0.5 bg-red-50 text-red-500 text-[10px] font-black uppercase rounded-md">Đã hủy</span>}

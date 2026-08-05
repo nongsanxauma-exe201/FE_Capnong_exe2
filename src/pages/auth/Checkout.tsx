@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { MapPin, CreditCard, ChevronRight, Lock, Loader2, ShieldCheck, Wallet, ChevronLeft, AlertCircle, Package, X, Gift, Truck } from 'lucide-react';
-import { orderService, paymentService, authService, cartService, CartResponse, CartItemResponse, voucherService, VoucherUserResponse } from '../../services';
+import { orderService, paymentService, authService, cartService, CartResponse, CartItemResponse, voucherService, VoucherUserResponse, tripService, WarehouseResponse } from '../../services';
 import { httpClient } from '../../services/http.client';
 import { groupCartItemsByShop, buildCheckoutBatchPayload } from '../../utils/cartShopGroups';
 import {
@@ -63,6 +63,8 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
    const [recipientPhone, setRecipientPhone] = useState('');
    const [recipientAddress, setRecipientAddress] = useState('');
    const [note, setNote] = useState('');
+   const [deliveryType, setDeliveryType] = useState<'DELIVERY' | 'PICKUP_AT_WAREHOUSE'>('DELIVERY');
+   const [pickupWarehouse, setPickupWarehouse] = useState<WarehouseResponse | null>(null);
    const [loading, setLoading] = useState(true);
    const [error, setError] = useState<string | null>(null);
 
@@ -242,6 +244,7 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
    }, [cartData?.items]);
 
    useEffect(() => {
+      if (deliveryType === 'PICKUP_AT_WAREHOUSE') return;
       if (!cartData?.items?.length || !recipientAddress || recipientAddress.trim().length < 10) return;
 
       if (addressTimer) clearTimeout(addressTimer);
@@ -251,7 +254,21 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
       setAddressTimer(timer);
 
       return () => clearTimeout(timer);
-   }, [recipientAddress, selectedPlaceId, cartData?.items, fetchBatchShippingFee]);
+   }, [recipientAddress, selectedPlaceId, cartData?.items, fetchBatchShippingFee, deliveryType]);
+
+   // Nhận tại kho: miễn phí ship, không cần địa chỉ giao hàng
+   useEffect(() => {
+      if (deliveryType === 'PICKUP_AT_WAREHOUSE') {
+         setUnitShippingFee(0);
+      }
+   }, [deliveryType]);
+
+   // Lấy thông tin kho mặc định để hiển thị khi buyer chọn nhận tại kho
+   useEffect(() => {
+      tripService.getWarehouses()
+         .then((res) => setPickupWarehouse(res.result?.[0] ?? null))
+         .catch(() => setPickupWarehouse(null));
+   }, []);
 
    const isWelcomeVoucher = (voucherItem: VoucherUserResponse | null) =>
       voucherItem?.voucherResponse?.voucherType === 'WELCOME';
@@ -450,7 +467,10 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
    const validateForm = (): boolean => {
       if (!recipientName.trim()) { globalShowAlert('Vui lòng nhập tên người nhận', 'Lỗi', 'error'); return false; }
       if (!recipientPhone.trim()) { globalShowAlert('Vui lòng nhập số điện thoại', 'Lỗi', 'error'); return false; }
-      if (!recipientAddress.trim()) { globalShowAlert('Vui lòng nhập địa chỉ nhận hàng', 'Lỗi', 'error'); return false; }
+      if (deliveryType === 'DELIVERY' && !recipientAddress.trim()) {
+         globalShowAlert('Vui lòng nhập địa chỉ nhận hàng', 'Lỗi', 'error');
+         return false;
+      }
       return true;
    };
 
@@ -493,10 +513,11 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
             buildCheckoutBatchPayload(groups, {
                recipientName,
                recipientPhone,
-               shippingAddress: recipientAddress,
-               placeId: selectedPlaceId,
+               shippingAddress: deliveryType === 'PICKUP_AT_WAREHOUSE' ? '' : recipientAddress,
+               placeId: deliveryType === 'PICKUP_AT_WAREHOUSE' ? null : selectedPlaceId,
                note,
                paymentMethod,
+               deliveryType,
             }, selectedVoucherByShop, selectedBatchVoucher),
          );
 
@@ -643,48 +664,80 @@ const Checkout: React.FC<CheckoutProps> = ({ onComplete, onBack }) => {
                               <input type="tel" value={recipientPhone} onChange={(e) => setRecipientPhone(e.target.value)} placeholder="Nhập SĐT" className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold outline-none focus:border-primary focus:bg-white transition-all" disabled={isProcessing} />
                            </div>
                         </div>
-                        <div className="relative">
-                           <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">
-                              Địa chỉ nhận hàng *
-                              {loadingFee && (
-                                 <span className="ml-2 text-primary font-bold normal-case">
-                                    <Loader2 className="size-3 inline animate-spin mr-1" />
-                                    Đang tính phí ship...
-                                 </span>
-                              )}
-                           </label>
-                           <textarea
-                              value={recipientAddress}
-                              onChange={(e) => handleAddressChange(e.target.value)}
-                              onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-                              placeholder="Số nhà, đường, phường/xã, quận/huyện, tỉnh/thành phố"
-                              className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium outline-none focus:border-primary focus:bg-white transition-all resize-none"
-                              rows={2}
-                              disabled={isProcessing}
-                              autoComplete="off"
-                           />
-                           {/* Dropdown gợi ý địa chỉ */}
-                           {showSuggestions && suggestions.length > 0 && (
-                              <ul className="absolute z-50 w-full bg-white border border-gray-200 rounded-xl shadow-lg mt-1 overflow-hidden max-h-52 overflow-y-auto">
-                                 {suggestions.slice(0, 5).map((s, i) => (
-                                    <li
-                                       key={s.placeId ?? i}
-                                       onMouseDown={() => handleSelectSuggestion(s)}
-                                       className="flex items-start gap-2 px-3 py-2.5 hover:bg-green-50 cursor-pointer border-b border-gray-100 last:border-0"
-                                    >
-                                       <MapPin className="size-4 text-primary shrink-0 mt-0.5" />
-                                       <span className="text-sm text-gray-700 font-medium leading-snug">{s.description}</span>
-                                    </li>
-                                 ))}
-                              </ul>
-                           )}
-                           {!loadingFee && recipientAddress.length >= 10 && (
-                              <div className="mt-2 flex items-center gap-2 text-xs text-primary font-bold">
-                                 <Truck className="size-3.5" />
-                                 Phí ship ước tính ({shopGroups.length} shop): {shippingFee.toLocaleString('vi-VN')}đ
-                              </div>
-                           )}
+                        <div>
+                           <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Hình thức nhận hàng *</label>
+                           <div className="grid grid-cols-2 gap-3">
+                              <button
+                                 type="button"
+                                 onClick={() => setDeliveryType('DELIVERY')}
+                                 disabled={isProcessing}
+                                 className={`px-3 py-2.5 rounded-xl text-sm font-bold border transition-all flex items-center justify-center gap-2 ${deliveryType === 'DELIVERY' ? 'bg-primary text-white border-primary' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}
+                              >
+                                 <Truck className="size-4" /> Giao hàng tận nơi
+                              </button>
+                              <button
+                                 type="button"
+                                 onClick={() => setDeliveryType('PICKUP_AT_WAREHOUSE')}
+                                 disabled={isProcessing}
+                                 className={`px-3 py-2.5 rounded-xl text-sm font-bold border transition-all flex items-center justify-center gap-2 ${deliveryType === 'PICKUP_AT_WAREHOUSE' ? 'bg-primary text-white border-primary' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}
+                              >
+                                 <Package className="size-4" /> Nhận tại kho
+                              </button>
+                           </div>
                         </div>
+
+                        {deliveryType === 'DELIVERY' ? (
+                           <div className="relative">
+                              <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">
+                                 Địa chỉ nhận hàng *
+                                 {loadingFee && (
+                                    <span className="ml-2 text-primary font-bold normal-case">
+                                       <Loader2 className="size-3 inline animate-spin mr-1" />
+                                       Đang tính phí ship...
+                                    </span>
+                                 )}
+                              </label>
+                              <textarea
+                                 value={recipientAddress}
+                                 onChange={(e) => handleAddressChange(e.target.value)}
+                                 onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                                 placeholder="Số nhà, đường, phường/xã, quận/huyện, tỉnh/thành phố"
+                                 className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium outline-none focus:border-primary focus:bg-white transition-all resize-none"
+                                 rows={2}
+                                 disabled={isProcessing}
+                                 autoComplete="off"
+                              />
+                              {/* Dropdown gợi ý địa chỉ */}
+                              {showSuggestions && suggestions.length > 0 && (
+                                 <ul className="absolute z-50 w-full bg-white border border-gray-200 rounded-xl shadow-lg mt-1 overflow-hidden max-h-52 overflow-y-auto">
+                                    {suggestions.slice(0, 5).map((s, i) => (
+                                       <li
+                                          key={s.placeId ?? i}
+                                          onMouseDown={() => handleSelectSuggestion(s)}
+                                          className="flex items-start gap-2 px-3 py-2.5 hover:bg-green-50 cursor-pointer border-b border-gray-100 last:border-0"
+                                       >
+                                          <MapPin className="size-4 text-primary shrink-0 mt-0.5" />
+                                          <span className="text-sm text-gray-700 font-medium leading-snug">{s.description}</span>
+                                       </li>
+                                    ))}
+                                 </ul>
+                              )}
+                              {!loadingFee && recipientAddress.length >= 10 && (
+                                 <div className="mt-2 flex items-center gap-2 text-xs text-primary font-bold">
+                                    <Truck className="size-3.5" />
+                                    Phí ship ước tính ({shopGroups.length} shop): {shippingFee.toLocaleString('vi-VN')}đ
+                                 </div>
+                              )}
+                           </div>
+                        ) : (
+                           <div className="bg-green-50 border border-green-200 rounded-xl p-3">
+                              <div className="flex items-center gap-2 text-xs text-primary font-bold mb-1">
+                                 <Package className="size-3.5" /> Miễn phí — Nhận tại kho
+                              </div>
+                              <p className="text-sm font-bold text-gray-800">{pickupWarehouse?.name ?? 'Kho CapNong'}</p>
+                              <p className="text-xs text-gray-500 font-medium">{pickupWarehouse?.address ?? 'Đang tải địa chỉ kho...'}</p>
+                           </div>
+                        )}
                         <div>
                            <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Ghi chú (tùy chọn)</label>
                            <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ví dụ: Giao giờ hành chính" className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium outline-none focus:border-primary focus:bg-white transition-all" disabled={isProcessing} />
