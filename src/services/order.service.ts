@@ -50,6 +50,7 @@ export interface CheckoutBatchRequest {
     paymentMethod: string;
     shopOrders: ShopOrderRequest[];
     batchVoucherUserId?: string;
+    deliveryType?: 'DELIVERY' | 'PICKUP_AT_WAREHOUSE';
 }
 
 export interface CheckoutBatchResponse {
@@ -157,6 +158,7 @@ export interface OrderResponse {
     rewardPoints?: number;
     rewardApplied?: boolean;
     status: string;
+    deliveryType?: 'DELIVERY' | 'PICKUP_AT_WAREHOUSE';
     createdAt: string;
     items: OrderItemResponse[];
     buyerId?: number;

@@ -419,7 +419,15 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
     loadReviewedIds();
   }, []);
 
-  const getStatusConfig = (status: string) => {
+  const getStatusConfig = (status: string, deliveryType?: string) => {
+    if (status === 'READY' && deliveryType === 'PICKUP_AT_WAREHOUSE') {
+      return {
+        label: 'Chờ tới kho lấy',
+        color: 'text-yellow-600',
+        icon: Package,
+        bg: 'bg-yellow-50',
+      };
+    }
     const configs: Record<string, { label: string; color: string; icon: any; bg: string }> = {
       PENDING: {
         label: 'Chờ xác nhận',
@@ -712,7 +720,7 @@ const MyOrders: React.FC<MyOrdersProps> = ({ onBack, onViewTracking }) => {
               }
 
               const order = item.order;
-              const statusConfig = getStatusConfig(order.status);
+              const statusConfig = getStatusConfig(order.status, order.deliveryType);
               const StatusIcon = statusConfig.icon;
               const trackable = canTrack(order.status);
 

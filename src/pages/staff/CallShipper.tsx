@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Truck, Phone, CheckCircle, MapPin, Clock, Package, Star, RefreshCw, Loader2, AlertCircle, User, Wifi, WifiOff } from 'lucide-react';
+import { Truck, Phone, CheckCircle, MapPin, Clock, Package, Star, RefreshCw, Loader2, AlertCircle, User, Wifi, WifiOff, XCircle, Store } from 'lucide-react';
 import { orderService, staffService } from '../../services';
 import type { OrderResponse, AvailableShipperResponse } from '../../services';
 
 const CallShipper: React.FC = () => {
   const [readyOrders, setReadyOrders] = useState<OrderResponse[]>([]);
+  const [pickupOrders, setPickupOrders] = useState<OrderResponse[]>([]);
   const [shippers, setShippers] = useState<AvailableShipperResponse[]>([]);
   const [isLoadingOrders, setIsLoadingOrders] = useState(true);
   const [isLoadingShippers, setIsLoadingShippers] = useState(true);
@@ -15,6 +16,10 @@ const CallShipper: React.FC = () => {
   const [assigningIds, setAssigningIds] = useState<Set<number>>(new Set());
   // orderId → đã assign thành công
   const [assignedIds, setAssignedIds] = useState<Set<number>>(new Set());
+  // orderId → đang gọi API xác nhận pickup
+  const [pickupProcessingIds, setPickupProcessingIds] = useState<Set<number>>(new Set());
+  // orderId → kết quả pickup vừa xử lý ('DELIVERED' | 'FAILED')
+  const [pickupResolvedIds, setPickupResolvedIds] = useState<Record<number, 'DELIVERED' | 'FAILED'>>({});
 
   const fetchData = async () => {
     setIsLoadingOrders(true);
@@ -25,7 +30,9 @@ const CallShipper: React.FC = () => {
         orderService.getOrdersForStaff(0, 50, 'READY'),
         staffService.getAvailableShippers(),
       ]);
-      setReadyOrders(ordersRes.result?.content ?? []);
+      const allReady = ordersRes.result?.content ?? [];
+      setReadyOrders(allReady.filter(o => o.deliveryType !== 'PICKUP_AT_WAREHOUSE'));
+      setPickupOrders(allReady.filter(o => o.deliveryType === 'PICKUP_AT_WAREHOUSE'));
       setShippers(shippersRes.result ?? []);
     } catch (err: any) {
       setError(err?.data?.message || err?.message || 'Không thể tải dữ liệu');
@@ -56,6 +63,39 @@ const CallShipper: React.FC = () => {
     }
   };
 
+  const handleConfirmPickup = async (orderId: number) => {
+    setPickupProcessingIds(prev => new Set(prev).add(orderId));
+    try {
+      await staffService.confirmWarehousePickup(orderId);
+      setPickupResolvedIds(prev => ({ ...prev, [orderId]: 'DELIVERED' }));
+      setTimeout(() => {
+        setPickupOrders(prev => prev.filter(o => o.id !== orderId));
+        setPickupResolvedIds(prev => { const { [orderId]: _, ...rest } = prev; return rest; });
+      }, 2000);
+    } catch (err: any) {
+      alert(err?.data?.message || 'Không thể xác nhận đã giao');
+    } finally {
+      setPickupProcessingIds(prev => { const s = new Set(prev); s.delete(orderId); return s; });
+    }
+  };
+
+  const handlePickupFailed = async (orderId: number) => {
+    if (!confirm('Xác nhận buyer không đến lấy hàng? Đơn sẽ chuyển sang trạng thái Giao thất bại.')) return;
+    setPickupProcessingIds(prev => new Set(prev).add(orderId));
+    try {
+      await staffService.markWarehousePickupFailed(orderId);
+      setPickupResolvedIds(prev => ({ ...prev, [orderId]: 'FAILED' }));
+      setTimeout(() => {
+        setPickupOrders(prev => prev.filter(o => o.id !== orderId));
+        setPickupResolvedIds(prev => { const { [orderId]: _, ...rest } = prev; return rest; });
+      }, 2000);
+    } catch (err: any) {
+      alert(err?.data?.message || 'Không thể đánh dấu thất bại');
+    } finally {
+      setPickupProcessingIds(prev => { const s = new Set(prev); s.delete(orderId); return s; });
+    }
+  };
+
   const fmtCur = (n: number) =>
     new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(n);
 
@@ -66,9 +106,9 @@ const CallShipper: React.FC = () => {
     <div className="flex flex-col gap-8 p-8 animate-in fade-in duration-500">
       <div className="bg-white rounded-[32px] border border-gray-100 shadow-sm p-8 flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-black text-gray-900 tracking-tight">Gọi Shipper Lấy Hàng</h2>
+          <h2 className="text-2xl font-black text-gray-900 tracking-tight">Giao Hàng & Nhận Tại Kho</h2>
           <p className="text-sm text-gray-400 font-medium mt-1">
-            Phân công shipper cho các đơn đã đóng gói xong (trạng thái READY)
+            Phân công shipper hoặc xác nhận buyer đến lấy hàng cho các đơn đã đóng gói xong (trạng thái READY)
           </p>
         </div>
         <button
@@ -85,6 +125,77 @@ const CallShipper: React.FC = () => {
           <p className="text-sm font-bold">{error}</p>
         </div>
       )}
+
+      {/* Đơn nhận tại kho — buyer tự đến lấy, không cần shipper */}
+      <div className="bg-white rounded-[32px] border border-gray-100 shadow-sm p-8">
+        <div className="flex items-center gap-2 mb-6">
+          <Store className="size-5 text-primary" />
+          <h4 className="font-black text-gray-600 uppercase tracking-widest text-xs">
+            Đơn chờ khách đến lấy tại kho ({isLoadingOrders ? '...' : pickupOrders.length})
+          </h4>
+        </div>
+
+        {!isLoadingOrders && pickupOrders.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-8 text-gray-400">
+            <Store className="size-10 mb-3 opacity-30" />
+            <p className="font-black text-xs uppercase tracking-widest">Không có đơn nào chờ lấy tại kho</p>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {pickupOrders.map(order => {
+            const isProcessing = pickupProcessingIds.has(order.id);
+            const resolved = pickupResolvedIds[order.id];
+            const productSummary = order.items?.map(i => i.productName || i.mysteryBoxType || 'Sản phẩm').join(', ') || '—';
+
+            return (
+              <div
+                key={order.id}
+                className={`rounded-[24px] border p-6 transition-all ${resolved ? (resolved === 'DELIVERED' ? 'border-emerald-200 bg-emerald-50/30' : 'border-red-200 bg-red-50/30') : 'border-gray-100 bg-gray-50/50'}`}
+              >
+                <span className="text-[10px] font-black text-primary bg-primary/5 px-3 py-1 rounded-lg uppercase tracking-widest">
+                  #{order.id}
+                </span>
+                <h3 className="text-sm font-black text-gray-900 mt-2 line-clamp-1">{productSummary}</h3>
+                <p className="text-xs text-gray-400 font-bold mt-1">
+                  Khách: {order.recipientName} · {order.recipientPhone}
+                </p>
+                <p className="text-xs text-gray-400 font-bold">Tổng: {fmtCur(order.totalAmount)} · {order.paymentMethod}</p>
+
+                {resolved ? (
+                  <div className={`mt-4 flex items-center gap-2 px-3 py-2 rounded-xl ${resolved === 'DELIVERED' ? 'bg-emerald-50 border border-emerald-100' : 'bg-red-50 border border-red-100'}`}>
+                    {resolved === 'DELIVERED'
+                      ? <CheckCircle className="size-3.5 text-emerald-600" />
+                      : <XCircle className="size-3.5 text-red-500" />}
+                    <span className={`text-[10px] font-black uppercase ${resolved === 'DELIVERED' ? 'text-emerald-700' : 'text-red-600'}`}>
+                      {resolved === 'DELIVERED' ? 'Đã giao' : 'Giao thất bại'}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="mt-4 flex gap-2">
+                    <button
+                      onClick={() => handleConfirmPickup(order.id)}
+                      disabled={isProcessing}
+                      className="flex-1 py-2.5 bg-[#38703d] text-white font-black rounded-xl text-xs flex items-center justify-center gap-2 hover:opacity-90 transition-all disabled:opacity-40"
+                    >
+                      {isProcessing ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle className="size-3.5" />}
+                      Đã giao
+                    </button>
+                    <button
+                      onClick={() => handlePickupFailed(order.id)}
+                      disabled={isProcessing}
+                      className="flex-1 py-2.5 bg-white border border-red-200 text-red-600 font-black rounded-xl text-xs flex items-center justify-center gap-2 hover:bg-red-50 transition-all disabled:opacity-40"
+                    >
+                      <XCircle className="size-3.5" />
+                      Thất bại
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Cột trái: Đơn sẵn sàng giao */}
