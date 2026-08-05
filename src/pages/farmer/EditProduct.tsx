@@ -61,6 +61,7 @@ const EditProduct: React.FC<{ productId: number; onBack: () => void }> = ({ prod
   }, [productId]);
 
   const handleAddImages = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (uploading) return;
     if (!e.target.files || e.target.files.length === 0) return;
     const files = Array.from(e.target.files);
     if (galleryImages.length + files.length > MAX_IMAGES) {
@@ -355,8 +356,8 @@ const EditProduct: React.FC<{ productId: number; onBack: () => void }> = ({ prod
                 </div>
               </div>
               {galleryImages.length < MAX_IMAGES && (
-                <label className="cursor-pointer size-9 bg-primary/10 rounded-xl flex items-center justify-center hover:bg-primary/20 transition-colors">
-                  <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleAddImages} className="hidden" />
+                <label className={`size-9 bg-primary/10 rounded-xl flex items-center justify-center transition-colors ${uploading ? 'opacity-50 pointer-events-none' : 'cursor-pointer hover:bg-primary/20'}`}>
+                  <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleAddImages} disabled={uploading} className="hidden" />
                   {uploading ? <Loader2 className="size-4 text-primary animate-spin" /> : <Plus className="size-4 text-primary" />}
                 </label>
               )}
@@ -393,9 +394,9 @@ const EditProduct: React.FC<{ productId: number; onBack: () => void }> = ({ prod
 
                 {/* Add more slot */}
                 {galleryImages.length < MAX_IMAGES && (
-                  <label className="aspect-square bg-gray-50 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center cursor-pointer hover:border-primary/30 hover:bg-primary/5 transition-colors">
-                    <input type="file" accept="image/*" multiple onChange={handleAddImages} className="hidden" />
-                    <Plus className="size-5 text-gray-400" />
+                  <label className={`aspect-square bg-gray-50 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center transition-colors ${uploading ? 'opacity-50 pointer-events-none' : 'cursor-pointer hover:border-primary/30 hover:bg-primary/5'}`}>
+                    <input type="file" accept="image/*" multiple onChange={handleAddImages} disabled={uploading} className="hidden" />
+                    {uploading ? <Loader2 className="size-5 text-gray-400 animate-spin" /> : <Plus className="size-5 text-gray-400" />}
                   </label>
                 )}
               </div>
