@@ -3,9 +3,59 @@ import React, { useEffect, useState } from 'react';
 import { ShoppingCart, TrendingUp, Star, Package, MoreVertical, Sparkles, Landmark, History, Loader2, AlertCircle } from 'lucide-react';
 import { productService, orderService, walletService, authService, mysteryBoxService, ProductResponse, OrderResponse, WalletResponse, MysteryBox } from '../../services';
 
+const getOrderStatusLabel = (status?: string) => {
+  const map: Record<string, string> = {
+    PENDING: 'Chờ xác nhận',
+    PAID: 'Đã thanh toán',
+    CONFIRMED: 'Đang chuẩn bị',
+    READY_FOR_PICKUP: 'Chờ shipper lấy',
+    READY: 'Đã đóng gói xong',
+    SHIPPING_TO_WAREHOUSE: 'Giao tới kho',
+    ARRIVED_AT_WAREHOUSE: 'Đã tới kho',
+    QUALITY_CHECKING: 'Đang kiểm định',
+    QUALITY_CHECKED: 'Đã kiểm tra',
+    SHIPPING: 'Đang giao',
+    DELIVERED: 'Đã giao',
+    CANCELLED: 'Đã hủy',
+    FAILED: 'Thất bại',
+  };
+  if (!status) return 'Mới';
+  return map[status] || status.replace(/_/g, ' ');
+};
+
+const getOrderStatusClass = (status?: string) => {
+  switch (status) {
+    case 'PENDING':
+      return 'bg-orange-50 text-orange-600';
+    case 'PAID':
+      return 'bg-blue-50 text-blue-600';
+    case 'CONFIRMED':
+    case 'READY_FOR_PICKUP':
+      return 'bg-purple-50 text-purple-700';
+    case 'READY':
+      return 'bg-emerald-50 text-emerald-700';
+    case 'SHIPPING':
+    case 'SHIPPING_TO_WAREHOUSE':
+      return 'bg-blue-50 text-blue-600';
+    case 'ARRIVED_AT_WAREHOUSE':
+    case 'QUALITY_CHECKING':
+    case 'QUALITY_CHECKED':
+      return 'bg-indigo-50 text-indigo-700';
+    case 'DELIVERED':
+      return 'bg-green-50 text-green-600';
+    case 'FAILED':
+      return 'bg-red-50 text-red-600';
+    case 'CANCELLED':
+      return 'bg-gray-100 text-gray-500';
+    default:
+      return 'bg-gray-50 text-gray-600';
+  }
+};
+
 const FarmerDashboard: React.FC<{ onNavigate: (id: string) => void }> = ({ onNavigate }) => {
   const [products, setProducts] = useState<ProductResponse[]>([]);
   const [orders, setOrders] = useState<OrderResponse[]>([]);
+  const [totalOrders, setTotalOrders] = useState(0);
   const [wallet, setWallet] = useState<WalletResponse | null>(null);
   const [mysteryBoxes, setMysteryBoxes] = useState<MysteryBox[]>([]);
   const [activeTab, setActiveTab] = useState<'NONG_SAN' | 'BLIND_BOX'>('NONG_SAN');
@@ -21,19 +71,28 @@ const FarmerDashboard: React.FC<{ onNavigate: (id: string) => void }> = ({ onNav
         const userInfo = await authService.getMyInfo();
         const shopId = userInfo.result?.id;
 
-        const [productsRes, ordersRes, walletRes, mysteryBoxesRes] = await Promise.all([
+        const [productsRes, ordersRes, walletRes, mysteryBoxesRes, shopReportRes] = await Promise.all([
           (shopId ? productService.getByShopId(shopId) : productService.getAll())
             .catch(e => { console.error('Products fetch error', e); return { result: [] }; }),
-          orderService.getAllOrders()
-            .catch(e => { console.error('Orders fetch error', e); return { result: [] }; }),
+          orderService.getAllOrdersPaged(0, 5, ['PENDING', 'CONFIRMED', 'READY_FOR_PICKUP', 'READY', 'SHIPPING', 'ARRIVED_AT_WAREHOUSE', 'QUALITY_CHECKING', 'QUALITY_CHECKED', 'SHIPPING', 'DELIVERED', 'FAILED', 'CANCELLED'])
+            .catch(e => { console.error('Orders fetch error', e); return { result: null }; }),
           walletService.getMyWallet()
             .catch(e => { console.error('Wallet fetch error', e); return { result: null }; }),
           mysteryBoxService.getMyBoxes()
             .catch(e => { console.error('Mystery boxes fetch error', e); return { result: [] }; }),
+          orderService.getShopReport('all')
+            .catch(e => { console.error('Shop report fetch error', e); return { result: null }; }),
         ]);
 
         if (productsRes.result) setProducts(Array.isArray(productsRes.result) ? productsRes.result : [productsRes.result]);
-        if (ordersRes.result) setOrders(Array.isArray(ordersRes.result) ? ordersRes.result : [ordersRes.result]);
+        if (ordersRes.result) {
+          setOrders(ordersRes.result.content as OrderResponse[]);
+          setTotalOrders(ordersRes.result.totalElements ?? ordersRes.result.content?.length ?? 0);
+        }
+        // Ưu tiên tổng đơn từ báo cáo shop nếu có
+        if (shopReportRes.result?.totalOrder != null) {
+          setTotalOrders(Number(shopReportRes.result.totalOrder) || 0);
+        }
         if (walletRes.result) setWallet(walletRes.result as WalletResponse);
         if (mysteryBoxesRes.result) setMysteryBoxes(Array.isArray(mysteryBoxesRes.result) ? mysteryBoxesRes.result : [mysteryBoxesRes.result]);
       } catch (err) {
@@ -46,7 +105,6 @@ const FarmerDashboard: React.FC<{ onNavigate: (id: string) => void }> = ({ onNav
     fetchData();
   }, []);
 
-  const totalOrders = orders.length;
   const totalBalance = wallet?.totalBalance || 0;
   const totalBlindBoxes = mysteryBoxes.length;
 
@@ -321,31 +379,15 @@ const FarmerDashboard: React.FC<{ onNavigate: (id: string) => void }> = ({ onNav
                       <Package className="size-5" />
                     </div>
                     <div className="max-w-[120px]">
-                      <p className="text-xs font-bold text-gray-800 truncate">Đơn #{order.id}</p>
+                      <p className="text-xs font-bold text-gray-800 truncate">Mã đơn #{order.id}</p>
                       <p className="text-[10px] text-gray-400 font-medium truncate">{order.shippingAddress || 'Khách hàng'}</p>
                     </div>
                   </div>
                   <div className="text-right">
                     <p className="text-[13px] font-black text-primary">{(order.totalAmount || 0).toLocaleString('vi-VN')}đ</p>
-                    <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${order.status === 'PENDING' ? 'bg-orange-50 text-orange-600' :
-                      order.status === 'PAID' ? 'bg-blue-50 text-blue-600' :
-                        order.status === 'CONFIRMED' ? 'bg-purple-50 text-purple-700' :
-                          order.status === 'SHIPPING' ? 'bg-blue-50 text-blue-600' :
-                            order.status === 'DELIVERED' ? 'bg-green-50 text-green-600' :
-                              order.status === 'FAILED' ? 'bg-red-50 text-red-600' :
-                                order.status === 'CANCELLED' ? 'bg-gray-100 text-gray-500' :
-                                  'bg-gray-50 text-gray-600'
-                      }`}>
-                      {order.status === 'PENDING' ? 'Chờ xác nhận' :
-                        order.status === 'PAID' ? 'Đã TT QR' :
-                          order.status === 'CONFIRMED' ? 'Đang chuẩn bị' :
-                            order.status === 'SHIPPING' ? 'Đang giao' :
-                              order.status === 'DELIVERED' ? 'Đã giao' :
-                                order.status === 'FAILED' ? 'Thất bại' :
-                                  order.status === 'CANCELLED' ? 'Đã hủy' :
-                                    order.status || 'Mới'}
+                    <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${getOrderStatusClass(order.status)}`}>
+                      {getOrderStatusLabel(order.status)}
                     </span>
-
                   </div>
                 </div>
               ))}
