@@ -22,6 +22,16 @@ class StaffService {
     async assignShipper(orderId: number, shipperId: number): Promise<ApiResponse<any>> {
         return httpClient.post<any>(`/staff/orders/${orderId}/assign-shipper?shipperId=${shipperId}`, {});
     }
+
+    /** Staff xác nhận buyer đã đến kho lấy hàng (đơn nhận tại kho) → DELIVERED */
+    async confirmWarehousePickup(orderId: number): Promise<ApiResponse<any>> {
+        return httpClient.post<any>(`/staff/orders/${orderId}/confirm-pickup`, {});
+    }
+
+    /** Staff đánh dấu buyer không đến lấy hàng (đơn nhận tại kho) → FAILED */
+    async markWarehousePickupFailed(orderId: number): Promise<ApiResponse<any>> {
+        return httpClient.post<any>(`/staff/orders/${orderId}/pickup-failed`, {});
+    }
 }
 
 export const staffService = new StaffService();
