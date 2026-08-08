@@ -76,10 +76,7 @@ class ExportService {
   }
 
   /**
-   * Admin xuất hóa đơn giao hàng PDF (batch)
-   * Tên file BE trả về:
-   *   - Theo date range: HD_GiaoHang_01-06-2024_den_30-06-2024.pdf
-   *   - Theo orderIds: HD_GiaoHang_DH1_DH2_DH3_26-06-2024.pdf
+   * Admin xuất hóa đơn giao hàng PDF (batch — 1 file nhiều trang, API cũ)
    */
   async exportAdminTransactionsPdf(params: ExportParams = {}): Promise<void> {
     const url = `${API_BASE_URL}/export/admin/transactions/pdf${buildQuery(params)}`;
@@ -87,6 +84,52 @@ class ExportService {
       ? `HD_GiaoHang_${params.orderIds.map(id => `DH${id}`).join('_')}_${toVnDate()}.pdf`
       : `HD_GiaoHang_${dateRange(params)}.pdf`;
     await downloadBlob(url, fallback);
+  }
+
+  /**
+   * Admin: danh sách orderId DELIVERED để xuất từng hóa đơn giao hàng
+   */
+  async listAdminDeliveryReceiptIds(params: ExportParams = {}): Promise<number[]> {
+    const token = localStorage.getItem(TOKEN_KEY);
+    const url = `${API_BASE_URL}/export/admin/delivery-receipts/ids${buildQuery(params)}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token ?? ''}` },
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new Error(`Lấy danh sách hóa đơn thất bại (${response.status}): ${text}`);
+    }
+    const body = await response.json() as { result?: { orderIds?: number[] } };
+    return body.result?.orderIds ?? [];
+  }
+
+  /**
+   * Admin: tải 1 hóa đơn giao hàng PDF (kèm chi tiết COD nếu có)
+   */
+  async exportAdminDeliveryReceiptPdf(orderId: number): Promise<void> {
+    const url = `${API_BASE_URL}/export/admin/delivery-receipts/${orderId}/pdf`;
+    await downloadBlob(url, `HD_GiaoHang_DH${orderId}_${toVnDate()}.pdf`);
+  }
+
+  /**
+   * Admin: xuất tất cả hóa đơn giao hàng — tải từng file PDF riêng
+   */
+  async exportAllAdminDeliveryReceipts(
+    params: ExportParams = {},
+    onProgress?: (current: number, total: number) => void,
+  ): Promise<number> {
+    const orderIds = await this.listAdminDeliveryReceiptIds(params);
+    if (orderIds.length === 0) return 0;
+
+    for (let i = 0; i < orderIds.length; i++) {
+      onProgress?.(i + 1, orderIds.length);
+      await this.exportAdminDeliveryReceiptPdf(orderIds[i]);
+      if (i < orderIds.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+    }
+    return orderIds.length;
   }
 
   /**

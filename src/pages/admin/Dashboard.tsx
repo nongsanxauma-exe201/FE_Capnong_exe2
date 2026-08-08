@@ -38,6 +38,7 @@ const AdminDashboard: React.FC = () => {
   const [exportTo, setExportTo] = useState(defaultTo);
   const [exportingExcel, setExportingExcel] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [pdfExportProgress, setPdfExportProgress] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
 
   const handleExportExcel = async () => {
@@ -56,13 +57,21 @@ const AdminDashboard: React.FC = () => {
   const handleExportPdf = async () => {
     setExportingPdf(true);
     setExportError(null);
+    setPdfExportProgress(null);
     try {
-      await exportService.exportAdminTransactionsPdf({ from: exportFrom, to: exportTo });
+      const count = await exportService.exportAllAdminDeliveryReceipts(
+        { from: exportFrom, to: exportTo },
+        (current, total) => setPdfExportProgress(`Đang tải ${current}/${total}`),
+      );
+      if (count === 0) {
+        setExportError('Không có hóa đơn nào trong khoảng ngày đã chọn.');
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Xuất PDF thất bại';
       setExportError(msg);
     } finally {
       setExportingPdf(false);
+      setPdfExportProgress(null);
     }
   };
 
@@ -329,7 +338,7 @@ const AdminDashboard: React.FC = () => {
             className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-2xl text-sm font-black hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
             {exportingPdf ? <Loader2 className="size-4 animate-spin" /> : <FileText className="size-4" />}
-            Xuất Hóa Đơn PDF
+            {pdfExportProgress ?? 'Xuất tất cả hóa đơn'}
           </button>
         </div>
       </div>
